@@ -1,10 +1,21 @@
-# OCCUPADO AI - Web Server
-from flask import Flask, send_file
+# OCCUPADO AI - Web Server with Login
+from flask import Flask, send_file, request, redirect, url_for, session
 import pandas as pd
 import pickle
+from functools import wraps
 
 app = Flask(__name__)
+app.secret_key = "occupado-secret-2024"
 
+# ── HOTEL ACCOUNTS ──────────────────────────────────────────
+# username: password
+HOTELS = {
+    "grandmeridian": {"password": "hotel123", "name": "Grand Meridian Hotel"},
+    "scandic":       {"password": "hotel456", "name": "Scandic Stockholm"},
+    "demo":          {"password": "demo",      "name": "Demo Hotel"},
+}
+
+# ── LOAD AI ─────────────────────────────────────────────────
 with open("occupado_model.pkl", "rb") as f:
     model = pickle.load(f)
 
@@ -25,16 +36,86 @@ features = [
     "total_of_special_requests"
 ]
 
-@app.route("/landing")
-def landing():
-    return send_file("landing.html")
+# ── LOGIN REQUIRED DECORATOR ─────────────────────────────────
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if "hotel" not in session:
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return decorated
+
+# ── ROUTES ───────────────────────────────────────────────────
 
 @app.route("/")
 def home():
     return send_file("landing.html")
 
+@app.route("/landing")
+def landing():
+    return send_file("landing.html")
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = ""
+    if request.method == "POST":
+        username = request.form.get("username", "").lower().strip()
+        password = request.form.get("password", "").strip()
+        if username in HOTELS and HOTELS[username]["password"] == password:
+            session["hotel"] = username
+            session["hotel_name"] = HOTELS[username]["name"]
+            return redirect(url_for("dashboard"))
+        else:
+            error = "Invalid username or password. Please try again."
+
+    return f"""
+<!DOCTYPE html>
+<html>
+<head>
+<title>Occupado — Login</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+body {{ background:#f5faf5; color:#0a1a0a; font-family:'DM Sans',sans-serif; min-height:100vh; display:flex; align-items:center; justify-content:center; }}
+.login-box {{ background:#ffffff; border:1px solid rgba(0,128,0,0.15); border-radius:20px; padding:48px; width:100%; max-width:400px; box-shadow:0 4px 24px rgba(0,128,0,0.08); }}
+.logo {{ font-family:'Syne',sans-serif; font-size:28px; font-weight:800; color:#008000; margin-bottom:8px; }}
+.tagline {{ font-family:'DM Mono',monospace; font-size:12px; color:#4a6648; margin-bottom:40px; }}
+label {{ font-size:13px; font-weight:500; color:#4a6648; display:block; margin-bottom:6px; font-family:'DM Mono',monospace; text-transform:uppercase; letter-spacing:0.5px; }}
+input {{ width:100%; padding:12px 16px; background:#f5faf5; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; font-family:'DM Sans',sans-serif; color:#0a1a0a; outline:none; margin-bottom:20px; transition:border-color 0.2s; }}
+input:focus {{ border-color:#008000; background:#ffffff; }}
+.btn {{ width:100%; padding:14px; background:#008000; color:#ffffff; border:none; border-radius:10px; font-size:15px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.2s; margin-top:4px; }}
+.btn:hover {{ background:#006600; transform:translateY(-1px); box-shadow:0 8px 20px rgba(0,128,0,0.25); }}
+.error {{ background:rgba(255,69,96,0.08); border:1px solid rgba(255,69,96,0.2); border-radius:8px; padding:12px 16px; font-size:13px; color:#cc0000; margin-bottom:20px; }}
+.demo-hint {{ margin-top:24px; padding:14px; background:#f5faf5; border-radius:10px; font-size:12px; color:#4a6648; font-family:'DM Mono',monospace; text-align:center; border:1px solid rgba(0,128,0,0.1); }}
+</style>
+</head>
+<body>
+<div class="login-box">
+    <div class="logo">Occupado</div>
+    <div class="tagline">AI Booking Intelligence · Secure Access</div>
+    {"<div class='error'>" + error + "</div>" if error else ""}
+    <form method="POST">
+        <label>Hotel Username</label>
+        <input type="text" name="username" placeholder="your hotel username" required>
+        <label>Password</label>
+        <input type="password" name="password" placeholder="••••••••" required>
+        <button type="submit" class="btn">Sign In →</button>
+    </form>
+    <div class="demo-hint">Demo access: username <strong>demo</strong> · password <strong>demo</strong></div>
+</div>
+</body>
+</html>"""
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
 @app.route("/dashboard")
+@login_required
 def dashboard():
+    hotel_name = session.get("hotel_name", "Your Hotel")
+
     sample = df[features].head(20).fillna(0)
     scores = model.predict_proba(sample)[:, 1] * 100
 
@@ -78,12 +159,17 @@ def dashboard():
 <!DOCTYPE html>
 <html>
 <head>
-<title>Occupado</title>
+<title>Occupado — {hotel_name}</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
-body {{ background:#ffffff; color:#0a1a0a; font-family:'DM Sans',sans-serif; padding:40px; }}
-h1 {{ font-family:'Syne',sans-serif; font-size:42px; font-weight:800; color:#008000; margin-bottom:4px; }}
+body {{ background:#ffffff; color:#0a1a0a; font-family:'DM Sans',sans-serif; padding:0; }}
+.topbar {{ background:#008000; padding:16px 40px; display:flex; align-items:center; justify-content:space-between; }}
+.topbar-logo {{ font-family:'Syne',sans-serif; font-size:22px; font-weight:800; color:#ffffff; }}
+.topbar-hotel {{ font-family:'DM Mono',monospace; font-size:12px; color:rgba(255,255,255,0.8); }}
+.logout {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; text-decoration:none; transition:all 0.2s; }}
+.logout:hover {{ background:rgba(255,255,255,0.25); }}
+.content {{ padding:40px; }}
 .sub {{ color:#4a6648; font-family:'DM Mono',monospace; font-size:13px; margin-bottom:32px; }}
 .section-title {{ font-family:'Syne',sans-serif; font-size:20px; font-weight:700; margin-bottom:16px; margin-top:40px; color:#0a1a0a; }}
 .stats {{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:32px; }}
@@ -121,8 +207,16 @@ tr:hover td {{ background:rgba(0,128,0,0.03); }}
 </style>
 </head>
 <body>
-<h1>Occupado</h1>
-<div class="sub">AI Booking Intelligence &nbsp;·&nbsp; Grand Meridian Hotel &nbsp;·&nbsp; Live</div>
+<div class="topbar">
+    <div>
+        <div class="topbar-logo">Occupado</div>
+        <div class="topbar-hotel">{hotel_name} · AI Booking Intelligence</div>
+    </div>
+    <a href="/logout" class="logout">Sign Out</a>
+</div>
+
+<div class="content">
+<div class="sub">Live Dashboard · Updated just now · 20 bookings analysed</div>
 
 <div class="stats">
     <div class="stat">
@@ -171,7 +265,7 @@ tr:hover td {{ background:rgba(0,128,0,0.03); }}
     </div>
 </div>
 
-<div class="section-title">Tonight's Arrivals - Risk Scored</div>
+<div class="section-title">Tonight's Arrivals — Risk Scored</div>
 <table>
 <thead>
     <tr>
@@ -188,6 +282,7 @@ tr:hover td {{ background:rgba(0,128,0,0.03); }}
 {rows}
 </tbody>
 </table>
+</div>
 
 <div class="toast" id="toast"></div>
 <script>
