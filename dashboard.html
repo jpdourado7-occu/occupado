@@ -1,0 +1,249 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<title>Occupado Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#070d0b; color:#e2ede8; font-family:'DM Sans',sans-serif; padding:40px; }
+h1 { font-family:'Syne',sans-serif; font-size:36px; font-weight:800; color:#00e5a0; margin-bottom:6px; }
+.sub { color:#4a6658; font-family:'DM Mono',monospace; font-size:13px; margin-bottom:32px; }
+table { width:100%; border-collapse:collapse; background:#0c1510; border-radius:16px; overflow:hidden; }
+th { background:#0f1f18; color:#4a6658; font-family:'DM Mono',monospace; font-size:11px; text-transform:uppercase; letter-spacing:1px; padding:14px 16px; text-align:left; border-bottom:1px solid rgba(255,255,255,0.05); }
+td { padding:14px 16px; font-size:13px; border-bottom:1px solid rgba(255,255,255,0.03); }
+tr:hover td { background:rgba(255,255,255,0.02); }
+.badge { padding:4px 12px; border-radius:20px; font-family:'DM Mono',monospace; font-size:12px; font-weight:500; }
+.high { background:rgba(255,69,96,0.15); color:#ff4560; border:1px solid rgba(255,69,96,0.3); }
+.med { background:rgba(255,179,64,0.15); color:#ffb340; border:1px solid rgba(255,179,64,0.3); }
+.low { background:rgba(0,229,160,0.15); color:#00e5a0; border:1px solid rgba(0,229,160,0.3); }
+.btn { padding:6px 14px; border-radius:8px; font-size:12px; font-weight:500; cursor:pointer; border:1px solid; background:transparent; font-family:'DM Sans',sans-serif; transition:all 0.2s; }
+.dep { color:#ff4560; border-color:rgba(255,69,96,0.3); }
+.dep:hover { background:rgba(255,69,96,0.1); }
+.rem { color:#ffb340; border-color:rgba(255,179,64,0.3); }
+.rem:hover { background:rgba(255,179,64,0.1); }
+.mon { color:#00e5a0; border-color:rgba(0,229,160,0.3); }
+.mon:hover { background:rgba(0,229,160,0.1); }
+.stats { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:32px; }
+.stat { background:#0c1510; border:1px solid rgba(0,229,160,0.12); border-radius:12px; padding:20px; }
+.stat-value { font-family:'Syne',sans-serif; font-size:36px; font-weight:800; line-height:1; }
+.stat-label { font-family:'DM Mono',monospace; font-size:11px; color:#4a6658; margin-top:6px; text-transform:uppercase; }
+</style>
+</head>
+<body>
+<h1>Occupado</h1>
+<div class="sub">AI Booking Intelligence · 20 bookings analysed · Model accuracy 80.7%</div>
+
+<div class="stats">
+    <div class="stat">
+        <div class="stat-value" style="color:#ff4560">0</div>
+        <div class="stat-label">High Risk Bookings</div>
+    </div>
+    <div class="stat">
+        <div class="stat-value" style="color:#ffb340">4</div>
+        <div class="stat-label">Medium Risk Bookings</div>
+    </div>
+    <div class="stat">
+        <div class="stat-value" style="color:#00e5a0">16</div>
+        <div class="stat-label">Low Risk Bookings</div>
+    </div>
+</div>
+
+<table>
+<thead>
+    <tr>
+        <th>Booking</th>
+        <th>Lead Time</th>
+        <th>Room Rate</th>
+        <th>Returning</th>
+        <th>Past Cancels</th>
+        <th>Risk Score</th>
+        <th>Action</th>
+    </tr>
+</thead>
+<tbody>
+
+    <tr>
+        <td>Booking 1</td>
+        <td>342 days</td>
+        <td>€0</td>
+        <td>No</td>
+        <td>0</td>
+        <td><span class="badge low">🟢 2.2%</span></td>
+        <td><button class="btn mon">👁 Monitor</button></td>
+    </tr>
+    <tr>
+        <td>Booking 2</td>
+        <td>737 days</td>
+        <td>€0</td>
+        <td>No</td>
+        <td>0</td>
+        <td><span class="badge low">🟢 24.0%</span></td>
+        <td><button class="btn mon">👁 Monitor</button></td>
+    </tr>
+    <tr>
+        <td>Booking 3</td>
+        <td>7 days</td>
+        <td>€75</td>
+        <td>No</td>
+        <td>0</td>
+        <td><span class="badge low">🟢 11.6%</span></td>
+        <td><button class="btn mon">👁 Monitor</button></td>
+    </tr>
+    <tr>
+        <td>Booking 4</td>
+        <td>13 days</td>
+        <td>€75</td>
+        <td>No</td>
+        <td>0</td>
+        <td><span class="badge low">🟢 14.4%</span></td>
+        <td><button class="btn mon">👁 Monitor</button></td>
+    </tr>
+    <tr>
+        <td>Booking 5</td>
+        <td>14 days</td>
+        <td>€98</td>
+        <td>No</td>
+        <td>0</td>
+        <td><span class="badge low">🟢 13.9%</span></td>
+        <td><button class="btn mon">👁 Monitor</button></td>
+    </tr>
+    <tr>
+        <td>Booking 6</td>
+        <td>14 days</td>
+        <td>€98</td>
+        <td>No</td>
+        <td>0</td>
+        <td><span class="badge low">🟢 13.9%</span></td>
+        <td><button class="btn mon">👁 Monitor</button></td>
+    </tr>
+    <tr>
+        <td>Booking 7</td>
+        <td>0 days</td>
+        <td>€107</td>
+        <td>No</td>
+        <td>0</td>
+        <td><span class="badge low">🟢 7.2%</span></td>
+        <td><button class="btn mon">👁 Monitor</button></td>
+    </tr>
+    <tr>
+        <td>Booking 8</td>
+        <td>9 days</td>
+        <td>€103</td>
+        <td>No</td>
+        <td>0</td>
+        <td><span class="badge low">🟢 15.0%</span></td>
+        <td><button class="btn mon">👁 Monitor</button></td>
+    </tr>
+    <tr>
+        <td>Booking 9</td>
+        <td>85 days</td>
+        <td>€82</td>
+        <td>No</td>
+        <td>0</td>
+        <td><span class="badge low">🟢 13.8%</span></td>
+        <td><button class="btn mon">👁 Monitor</button></td>
+    </tr>
+    <tr>
+        <td>Booking 10</td>
+        <td>75 days</td>
+        <td>€105</td>
+        <td>No</td>
+        <td>0</td>
+        <td><span class="badge med">🟠 49.4%</span></td>
+        <td><button class="btn rem">📧 Send Reminder</button></td>
+    </tr>
+    <tr>
+        <td>Booking 11</td>
+        <td>23 days</td>
+        <td>€123</td>
+        <td>No</td>
+        <td>0</td>
+        <td><span class="badge med">🟠 44.1%</span></td>
+        <td><button class="btn rem">📧 Send Reminder</button></td>
+    </tr>
+    <tr>
+        <td>Booking 12</td>
+        <td>35 days</td>
+        <td>€145</td>
+        <td>No</td>
+        <td>0</td>
+        <td><span class="badge med">🟠 52.8%</span></td>
+        <td><button class="btn rem">📧 Send Reminder</button></td>
+    </tr>
+    <tr>
+        <td>Booking 13</td>
+        <td>68 days</td>
+        <td>€97</td>
+        <td>No</td>
+        <td>0</td>
+        <td><span class="badge low">🟢 11.5%</span></td>
+        <td><button class="btn mon">👁 Monitor</button></td>
+    </tr>
+    <tr>
+        <td>Booking 14</td>
+        <td>18 days</td>
+        <td>€154</td>
+        <td>No</td>
+        <td>0</td>
+        <td><span class="badge low">🟢 16.1%</span></td>
+        <td><button class="btn mon">👁 Monitor</button></td>
+    </tr>
+    <tr>
+        <td>Booking 15</td>
+        <td>37 days</td>
+        <td>€94</td>
+        <td>No</td>
+        <td>0</td>
+        <td><span class="badge med">🟠 41.0%</span></td>
+        <td><button class="btn rem">📧 Send Reminder</button></td>
+    </tr>
+    <tr>
+        <td>Booking 16</td>
+        <td>68 days</td>
+        <td>€97</td>
+        <td>No</td>
+        <td>0</td>
+        <td><span class="badge low">🟢 11.5%</span></td>
+        <td><button class="btn mon">👁 Monitor</button></td>
+    </tr>
+    <tr>
+        <td>Booking 17</td>
+        <td>37 days</td>
+        <td>€97</td>
+        <td>No</td>
+        <td>0</td>
+        <td><span class="badge low">🟢 36.2%</span></td>
+        <td><button class="btn mon">👁 Monitor</button></td>
+    </tr>
+    <tr>
+        <td>Booking 18</td>
+        <td>12 days</td>
+        <td>€88</td>
+        <td>No</td>
+        <td>0</td>
+        <td><span class="badge low">🟢 23.2%</span></td>
+        <td><button class="btn mon">👁 Monitor</button></td>
+    </tr>
+    <tr>
+        <td>Booking 19</td>
+        <td>0 days</td>
+        <td>€107</td>
+        <td>No</td>
+        <td>0</td>
+        <td><span class="badge low">🟢 8.2%</span></td>
+        <td><button class="btn mon">👁 Monitor</button></td>
+    </tr>
+    <tr>
+        <td>Booking 20</td>
+        <td>7 days</td>
+        <td>€153</td>
+        <td>No</td>
+        <td>0</td>
+        <td><span class="badge low">🟢 17.3%</span></td>
+        <td><button class="btn mon">👁 Monitor</button></td>
+    </tr>
+</tbody>
+</table>
+</body>
+</html>
