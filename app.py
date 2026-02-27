@@ -1,5 +1,5 @@
 # OCCUPADO AI - Web Server
-from flask import Flask
+from flask import Flask, send_file
 import pandas as pd
 import pickle
 
@@ -28,7 +28,11 @@ features = [
     "total_of_special_requests"
 ]
 
-@app.route("/")
+@app.route("/landing")
+def landing():
+    return send_file("landing.html")
+
+@app.route("/dashboard")
 def dashboard():
     # Take 20 bookings for the table
     sample = df[features].head(20).fillna(0)
