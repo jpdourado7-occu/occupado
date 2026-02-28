@@ -1,8 +1,9 @@
 # OCCUPADO AI - Web Server with Login + CSV Upload + Booking Detail
-from flask import Flask, send_file, request, redirect, url_for, session, jsonify
+from flask import Flask, send_file, request, redirect, url_for, session
 import pandas as pd
 import pickle
 import io
+import json
 from functools import wraps
 
 app = Flask(__name__)
@@ -42,39 +43,6 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated
 
-def explain_booking(booking, score):
-    reasons = []
-    if booking.get("lead_time", 0) > 60:
-        reasons.append({"signal": "Long lead time", "detail": f"{int(booking['lead_time'])} days between booking and arrival — guests who book far in advance cancel more often.", "impact": "high"})
-    elif booking.get("lead_time", 0) < 7:
-        reasons.append({"signal": "Short lead time", "detail": f"Only {int(booking['lead_time'])} days until arrival — last-minute bookings almost always show up.", "impact": "low"})
-    else:
-        reasons.append({"signal": "Moderate lead time", "detail": f"{int(booking['lead_time'])} days until arrival — moderate cancellation risk.", "impact": "med"})
-
-    if booking.get("previous_cancellations", 0) > 0:
-        reasons.append({"signal": "Previous cancellations", "detail": f"This guest has cancelled {int(booking['previous_cancellations'])} booking(s) before — the strongest predictor of future cancellations.", "impact": "high"})
-
-    if booking.get("is_repeated_guest", 0) == 1:
-        reasons.append({"signal": "Returning guest", "detail": f"This guest has stayed before — loyal guests cancel far less than first-time visitors.", "impact": "low"})
-    else:
-        reasons.append({"signal": "First-time guest", "detail": "No previous stay history — first-time guests have higher uncertainty.", "impact": "med"})
-
-    if booking.get("previous_bookings_not_canceled", 0) > 3:
-        reasons.append({"signal": "Strong booking history", "detail": f"{int(booking['previous_bookings_not_canceled'])} previous stays completed — highly reliable guest.", "impact": "low"})
-
-    if booking.get("total_of_special_requests", 0) >= 2:
-        reasons.append({"signal": "Special requests made", "detail": f"{int(booking['total_of_special_requests'])} special requests — guests who make requests are more invested in their stay.", "impact": "low"})
-    elif booking.get("total_of_special_requests", 0) == 0:
-        reasons.append({"signal": "No special requests", "detail": "Zero special requests — guest may not be fully committed to the booking.", "impact": "med"})
-
-    if booking.get("adr", 0) > 300:
-        reasons.append({"signal": "High room rate", "detail": f"EUR {int(booking['adr'])} per night — expensive bookings are sometimes cancelled when guests find alternatives.", "impact": "med"})
-
-    if booking.get("days_in_waiting_list", 0) > 0:
-        reasons.append({"signal": "Was on waiting list", "detail": f"Spent {int(booking['days_in_waiting_list'])} days on the waiting list — these bookings have higher uncertainty.", "impact": "med"})
-
-    return reasons
-
 def build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=False):
     high = sum(1 for s in scores if s >= 70)
     med  = sum(1 for s in scores if 40 <= s < 70)
@@ -85,28 +53,31 @@ def build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=False):
     safe_overbook = int(predicted_noshows * 0.80)
     revenue = safe_overbook * avg_rate
 
+    # Build bookings data as a JS array — fixes the HTML attribute bug
+    bookings_data = []
+    for _, booking in sample.iterrows():
+        bookings_data.append({k: float(booking.get(k, 0)) for k in features})
+    bookings_js = json.dumps(bookings_data)
+
     rows = ""
     for i, (_, booking) in enumerate(sample.iterrows()):
         score = scores[i]
         if score >= 70:
             badge  = f'<span class="badge high">HIGH {score:.1f}%</span>'
-            action = '<button class="btn dep">Request Deposit</button>'
+            action = '<button class="btn dep" onclick="event.stopPropagation()">Request Deposit</button>'
         elif score >= 40:
             badge  = f'<span class="badge med">MEDIUM {score:.1f}%</span>'
-            action = '<button class="btn rem">Send Reminder</button>'
+            action = '<button class="btn rem" onclick="event.stopPropagation()">Send Reminder</button>'
         else:
             badge  = f'<span class="badge low">LOW {score:.1f}%</span>'
-            action = '<button class="btn mon">Monitor</button>'
+            action = '<button class="btn mon" onclick="event.stopPropagation()">Monitor</button>'
 
-        lead  = int(booking.get("lead_time", 0))
-        adr   = int(booking.get("adr", 0))
-        rep   = "Yes" if booking.get("is_repeated_guest", 0) else "No"
-        canc  = int(booking.get("previous_cancellations", 0))
+        lead = int(booking.get("lead_time", 0))
+        adr  = int(booking.get("adr", 0))
+        rep  = "Yes" if booking.get("is_repeated_guest", 0) else "No"
+        canc = int(booking.get("previous_cancellations", 0))
 
-        booking_json = str({k: float(booking.get(k, 0)) for k in features}).replace("'", '"')
-
-        rows += f"""
-        <tr class="clickable-row" onclick="showDetail({i}, {score:.1f}, {booking_json})">
+        rows += f"""<tr class="clickable-row" onclick="showDetail({i}, {score:.1f})">
             <td><span style="color:#008000;font-weight:600">Booking {i+1}</span> <span style="font-size:11px;color:#4a6648;font-family:'DM Mono',monospace">· click for details</span></td>
             <td>{lead} days</td>
             <td>EUR {adr}</td>
@@ -118,10 +89,9 @@ def build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=False):
 
     upload_banner = ""
     if uploaded:
-        upload_banner = '<div class="upload-banner">Your data loaded successfully — showing AI predictions on your real bookings</div>'
+        upload_banner = '<div class="upload-banner">Your data loaded — showing AI predictions on your real bookings</div>'
 
-    return f"""
-<!DOCTYPE html>
+    return f"""<!DOCTYPE html>
 <html>
 <head>
 <title>Occupado — {hotel_name}</title>
@@ -132,8 +102,7 @@ body {{ background:#ffffff; color:#0a1a0a; font-family:'DM Sans',sans-serif; }}
 .topbar {{ background:#008000; padding:16px 40px; display:flex; align-items:center; justify-content:space-between; }}
 .topbar-logo {{ font-family:'Syne',sans-serif; font-size:22px; font-weight:800; color:#ffffff; }}
 .topbar-hotel {{ font-family:'DM Mono',monospace; font-size:12px; color:rgba(255,255,255,0.8); }}
-.topbar-right {{ display:flex; align-items:center; gap:12px; }}
-.logout {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; text-decoration:none; transition:all 0.2s; }}
+.logout {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; transition:all 0.2s; }}
 .logout:hover {{ background:rgba(255,255,255,0.25); }}
 .content {{ padding:40px; }}
 .sub {{ color:#4a6648; font-family:'DM Mono',monospace; font-size:13px; margin-bottom:32px; }}
@@ -149,15 +118,15 @@ body {{ background:#ffffff; color:#0a1a0a; font-family:'DM Sans',sans-serif; }}
 .opt-btn {{ margin-top:20px; width:100%; padding:12px; background:#008000; border:none; border-radius:8px; color:#ffffff; font-size:14px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.2s; }}
 .opt-btn:hover {{ background:#006600; }}
 .opt-stats {{ background:#f5faf5; border:1px solid rgba(0,128,0,0.15); border-radius:12px; padding:24px; }}
-.opt-row {{ display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid rgba(0,128,0,0.08); font-size:13px; }}
+.opt-row {{ display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid rgba(0,128,0,0.08); font-size:13px; }}
 .opt-row:last-child {{ border-bottom:none; }}
 .opt-row-label {{ color:#4a6648; }}
-.opt-row-value {{ font-family:'DM Mono',monospace; font-weight:500; color:#0a1a0a; }}
+.opt-row-value {{ font-family:'DM Mono',monospace; font-weight:500; }}
 table {{ width:100%; border-collapse:collapse; background:#f5faf5; border-radius:16px; overflow:hidden; border:1px solid rgba(0,128,0,0.15); }}
 th {{ background:#008000; color:#ffffff; font-family:'DM Mono',monospace; font-size:11px; text-transform:uppercase; letter-spacing:1px; padding:14px 16px; text-align:left; }}
 td {{ padding:14px 16px; font-size:13px; border-bottom:1px solid rgba(0,128,0,0.06); color:#0a1a0a; }}
-.clickable-row {{ cursor:pointer; transition:background 0.15s; }}
-.clickable-row:hover td {{ background:rgba(0,128,0,0.05); }}
+.clickable-row {{ cursor:pointer; }}
+.clickable-row:hover td {{ background:rgba(0,128,0,0.04); }}
 .badge {{ padding:4px 12px; border-radius:20px; font-family:'DM Mono',monospace; font-size:11px; font-weight:500; }}
 .high {{ background:rgba(255,69,96,0.1); color:#cc0000; border:1px solid rgba(255,69,96,0.3); }}
 .med {{ background:rgba(255,179,64,0.1); color:#cc6600; border:1px solid rgba(255,179,64,0.3); }}
@@ -173,52 +142,39 @@ td {{ padding:14px 16px; font-size:13px; border-bottom:1px solid rgba(0,128,0,0.
 .upload-zone:hover {{ border-color:#008000; background:rgba(0,128,0,0.04); }}
 .upload-zone-title {{ font-family:'Syne',sans-serif; font-size:18px; font-weight:700; color:#008000; margin-bottom:8px; }}
 .upload-zone-sub {{ font-size:13px; color:#4a6648; margin-bottom:20px; }}
-.upload-btn {{ padding:12px 28px; background:#008000; color:#ffffff; border:none; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.2s; }}
-.upload-btn:hover {{ background:#006600; }}
+.upload-btn {{ padding:12px 28px; background:#008000; color:#ffffff; border:none; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; }}
 .upload-banner {{ background:rgba(0,128,0,0.08); border:1px solid rgba(0,128,0,0.2); border-radius:10px; padding:14px 20px; font-size:13px; color:#008000; margin-bottom:24px; font-weight:500; }}
-
-/* MODAL */
 .modal-overlay {{ display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center; }}
 .modal-overlay.show {{ display:flex; }}
-.modal {{ background:#ffffff; border-radius:20px; padding:40px; width:100%; max-width:580px; max-height:85vh; overflow-y:auto; position:relative; box-shadow:0 20px 60px rgba(0,0,0,0.2); }}
-.modal-close {{ position:absolute; top:16px; right:20px; font-size:22px; cursor:pointer; color:#4a6648; background:none; border:none; font-family:'DM Sans',sans-serif; }}
-.modal-close:hover {{ color:#0a1a0a; }}
-.modal-title {{ font-family:'Syne',sans-serif; font-size:22px; font-weight:800; margin-bottom:4px; color:#0a1a0a; }}
+.modal {{ background:#ffffff; border-radius:20px; padding:40px; width:100%; max-width:560px; max-height:85vh; overflow-y:auto; position:relative; box-shadow:0 20px 60px rgba(0,0,0,0.2); }}
+.modal-close {{ position:absolute; top:16px; right:20px; font-size:22px; cursor:pointer; color:#4a6648; background:none; border:none; }}
+.modal-title {{ font-family:'Syne',sans-serif; font-size:22px; font-weight:800; margin-bottom:4px; }}
 .modal-sub {{ font-family:'DM Mono',monospace; font-size:12px; color:#4a6648; margin-bottom:24px; }}
-.score-meter-wrap {{ margin-bottom:28px; }}
 .score-display {{ font-family:'Syne',sans-serif; font-size:64px; font-weight:800; line-height:1; letter-spacing:-2px; margin-bottom:8px; }}
-.score-bar-bg {{ height:10px; background:#f0f0f0; border-radius:5px; overflow:hidden; margin-bottom:8px; }}
-.score-bar-fill {{ height:100%; border-radius:5px; transition:width 0.8s cubic-bezier(0.34,1.26,0.64,1); }}
-.score-verdict {{ font-size:14px; font-weight:600; padding:8px 16px; border-radius:8px; display:inline-block; }}
-.reasons-title {{ font-family:'Syne',sans-serif; font-size:16px; font-weight:700; margin-bottom:12px; margin-top:24px; color:#0a1a0a; }}
-.reason-item {{ display:flex; gap:12px; align-items:flex-start; padding:12px; border-radius:10px; margin-bottom:8px; }}
+.score-bar-bg {{ height:10px; background:#f0f0f0; border-radius:5px; overflow:hidden; margin-bottom:12px; }}
+.score-bar-fill {{ height:100%; border-radius:5px; transition:width 0.8s ease; }}
+.score-verdict {{ font-size:14px; font-weight:600; padding:8px 16px; border-radius:8px; display:inline-block; margin-bottom:8px; }}
+.reasons-title {{ font-family:'Syne',sans-serif; font-size:16px; font-weight:700; margin-bottom:12px; margin-top:24px; }}
+.reason-item {{ display:flex; gap:12px; padding:12px; border-radius:10px; margin-bottom:8px; }}
 .reason-dot {{ width:10px; height:10px; border-radius:50%; flex-shrink:0; margin-top:4px; }}
-.reason-signal {{ font-size:13px; font-weight:600; color:#0a1a0a; margin-bottom:3px; }}
+.reason-signal {{ font-size:13px; font-weight:600; margin-bottom:3px; }}
 .reason-detail {{ font-size:12px; color:#4a6648; line-height:1.5; }}
-.modal-action {{ margin-top:24px; width:100%; padding:14px; border:none; border-radius:10px; font-size:15px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.2s; color:#ffffff; }}
-.modal-action:hover {{ transform:translateY(-1px); }}
-
+.modal-action {{ margin-top:24px; width:100%; padding:14px; border:none; border-radius:10px; font-size:15px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif; color:#ffffff; }}
 .toast {{ position:fixed; bottom:24px; right:24px; background:#008000; color:#ffffff; border-radius:12px; padding:16px 20px; font-size:13px; transform:translateY(80px); opacity:0; transition:all 0.35s; z-index:2000; }}
 .toast.show {{ transform:translateY(0); opacity:1; }}
 </style>
 </head>
 <body>
-
 <div class="topbar">
     <div>
         <div class="topbar-logo">Occupado</div>
         <div class="topbar-hotel">{hotel_name} · AI Booking Intelligence</div>
     </div>
-    <div class="topbar-right">
-        <a href="/logout" class="logout">Sign Out</a>
-    </div>
+    <a href="/logout" class="logout">Sign Out</a>
 </div>
-
 <div class="content">
 <div class="sub">Live Dashboard · Updated just now · {len(sample)} bookings analysed</div>
-
 {upload_banner}
-
 <div class="section-title">Upload Your Booking Data</div>
 <form method="POST" action="/upload" enctype="multipart/form-data">
     <div class="upload-zone" onclick="document.getElementById('csv-input').click()">
@@ -228,22 +184,11 @@ td {{ padding:14px 16px; font-size:13px; border-bottom:1px solid rgba(0,128,0,0.
         <button type="button" class="upload-btn" onclick="event.stopPropagation();document.getElementById('csv-input').click()">Choose CSV File</button>
     </div>
 </form>
-
 <div class="stats">
-    <div class="stat">
-        <div class="stat-value" style="color:#cc0000">{high}</div>
-        <div class="stat-label">High Risk Bookings</div>
-    </div>
-    <div class="stat">
-        <div class="stat-value" style="color:#cc6600">{med}</div>
-        <div class="stat-label">Medium Risk Bookings</div>
-    </div>
-    <div class="stat">
-        <div class="stat-value" style="color:#008000">{low}</div>
-        <div class="stat-label">Low Risk Bookings</div>
-    </div>
+    <div class="stat"><div class="stat-value" style="color:#cc0000">{high}</div><div class="stat-label">High Risk</div></div>
+    <div class="stat"><div class="stat-value" style="color:#cc6600">{med}</div><div class="stat-label">Medium Risk</div></div>
+    <div class="stat"><div class="stat-value" style="color:#008000">{low}</div><div class="stat-label">Low Risk</div></div>
 </div>
-
 <div class="section-title">Overbooking Optimizer</div>
 <div class="optimizer">
     <div class="opt-main">
@@ -253,85 +198,44 @@ td {{ padding:14px 16px; font-size:13px; border-bottom:1px solid rgba(0,128,0,0.
         <button class="opt-btn" onclick="showToast('Recommendation applied! {safe_overbook} rooms released.')">Apply Recommendation</button>
     </div>
     <div class="opt-stats">
-        <div class="opt-row">
-            <span class="opt-row-label">Bookings analysed</span>
-            <span class="opt-row-value">{len(sample)}</span>
-        </div>
-        <div class="opt-row">
-            <span class="opt-row-label">Predicted no-shows</span>
-            <span class="opt-row-value" style="color:#cc0000">{predicted_noshows}</span>
-        </div>
-        <div class="opt-row">
-            <span class="opt-row-label">AI confidence</span>
-            <span class="opt-row-value" style="color:#008000">80.7%</span>
-        </div>
-        <div class="opt-row">
-            <span class="opt-row-label">Walk risk</span>
-            <span class="opt-row-value" style="color:#008000">2.1%</span>
-        </div>
-        <div class="opt-row">
-            <span class="opt-row-label">Avg room rate</span>
-            <span class="opt-row-value">EUR {avg_rate:.0f}</span>
-        </div>
+        <div class="opt-row"><span class="opt-row-label">Bookings analysed</span><span class="opt-row-value">{len(sample)}</span></div>
+        <div class="opt-row"><span class="opt-row-label">Predicted no-shows</span><span class="opt-row-value" style="color:#cc0000">{predicted_noshows}</span></div>
+        <div class="opt-row"><span class="opt-row-label">AI confidence</span><span class="opt-row-value" style="color:#008000">80.7%</span></div>
+        <div class="opt-row"><span class="opt-row-label">Walk risk</span><span class="opt-row-value" style="color:#008000">2.1%</span></div>
+        <div class="opt-row"><span class="opt-row-label">Avg room rate</span><span class="opt-row-value">EUR {avg_rate:.0f}</span></div>
     </div>
 </div>
-
 <div class="section-title">Bookings — Click any row for AI reasoning</div>
 <table>
-<thead>
-    <tr>
-        <th>Booking</th>
-        <th>Lead Time</th>
-        <th>Room Rate</th>
-        <th>Returning Guest</th>
-        <th>Past Cancels</th>
-        <th>Risk Score</th>
-        <th>Action</th>
-    </tr>
-</thead>
-<tbody>
-{rows}
-</tbody>
+<thead><tr><th>Booking</th><th>Lead Time</th><th>Room Rate</th><th>Returning</th><th>Past Cancels</th><th>Risk Score</th><th>Action</th></tr></thead>
+<tbody>{rows}</tbody>
 </table>
 </div>
-
-<!-- BOOKING DETAIL MODAL -->
 <div class="modal-overlay" id="modal">
     <div class="modal">
         <button class="modal-close" onclick="closeModal()">✕</button>
         <div class="modal-title" id="modal-title">Booking Detail</div>
         <div class="modal-sub" id="modal-sub">AI Risk Analysis</div>
-
-        <div class="score-meter-wrap">
-            <div class="score-display" id="modal-score">0%</div>
-            <div class="score-bar-bg">
-                <div class="score-bar-fill" id="modal-bar" style="width:0%"></div>
-            </div>
-            <div class="score-verdict" id="modal-verdict"></div>
-        </div>
-
+        <div class="score-display" id="modal-score">0%</div>
+        <div class="score-bar-bg"><div class="score-bar-fill" id="modal-bar" style="width:0%"></div></div>
+        <div class="score-verdict" id="modal-verdict"></div>
         <div class="reasons-title">Why the AI flagged this booking</div>
         <div id="modal-reasons"></div>
-
         <button class="modal-action" id="modal-action-btn" onclick="closeModal()">Close</button>
     </div>
 </div>
-
 <div class="toast" id="toast"></div>
-
 <script>
-function showDetail(idx, score, booking) {{
-    const modal = document.getElementById('modal');
+const bookings = {bookings_js};
+function showDetail(idx, score) {{
+    const booking = bookings[idx];
     document.getElementById('modal-title').textContent = 'Booking ' + (idx+1) + ' — AI Analysis';
     document.getElementById('modal-sub').textContent = 'Lead time: ' + booking.lead_time + ' days · Room rate: EUR ' + booking.adr;
     document.getElementById('modal-score').textContent = score.toFixed(1) + '%';
-
     const bar = document.getElementById('modal-bar');
     const verdict = document.getElementById('modal-verdict');
     const actionBtn = document.getElementById('modal-action-btn');
-
     bar.style.width = score + '%';
-
     if (score >= 70) {{
         bar.style.background = '#cc0000';
         document.getElementById('modal-score').style.color = '#cc0000';
@@ -357,78 +261,43 @@ function showDetail(idx, score, booking) {{
         actionBtn.style.background = '#008000';
         actionBtn.textContent = 'Mark as Monitored';
     }}
-
-    const reasons = buildReasons(booking, score);
-    const reasonsDiv = document.getElementById('modal-reasons');
-    reasonsDiv.innerHTML = reasons.map(r => {{
-        const colors = {{ high: '#cc0000', med: '#cc6600', low: '#008000' }};
-        const bgs = {{ high: 'rgba(255,69,96,0.06)', med: 'rgba(255,179,64,0.06)', low: 'rgba(0,128,0,0.06)' }};
-        return `<div class="reason-item" style="background:${{bgs[r.impact]}}">
-            <div class="reason-dot" style="background:${{colors[r.impact]}}"></div>
-            <div>
-                <div class="reason-signal">${{r.signal}}</div>
-                <div class="reason-detail">${{r.detail}}</div>
-            </div>
-        </div>`;
-    }}).join('');
-
-    modal.classList.add('show');
-}}
-
-function buildReasons(b, score) {{
     const reasons = [];
-    if (b.lead_time > 60) reasons.push({{signal: 'Long lead time', detail: b.lead_time + ' days between booking and arrival — guests who book far in advance cancel more often.', impact: 'high'}});
-    else if (b.lead_time < 7) reasons.push({{signal: 'Short lead time', detail: 'Only ' + b.lead_time + ' days until arrival — last-minute bookings almost always show up.', impact: 'low'}});
-    else reasons.push({{signal: 'Moderate lead time', detail: b.lead_time + ' days until arrival — moderate cancellation risk.', impact: 'med'}});
-
-    if (b.previous_cancellations > 0) reasons.push({{signal: 'Previous cancellations', detail: 'This guest has cancelled ' + b.previous_cancellations + ' booking(s) before — the strongest predictor of future cancellations.', impact: 'high'}});
-
-    if (b.is_repeated_guest === 1) reasons.push({{signal: 'Returning guest', detail: 'This guest has stayed before — loyal guests cancel far less than first-time visitors.', impact: 'low'}});
+    if (booking.lead_time > 60) reasons.push({{signal: 'Long lead time', detail: booking.lead_time + ' days between booking and arrival — guests who book far in advance cancel more often.', impact: 'high'}});
+    else if (booking.lead_time < 7) reasons.push({{signal: 'Short lead time', detail: 'Only ' + booking.lead_time + ' days until arrival — last-minute bookings almost always show up.', impact: 'low'}});
+    else reasons.push({{signal: 'Moderate lead time', detail: booking.lead_time + ' days until arrival — moderate cancellation risk.', impact: 'med'}});
+    if (booking.previous_cancellations > 0) reasons.push({{signal: 'Previous cancellations', detail: 'This guest cancelled ' + booking.previous_cancellations + ' time(s) before — strongest predictor of future cancellations.', impact: 'high'}});
+    if (booking.is_repeated_guest === 1) reasons.push({{signal: 'Returning guest', detail: 'Loyal guest — returning guests cancel far less than first-time visitors.', impact: 'low'}});
     else reasons.push({{signal: 'First-time guest', detail: 'No previous stay history — first-time guests have higher uncertainty.', impact: 'med'}});
-
-    if (b.previous_bookings_not_canceled > 3) reasons.push({{signal: 'Strong booking history', detail: b.previous_bookings_not_canceled + ' previous stays completed — highly reliable guest.', impact: 'low'}});
-
-    if (b.total_of_special_requests >= 2) reasons.push({{signal: 'Special requests made', detail: b.total_of_special_requests + ' special requests — guests who make requests are more invested in their stay.', impact: 'low'}});
-    else if (b.total_of_special_requests === 0) reasons.push({{signal: 'No special requests', detail: 'Zero special requests — guest may not be fully committed to the booking.', impact: 'med'}});
-
-    if (b.adr > 300) reasons.push({{signal: 'High room rate', detail: 'EUR ' + b.adr + ' per night — expensive bookings are sometimes cancelled when guests find alternatives.', impact: 'med'}});
-
-    return reasons;
+    if (booking.previous_bookings_not_canceled > 3) reasons.push({{signal: 'Strong booking history', detail: booking.previous_bookings_not_canceled + ' previous stays completed — highly reliable guest.', impact: 'low'}});
+    if (booking.total_of_special_requests >= 2) reasons.push({{signal: 'Special requests made', detail: booking.total_of_special_requests + ' special requests — invested in the stay.', impact: 'low'}});
+    else if (booking.total_of_special_requests === 0) reasons.push({{signal: 'No special requests', detail: 'Zero special requests — may not be fully committed to this booking.', impact: 'med'}});
+    if (booking.adr > 300) reasons.push({{signal: 'High room rate', detail: 'EUR ' + booking.adr + ' per night — expensive bookings sometimes cancelled when alternatives found.', impact: 'med'}});
+    const colors = {{ high: '#cc0000', med: '#cc6600', low: '#008000' }};
+    const bgs = {{ high: 'rgba(255,69,96,0.06)', med: 'rgba(255,179,64,0.06)', low: 'rgba(0,128,0,0.06)' }};
+    document.getElementById('modal-reasons').innerHTML = reasons.map(r =>
+        `<div class="reason-item" style="background:${{bgs[r.impact]}}">
+            <div class="reason-dot" style="background:${{colors[r.impact]}}"></div>
+            <div><div class="reason-signal">${{r.signal}}</div><div class="reason-detail">${{r.detail}}</div></div>
+        </div>`
+    ).join('');
+    document.getElementById('modal').classList.add('show');
 }}
-
 function closeModal() {{
     document.getElementById('modal').classList.remove('show');
-    showToast('Action recorded successfully!');
+    showToast('Action recorded!');
 }}
-
 function showToast(msg) {{
     const t = document.getElementById('toast');
     t.textContent = msg;
     t.classList.add('show');
     setTimeout(() => t.classList.remove('show'), 3000);
 }}
-
 document.getElementById('modal').addEventListener('click', function(e) {{
     if (e.target === this) closeModal();
-}});
-
-document.querySelectorAll('.btn').forEach(btn => {{
-    btn.addEventListener('click', function(e) {{
-        e.stopPropagation();
-        showToast('Action sent for this booking!');
-    }});
 }});
 </script>
 </body>
 </html>"""
-
-def login_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if "hotel" not in session:
-            return redirect(url_for("login"))
-        return f(*args, **kwargs)
-    return decorated
 
 @app.route("/")
 def home():
@@ -450,9 +319,7 @@ def login():
             return redirect(url_for("dashboard"))
         else:
             error = "Invalid username or password. Please try again."
-
-    return f"""
-<!DOCTYPE html>
+    return f"""<!DOCTYPE html>
 <html>
 <head>
 <title>Occupado — Login</title>
@@ -515,9 +382,9 @@ def upload():
     try:
         content = file.read().decode("utf-8")
         uploaded_df = pd.read_csv(io.StringIO(content))
-        for f in features:
-            if f not in uploaded_df.columns:
-                uploaded_df[f] = 0
+        for feat in features:
+            if feat not in uploaded_df.columns:
+                uploaded_df[feat] = 0
         sample = uploaded_df[features].head(20).fillna(0)
         scores = model.predict_proba(sample)[:, 1] * 100
         tonight_scores = model.predict_proba(uploaded_df[features].head(500).fillna(0))[:, 1] * 100
@@ -527,5 +394,5 @@ def upload():
 
 if __name__ == "__main__":
     print("Occupado is running!")
-    print("Open your browser and go to: http://localhost:5000")
+    print("Open your browser and go to: http://localhost:8080")
     app.run(host="0.0.0.0", port=8080, debug=False)
