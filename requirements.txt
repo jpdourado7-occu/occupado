@@ -4,3 +4,5 @@ pandas
 xgboost
 scikit-learn
 reportlab
+sendgrid
+python-dotenv

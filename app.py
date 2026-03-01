@@ -11,17 +11,53 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from datetime import datetime
+import os
+from dotenv import load_dotenv
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
+
+load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = "occupado-secret-2024"
+
+def send_high_risk_alert(hotel_name, alert_email, booking_id, risk_score):
+    if not alert_email:
+        return
+    message = Mail(
+        from_email=os.environ.get('ALERT_FROM_EMAIL', 'team@occupado.co'),
+        to_emails=alert_email,
+        subject=f"⚠️ High Cancellation Risk — {hotel_name}",
+        html_content=f"""
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+            <div style="background:#008000;color:white;padding:20px;border-radius:8px 8px 0 0;">
+                <h2 style="margin:0">⚠️ High Cancellation Risk Detected</h2>
+                <p style="margin:5px 0 0">{hotel_name}</p>
+            </div>
+            <div style="background:#f9f9f9;padding:20px;border-radius:0 0 8px 8px;border:1px solid #ddd;">
+                <p><strong>Booking:</strong> {booking_id}</p>
+                <p><strong>Risk Score:</strong> <span style="color:#cc0000;font-size:1.4em;font-weight:bold">{risk_score:.1f}%</span></p>
+                <hr/>
+                <p style="color:#666;font-size:0.9em;">Log in to your Occupado dashboard to view full AI reasoning and take action.</p>
+                <a href="https://occupado.co/login" style="background:#008000;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;display:inline-block;margin-top:10px;">View Dashboard →</a>
+            </div>
+        </div>
+        """
+    )
+    try:
+        sg = SendGridAPIClient(os.environ.get('SENDGRID_API_KEY'))
+        sg.send(message)
+        print(f"Alert sent to {alert_email} for {hotel_name}")
+    except Exception as e:
+        print(f"SendGrid error: {e}")
 
 ADMIN_USER = "admin"
 ADMIN_PASS = "joaoeliv7"
 
 HOTELS = {
-    "grandmeridian": {"password": "hotel123", "name": "Grand Meridian Hotel", "rooms": 200, "city": "Lisbon"},
-    "scandic":       {"password": "hotel456", "name": "Scandic Stockholm",    "rooms": 350, "city": "Stockholm"},
-    "demo":          {"password": "demo",      "name": "Demo Hotel",           "rooms": 100, "city": "Porto"},
+    "grandmeridian": {"password": "hotel123", "name": "Grand Meridian Hotel", "rooms": 200, "city": "Lisbon", "alert_email": ""},
+    "scandic":       {"password": "hotel456", "name": "Scandic Stockholm",    "rooms": 350, "city": "Stockholm", "alert_email": ""},
+    "demo":          {"password": "demo",      "name": "Demo Hotel",           "rooms": 100, "city": "Porto", "alert_email": ""},
 }
 
 with open("occupado_model.pkl", "rb") as f:
@@ -93,7 +129,7 @@ def build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=False):
 
     upload_banner = ""
     if uploaded:
-        upload_banner = '<div class="upload-banner">Your data loaded — showing AI predictions on your real bookings</div>'
+        upload_banner = '<div class="upload-banner">📂 Your uploaded data is being analysed — navigate freely, your file stays loaded</div>'
 
     return f"""<!DOCTYPE html>
 <html>
@@ -111,6 +147,10 @@ body {{ background:#ffffff; color:#0a1a0a; font-family:'DM Sans',sans-serif; }}
 .logout:hover {{ background:rgba(255,255,255,0.25); }}
 .report-btn {{ padding:8px 18px; background:rgba(255,255,255,0.25); border:1px solid rgba(255,255,255,0.5); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; transition:all 0.2s; }}
 .report-btn:hover {{ background:rgba(255,255,255,0.35); }}
+.settings-btn {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; transition:all 0.2s; }}
+.settings-btn:hover {{ background:rgba(255,255,255,0.25); }}
+.clear-btn {{ padding:8px 18px; background:rgba(255,69,96,0.3); border:1px solid rgba(255,69,96,0.5); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; transition:all 0.2s; }}
+.clear-btn:hover {{ background:rgba(255,69,96,0.5); }}
 .content {{ padding:40px; }}
 .sub {{ color:#4a6648; font-family:'DM Mono',monospace; font-size:13px; margin-bottom:32px; }}
 .section-title {{ font-family:'Syne',sans-serif; font-size:20px; font-weight:700; margin-bottom:16px; margin-top:40px; color:#0a1a0a; }}
@@ -174,6 +214,8 @@ td {{ padding:14px 16px; font-size:13px; border-bottom:1px solid rgba(0,128,0,0.
         <div class="topbar-hotel">{hotel_name} · AI Booking Intelligence</div>
     </div>
     <div class="topbar-right">
+        {'<a href="/clear" class="clear-btn">🗑 Clear File</a>' if uploaded else ''}
+        <a href="/settings" class="settings-btn">⚙️ Settings</a>
         <a href="/report" class="report-btn">📄 Download Report</a>
         <a href="/logout" class="logout">Sign Out</a>
     </div>
@@ -363,10 +405,111 @@ def logout():
 @login_required
 def dashboard():
     hotel_name = session.get("hotel_name", "Your Hotel")
-    sample = df[features].head(20).fillna(0)
+
+    # Check if there's uploaded data in the session
+    uploaded_data = session.get("uploaded_csv")
+    if uploaded_data:
+        sample = pd.DataFrame(uploaded_data)
+        for feat in features:
+            if feat not in sample.columns:
+                sample[feat] = 0
+        sample = sample[features].head(20).fillna(0)
+        tonight_sample = pd.DataFrame(uploaded_data)[features].head(500).fillna(0)
+        uploaded = True
+    else:
+        sample = df[features].head(20).fillna(0)
+        tonight_sample = df[features].head(500).fillna(0)
+        uploaded = False
+
     scores = model.predict_proba(sample)[:, 1] * 100
-    tonight_scores = model.predict_proba(df[features].head(500).fillna(0))[:, 1] * 100
-    return build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=False)
+    tonight_scores = model.predict_proba(tonight_sample)[:, 1] * 100
+
+    hotel_config = HOTELS.get(session['hotel'], {})
+    alert_email = hotel_config.get('alert_email', '')
+    for i, score in enumerate(scores):
+        if score >= 70:
+            send_high_risk_alert(hotel_name, alert_email, f"Booking {i+1}", score)
+
+    return build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=uploaded)
+
+@app.route("/clear")
+@login_required
+def clear_upload():
+    session.pop("uploaded_csv", None)
+    return redirect(url_for("dashboard"))
+
+@app.route("/settings", methods=["GET", "POST"])
+@login_required
+def settings():
+    hotel = session['hotel']
+    hotel_name = session.get("hotel_name", "Your Hotel")
+    message = None
+
+    if request.method == "POST":
+        new_email = request.form.get("alert_email", "").strip()
+        HOTELS[hotel]['alert_email'] = new_email
+        print(f"Alert email set to: {new_email} for {hotel}")
+        message = "Settings saved! You'll now receive alerts at " + new_email if new_email else "Alert email cleared."
+
+    current_email = HOTELS[hotel].get('alert_email', '')
+
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+<title>Occupado — Settings</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+body {{ background:#ffffff; color:#0a1a0a; font-family:'DM Sans',sans-serif; }}
+.topbar {{ background:#008000; padding:16px 40px; display:flex; align-items:center; justify-content:space-between; }}
+.topbar-logo {{ font-family:'Syne',sans-serif; font-size:22px; font-weight:800; color:#ffffff; }}
+.topbar-hotel {{ font-family:'DM Mono',monospace; font-size:12px; color:rgba(255,255,255,0.8); }}
+.topbar-right {{ display:flex; align-items:center; gap:10px; }}
+.nav-btn {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; }}
+.nav-btn:hover {{ background:rgba(255,255,255,0.25); }}
+.content {{ padding:40px; max-width:600px; }}
+.page-title {{ font-family:'Syne',sans-serif; font-size:32px; font-weight:800; margin-bottom:8px; }}
+.page-sub {{ font-family:'DM Mono',monospace; font-size:12px; color:#4a6648; margin-bottom:40px; }}
+.card {{ background:#f5faf5; border:1px solid rgba(0,128,0,0.15); border-radius:16px; padding:32px; margin-bottom:24px; }}
+.card-title {{ font-family:'Syne',sans-serif; font-size:18px; font-weight:700; margin-bottom:6px; }}
+.card-sub {{ font-size:13px; color:#4a6648; margin-bottom:24px; }}
+label {{ font-size:12px; font-weight:500; color:#4a6648; display:block; margin-bottom:8px; font-family:'DM Mono',monospace; text-transform:uppercase; letter-spacing:0.5px; }}
+input {{ width:100%; padding:12px 16px; background:#ffffff; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; font-family:'DM Sans',sans-serif; color:#0a1a0a; outline:none; margin-bottom:16px; }}
+input:focus {{ border-color:#008000; }}
+.save-btn {{ padding:12px 28px; background:#008000; color:#ffffff; border:none; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; }}
+.save-btn:hover {{ background:#006600; }}
+.success {{ background:rgba(0,128,0,0.08); border:1px solid rgba(0,128,0,0.2); border-radius:10px; padding:14px 20px; font-size:13px; color:#008000; margin-bottom:24px; font-weight:500; }}
+.hint {{ font-size:12px; color:#4a6648; margin-top:-8px; margin-bottom:16px; font-family:'DM Mono',monospace; }}
+</style>
+</head>
+<body>
+<div class="topbar">
+    <div>
+        <div class="topbar-logo">Occupado</div>
+        <div class="topbar-hotel">{hotel_name} · Settings</div>
+    </div>
+    <div class="topbar-right">
+        <a href="/dashboard" class="nav-btn">← Back to Dashboard</a>
+        <a href="/logout" class="nav-btn">Sign Out</a>
+    </div>
+</div>
+<div class="content">
+    <div class="page-title">Settings</div>
+    <div class="page-sub">Configure your alert preferences</div>
+    {"<div class='success'>✅ " + message + "</div>" if message else ""}
+    <div class="card">
+        <div class="card-title">🔔 High Risk Email Alerts</div>
+        <div class="card-sub">Get an email instantly when a booking hits more than 70% cancellation risk.</div>
+        <form method="POST">
+            <label>Alert Email Address</label>
+            <input type="email" name="alert_email" value="{current_email}" placeholder="revenue@yourhotel.com">
+            <div class="hint">Leave blank to disable alerts.</div>
+            <button type="submit" class="save-btn">Save Settings →</button>
+        </form>
+    </div>
+</div>
+</body>
+</html>"""
 
 @app.route("/upload", methods=["POST"])
 @login_required
@@ -383,11 +526,23 @@ def upload():
         for feat in features:
             if feat not in uploaded_df.columns:
                 uploaded_df[feat] = 0
+
+        # Save uploaded data to session so it persists across navigation
+        session["uploaded_csv"] = uploaded_df[features].head(500).fillna(0).to_dict(orient="records")
+
         sample = uploaded_df[features].head(20).fillna(0)
         scores = model.predict_proba(sample)[:, 1] * 100
         tonight_scores = model.predict_proba(uploaded_df[features].head(500).fillna(0))[:, 1] * 100
+
+        hotel_config = HOTELS.get(session['hotel'], {})
+        alert_email = hotel_config.get('alert_email', '')
+        for i, score in enumerate(scores):
+            if score >= 70:
+                send_high_risk_alert(hotel_name, alert_email, f"Booking {i+1}", score)
+
         return build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=True)
-    except Exception:
+    except Exception as e:
+        print(f"Upload error: {e}")
         return redirect(url_for("dashboard"))
 
 @app.route("/report")
@@ -656,7 +811,7 @@ def admin_add():
     username = request.form.get("username", "").lower().strip()
     password = request.form.get("password", "").strip()
     if name and username and password:
-        HOTELS[username] = {"password": password, "name": name, "rooms": 0, "city": "—"}
+        HOTELS[username] = {"password": password, "name": name, "rooms": 0, "city": "—", "alert_email": ""}
     return redirect(url_for("admin_panel"))
 
 @app.route("/admin/logout")
