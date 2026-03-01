@@ -25,7 +25,7 @@ def send_high_risk_alert(hotel_name, alert_email, booking_id, risk_score):
     if not alert_email:
         return
     message = Mail(
-        from_email=os.environ.get('ALERT_FROM_EMAIL', 'team@occupado.co'),
+        from_email=os.environ.get('ALERT_FROM_EMAIL', 'alerts@occupado.co'),
         to_emails=alert_email,
         subject=f"⚠️ High Cancellation Risk — {hotel_name}",
         html_content=f"""
@@ -129,7 +129,7 @@ def build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=False):
 
     upload_banner = ""
     if uploaded:
-        upload_banner = '<div class="upload-banner">📂 Your uploaded data is being analysed — navigate freely, your file stays loaded</div>'
+        upload_banner = '<div class="upload-banner">Your data loaded — showing AI predictions on your real bookings</div>'
 
     return f"""<!DOCTYPE html>
 <html>
@@ -149,8 +149,6 @@ body {{ background:#ffffff; color:#0a1a0a; font-family:'DM Sans',sans-serif; }}
 .report-btn:hover {{ background:rgba(255,255,255,0.35); }}
 .settings-btn {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; transition:all 0.2s; }}
 .settings-btn:hover {{ background:rgba(255,255,255,0.25); }}
-.clear-btn {{ padding:8px 18px; background:rgba(255,69,96,0.3); border:1px solid rgba(255,69,96,0.5); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; transition:all 0.2s; }}
-.clear-btn:hover {{ background:rgba(255,69,96,0.5); }}
 .content {{ padding:40px; }}
 .sub {{ color:#4a6648; font-family:'DM Mono',monospace; font-size:13px; margin-bottom:32px; }}
 .section-title {{ font-family:'Syne',sans-serif; font-size:20px; font-weight:700; margin-bottom:16px; margin-top:40px; color:#0a1a0a; }}
@@ -214,7 +212,6 @@ td {{ padding:14px 16px; font-size:13px; border-bottom:1px solid rgba(0,128,0,0.
         <div class="topbar-hotel">{hotel_name} · AI Booking Intelligence</div>
     </div>
     <div class="topbar-right">
-        {'<a href="/clear" class="clear-btn">🗑 Clear File</a>' if uploaded else ''}
         <a href="/settings" class="settings-btn">⚙️ Settings</a>
         <a href="/report" class="report-btn">📄 Download Report</a>
         <a href="/logout" class="logout">Sign Out</a>
@@ -405,24 +402,9 @@ def logout():
 @login_required
 def dashboard():
     hotel_name = session.get("hotel_name", "Your Hotel")
-
-    # Check if there's uploaded data in the session
-    uploaded_data = session.get("uploaded_csv")
-    if uploaded_data:
-        sample = pd.DataFrame(uploaded_data)
-        for feat in features:
-            if feat not in sample.columns:
-                sample[feat] = 0
-        sample = sample[features].head(20).fillna(0)
-        tonight_sample = pd.DataFrame(uploaded_data)[features].head(500).fillna(0)
-        uploaded = True
-    else:
-        sample = df[features].head(20).fillna(0)
-        tonight_sample = df[features].head(500).fillna(0)
-        uploaded = False
-
+    sample = df[features].head(20).fillna(0)
     scores = model.predict_proba(sample)[:, 1] * 100
-    tonight_scores = model.predict_proba(tonight_sample)[:, 1] * 100
+    tonight_scores = model.predict_proba(df[features].head(500).fillna(0))[:, 1] * 100
 
     hotel_config = HOTELS.get(session['hotel'], {})
     alert_email = hotel_config.get('alert_email', '')
@@ -430,13 +412,7 @@ def dashboard():
         if score >= 70:
             send_high_risk_alert(hotel_name, alert_email, f"Booking {i+1}", score)
 
-    return build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=uploaded)
-
-@app.route("/clear")
-@login_required
-def clear_upload():
-    session.pop("uploaded_csv", None)
-    return redirect(url_for("dashboard"))
+    return build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=False)
 
 @app.route("/settings", methods=["GET", "POST"])
 @login_required
@@ -448,7 +424,6 @@ def settings():
     if request.method == "POST":
         new_email = request.form.get("alert_email", "").strip()
         HOTELS[hotel]['alert_email'] = new_email
-        print(f"Alert email set to: {new_email} for {hotel}")
         message = "Settings saved! You'll now receive alerts at " + new_email if new_email else "Alert email cleared."
 
     current_email = HOTELS[hotel].get('alert_email', '')
@@ -526,23 +501,11 @@ def upload():
         for feat in features:
             if feat not in uploaded_df.columns:
                 uploaded_df[feat] = 0
-
-        # Save uploaded data to session so it persists across navigation
-        session["uploaded_csv"] = uploaded_df[features].head(500).fillna(0).to_dict(orient="records")
-
         sample = uploaded_df[features].head(20).fillna(0)
         scores = model.predict_proba(sample)[:, 1] * 100
         tonight_scores = model.predict_proba(uploaded_df[features].head(500).fillna(0))[:, 1] * 100
-
-        hotel_config = HOTELS.get(session['hotel'], {})
-        alert_email = hotel_config.get('alert_email', '')
-        for i, score in enumerate(scores):
-            if score >= 70:
-                send_high_risk_alert(hotel_name, alert_email, f"Booking {i+1}", score)
-
         return build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=True)
-    except Exception as e:
-        print(f"Upload error: {e}")
+    except Exception:
         return redirect(url_for("dashboard"))
 
 @app.route("/report")
