@@ -1,17 +1,12 @@
-# OCCUPADO AI - Web Server with Login + CSV Upload + Booking Detail + Admin Panel + PDF Report
 from flask import Flask, send_file, request, redirect, url_for, session
 import pandas as pd
 import pickle
 import io
 import json
 from functools import wraps
-from reportlab.lib.pagesizes import A4
-from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import cm
 from datetime import datetime
 import os
+import secrets
 from dotenv import load_dotenv
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
@@ -21,25 +16,74 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = "occupado-secret-2024"
 
-def send_high_risk_alert(hotel_name, alert_email, booking_id, risk_score):
-    if not alert_email:
+TOKEN_DIR = "/tmp/occupado_tokens"
+os.makedirs(TOKEN_DIR, exist_ok=True)
+
+def generate_magic_token(hotel_username, csv_data):
+    token = secrets.token_urlsafe(32)
+    token_file = os.path.join(TOKEN_DIR, f"{token}.json")
+    with open(token_file, 'w') as f:
+        json.dump({"hotel": hotel_username, "csv_data": csv_data}, f)
+    print(f"[TOKEN] Created: {token[:30]}...")
+    return token
+
+def get_token_data(token):
+    token_file = os.path.join(TOKEN_DIR, f"{token}.json")
+    if not os.path.exists(token_file):
+        return None
+    try:
+        with open(token_file, 'r') as f:
+            return json.load(f)
+    except:
+        return None
+
+def delete_token(token):
+    token_file = os.path.join(TOKEN_DIR, f"{token}.json")
+    try:
+        if os.path.exists(token_file):
+            os.remove(token_file)
+    except:
+        pass
+
+def send_consolidated_alert(hotel_name, alert_email, high_risk_bookings, hotel_username=None, csv_data=None):
+    if not alert_email or not high_risk_bookings:
         return
+    
+    magic_link = "http://localhost:8080/login"
+    if hotel_username and csv_data:
+        token = generate_magic_token(hotel_username, csv_data)
+        magic_link = f"http://localhost:8080/magic/{token}"
+        print(f"[EMAIL] Magic link: {magic_link}")
+    
+    booking_rows = ""
+    for booking in high_risk_bookings:
+        booking_rows += f'<tr style="border-bottom:1px solid #e0e0e0;"><td style="padding:12px 16px;">{booking["id"]}</td><td style="padding:12px 16px;text-align:right;"><span style="background:#cc0000;color:white;padding:4px 12px;border-radius:20px;font-weight:600;">{booking["score"]:.1f}%</span></td></tr>'
+    
     message = Mail(
         from_email=os.environ.get('ALERT_FROM_EMAIL', 'team@occupado.co'),
         to_emails=alert_email,
-        subject=f"⚠️ High Cancellation Risk — {hotel_name}",
+        subject=f"Alert: {len(high_risk_bookings)} High Cancellation Risk Bookings — {hotel_name}",
         html_content=f"""
-        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-            <div style="background:#008000;color:white;padding:20px;border-radius:8px 8px 0 0;">
-                <h2 style="margin:0">⚠️ High Cancellation Risk Detected</h2>
-                <p style="margin:5px 0 0">{hotel_name}</p>
+        <div style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto;">
+            <div style="background:#008000;color:white;padding:24px;border-radius:12px 12px 0 0;">
+                <h2 style="margin:0;font-size:22px;font-weight:700;">⚠️ High Cancellation Risk Alert</h2>
+                <p style="margin:8px 0 0;font-size:14px;opacity:0.95;">{hotel_name}</p>
             </div>
-            <div style="background:#f9f9f9;padding:20px;border-radius:0 0 8px 8px;border:1px solid #ddd;">
-                <p><strong>Booking:</strong> {booking_id}</p>
-                <p><strong>Risk Score:</strong> <span style="color:#cc0000;font-size:1.4em;font-weight:bold">{risk_score:.1f}%</span></p>
-                <hr/>
-                <p style="color:#666;font-size:0.9em;">Log in to your Occupado dashboard to view full AI reasoning and take action.</p>
-                <a href="https://occupado.co/login" style="background:#008000;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;display:inline-block;margin-top:10px;">View Dashboard →</a>
+            
+            <div style="background:#f5faf5;padding:24px;border:1px solid #ddd;border-top:none;">
+                <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
+                    <thead>
+                        <tr style="background:#f0f0f0;border-bottom:2px solid #008000;">
+                            <th style="padding:12px 16px;text-align:left;font-family:'DM Mono',monospace;font-size:12px;color:#0a1a0a;font-weight:600;">Booking ID</th>
+                            <th style="padding:12px 16px;text-align:right;font-family:'DM Mono',monospace;font-size:12px;color:#0a1a0a;font-weight:600;">Risk Score</th>
+                        </tr>
+                    </thead>
+                    <tbody>{booking_rows}</tbody>
+                </table>
+                
+                <center>
+                    <a href="{magic_link}" style="background:#008000;color:white;padding:12px 32px;text-decoration:none;border-radius:8px;display:inline-block;font-weight:600;font-size:14px;">View Dashboard & Take Action →</a>
+                </center>
             </div>
         </div>
         """
@@ -47,12 +91,42 @@ def send_high_risk_alert(hotel_name, alert_email, booking_id, risk_score):
     try:
         sg = SendGridAPIClient(os.environ.get('SENDGRID_API_KEY'))
         sg.send(message)
-        print(f"Alert sent to {alert_email} for {hotel_name}")
+        print(f"[EMAIL] Sent to {alert_email}")
     except Exception as e:
-        print(f"SendGrid error: {e}")
+        print(f"[ERROR] {e}")
 
-ADMIN_USER = "admin"
-ADMIN_PASS = "joaoeliv7"
+def send_email_to_guest(guest_email, guest_name, hotel_name, subject, message_body):
+    if not guest_email or not message_body:
+        return False
+    
+    html_content = f"""
+    <div style="font-family:'DM Sans',sans-serif;max-width:600px;margin:0 auto;background:#f5faf5;padding:24px;border-radius:12px;">
+        <div style="background:#008000;color:white;padding:20px;border-radius:8px 8px 0 0;margin:-24px -24px 24px -24px;">
+            <h2 style="margin:0;font-size:18px;">{hotel_name}</h2>
+        </div>
+        <div style="color:#0a1a0a;font-size:14px;line-height:1.8;white-space:pre-wrap;">
+{message_body}
+        </div>
+        <div style="margin-top:24px;padding-top:16px;border-top:1px solid #ddd;color:#999;font-size:11px;text-align:center;">
+            This email was sent from {hotel_name} via Occupado
+        </div>
+    </div>
+    """
+    
+    message = Mail(
+        from_email=os.environ.get('ALERT_FROM_EMAIL', 'team@occupado.co'),
+        to_emails=guest_email,
+        subject=subject,
+        html_content=html_content
+    )
+    
+    try:
+        sg = SendGridAPIClient(os.environ.get('SENDGRID_API_KEY'))
+        sg.send(message)
+        return True
+    except Exception as e:
+        print(f"[ERROR] {e}")
+        return False
 
 HOTELS = {
     "grandmeridian": {"password": "hotel123", "name": "Grand Meridian Hotel", "rooms": 200, "city": "Lisbon"},
@@ -80,14 +154,6 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated
 
-def admin_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if session.get("role") != "admin":
-            return redirect(url_for("admin_login"))
-        return f(*args, **kwargs)
-    return decorated
-
 def build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=False):
     high = sum(1 for s in scores if s >= 70)
     med  = sum(1 for s in scores if 40 <= s < 70)
@@ -107,29 +173,53 @@ def build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=False):
     for i, (_, booking) in enumerate(sample.iterrows()):
         score = scores[i]
         if score >= 70:
-            badge  = f'<span class="badge high">HIGH {score:.1f}%</span>'
-            action = '<button class="btn dep" onclick="event.stopPropagation()">Request Deposit</button>'
+            badge = f'<span class="badge high">HIGH {score:.1f}%</span>'
+            action = '<button class="btn dep" onclick="event.stopPropagation(); openEmailComposer('+str(i)+', \'deposit\')">Request Deposit</button>'
         elif score >= 40:
-            badge  = f'<span class="badge med">MEDIUM {score:.1f}%</span>'
-            action = '<button class="btn rem" onclick="event.stopPropagation()">Send Reminder</button>'
+            badge = f'<span class="badge med">MEDIUM {score:.1f}%</span>'
+            action = '<button class="btn rem" onclick="event.stopPropagation(); openEmailComposer('+str(i)+', \'reminder\')">Send Reminder</button>'
         else:
-            badge  = f'<span class="badge low">LOW {score:.1f}%</span>'
-            action = '<button class="btn mon" onclick="event.stopPropagation()">Monitor</button>'
+            badge = f'<span class="badge low">LOW {score:.1f}%</span>'
+            action = '<button class="btn mon" onclick="event.stopPropagation(); openEmailComposer('+str(i)+', \'monitor\')">Monitor</button>'
 
         lead = int(booking.get("lead_time", 0))
-        adr  = int(booking.get("adr", 0))
-        rep  = "Yes" if booking.get("is_repeated_guest", 0) else "No"
+        adr = int(booking.get("adr", 0))
+        rep = "Yes" if booking.get("is_repeated_guest", 0) else "No"
         canc = int(booking.get("previous_cancellations", 0))
 
         rows += f"""<tr class="clickable-row" onclick="showDetail({i}, {score:.1f})">
-            <td><span style="color:#008000;font-weight:600">Booking {i+1}</span> <span style="font-size:11px;color:#4a6648;font-family:'DM Mono',monospace">· click for details</span></td>
+            <td><span style="color:#008000;font-weight:600">Booking {i+1}</span></td>
             <td>{lead} days</td><td>EUR {adr}</td><td>{rep}</td><td>{canc}</td>
             <td>{badge}</td><td>{action}</td>
         </tr>"""
 
     upload_banner = ""
+    clear_button = ""
     if uploaded:
-        upload_banner = '<div class="upload-banner">📂 Your uploaded data is being analysed — navigate freely, your file stays loaded</div>'
+        upload_banner = '<div class="upload-banner">📂 Your uploaded data is loaded</div>'
+        clear_button = '<a href="/clear" class="clear-btn">🗑 Clear File</a>'
+
+    bulk_action_html = f'''<div class="section-title">Take Action on High-Risk Bookings</div>
+<div class="bulk-action-zone">
+    <div class="bulk-action-card">
+        <div class="bulk-action-icon">📧</div>
+        <div class="bulk-action-title">Send Mass Email</div>
+        <div class="bulk-action-sub">Send to all {high} high-risk bookings</div>
+        <button class="bulk-action-btn" onclick="openBulkEmailComposer()">Send Email to All →</button>
+    </div>
+    <div class="bulk-action-card">
+        <div class="bulk-action-icon">💰</div>
+        <div class="bulk-action-title">Request Deposits</div>
+        <div class="bulk-action-sub">Quick template for deposits</div>
+        <button class="bulk-action-btn deposit-btn" onclick="openBulkEmailTemplate('deposit')">Send Deposit Request →</button>
+    </div>
+    <div class="bulk-action-card">
+        <div class="bulk-action-icon">⏰</div>
+        <div class="bulk-action-title">Send Reminders</div>
+        <div class="bulk-action-sub">Quick template for reminders</div>
+        <button class="bulk-action-btn reminder-btn" onclick="openBulkEmailTemplate('reminder')">Send Reminder →</button>
+    </div>
+</div>'''
 
     return f"""<!DOCTYPE html>
 <html>
@@ -143,13 +233,11 @@ body {{ background:#ffffff; color:#0a1a0a; font-family:'DM Sans',sans-serif; }}
 .topbar-logo {{ font-family:'Syne',sans-serif; font-size:22px; font-weight:800; color:#ffffff; }}
 .topbar-hotel {{ font-family:'DM Mono',monospace; font-size:12px; color:rgba(255,255,255,0.8); }}
 .topbar-right {{ display:flex; align-items:center; gap:10px; }}
-.logout {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; transition:all 0.2s; }}
+.logout {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; }}
 .logout:hover {{ background:rgba(255,255,255,0.25); }}
-.report-btn {{ padding:8px 18px; background:rgba(255,255,255,0.25); border:1px solid rgba(255,255,255,0.5); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; transition:all 0.2s; }}
-.report-btn:hover {{ background:rgba(255,255,255,0.35); }}
-.settings-btn {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; transition:all 0.2s; }}
+.settings-btn {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; }}
 .settings-btn:hover {{ background:rgba(255,255,255,0.25); }}
-.clear-btn {{ padding:8px 18px; background:rgba(255,69,96,0.3); border:1px solid rgba(255,69,96,0.5); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; transition:all 0.2s; }}
+.clear-btn {{ padding:8px 18px; background:rgba(255,69,96,0.3); border:1px solid rgba(255,69,96,0.5); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; }}
 .clear-btn:hover {{ background:rgba(255,69,96,0.5); }}
 .content {{ padding:40px; }}
 .sub {{ color:#4a6648; font-family:'DM Mono',monospace; font-size:13px; margin-bottom:32px; }}
@@ -157,20 +245,31 @@ body {{ background:#ffffff; color:#0a1a0a; font-family:'DM Sans',sans-serif; }}
 .stats {{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:32px; }}
 .stat {{ background:#f5faf5; border:1px solid rgba(0,128,0,0.15); border-radius:12px; padding:20px; }}
 .stat-value {{ font-family:'Syne',sans-serif; font-size:42px; font-weight:800; line-height:1; }}
-.stat-label {{ font-family:'DM Mono',monospace; font-size:11px; color:#4a6648; margin-top:6px; text-transform:uppercase; letter-spacing:1px; }}
+.stat-label {{ font-family:'DM Mono',monospace; font-size:11px; color:#4a6648; margin-top:6px; }}
 .optimizer {{ display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:40px; }}
 .opt-main {{ background:rgba(0,128,0,0.04); border:1px solid rgba(0,128,0,0.2); border-radius:12px; padding:28px; }}
-.opt-value {{ font-family:'Syne',sans-serif; font-size:72px; font-weight:800; color:#008000; line-height:1; letter-spacing:-2px; }}
-.opt-label {{ font-family:'DM Mono',monospace; font-size:12px; color:#4a6648; margin-top:6px; text-transform:uppercase; }}
-.opt-btn {{ margin-top:20px; width:100%; padding:12px; background:#008000; border:none; border-radius:8px; color:#ffffff; font-size:14px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; }}
+.opt-value {{ font-family:'Syne',sans-serif; font-size:72px; font-weight:800; color:#008000; line-height:1; }}
+.opt-label {{ font-family:'DM Mono',monospace; font-size:12px; color:#4a6648; margin-top:6px; }}
+.opt-btn {{ margin-top:20px; width:100%; padding:12px; background:#008000; border:none; border-radius:8px; color:#ffffff; font-size:14px; font-weight:600; cursor:pointer; }}
 .opt-btn:hover {{ background:#006600; }}
 .opt-stats {{ background:#f5faf5; border:1px solid rgba(0,128,0,0.15); border-radius:12px; padding:24px; }}
 .opt-row {{ display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid rgba(0,128,0,0.08); font-size:13px; }}
 .opt-row:last-child {{ border-bottom:none; }}
 .opt-row-label {{ color:#4a6648; }}
 .opt-row-value {{ font-family:'DM Mono',monospace; font-weight:500; }}
+.bulk-action-zone {{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:40px; }}
+.bulk-action-card {{ background:#f5faf5; border:1px solid rgba(0,128,0,0.15); border-radius:12px; padding:20px; text-align:center; }}
+.bulk-action-icon {{ font-size:32px; margin-bottom:10px; }}
+.bulk-action-title {{ font-family:'Syne',sans-serif; font-size:14px; font-weight:700; margin-bottom:6px; }}
+.bulk-action-sub {{ font-size:12px; color:#4a6648; margin-bottom:14px; }}
+.bulk-action-btn {{ padding:10px 16px; background:#008000; color:#ffffff; border:none; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; width:100%; font-family:'DM Sans',sans-serif; }}
+.bulk-action-btn:hover {{ background:#006600; }}
+.bulk-action-btn.deposit-btn {{ background:#cc0000; }}
+.bulk-action-btn.deposit-btn:hover {{ background:#990000; }}
+.bulk-action-btn.reminder-btn {{ background:#cc6600; }}
+.bulk-action-btn.reminder-btn:hover {{ background:#994400; }}
 table {{ width:100%; border-collapse:collapse; background:#f5faf5; border-radius:16px; overflow:hidden; border:1px solid rgba(0,128,0,0.15); }}
-th {{ background:#008000; color:#ffffff; font-family:'DM Mono',monospace; font-size:11px; text-transform:uppercase; letter-spacing:1px; padding:14px 16px; text-align:left; }}
+th {{ background:#008000; color:#ffffff; font-family:'DM Mono',monospace; font-size:11px; text-transform:uppercase; padding:14px 16px; text-align:left; }}
 td {{ padding:14px 16px; font-size:13px; border-bottom:1px solid rgba(0,128,0,0.06); color:#0a1a0a; }}
 .clickable-row {{ cursor:pointer; }}
 .clickable-row:hover td {{ background:rgba(0,128,0,0.04); }}
@@ -185,7 +284,7 @@ td {{ padding:14px 16px; font-size:13px; border-bottom:1px solid rgba(0,128,0,0.
 .upload-zone {{ border:2px dashed rgba(0,128,0,0.3); border-radius:16px; padding:40px; text-align:center; background:#f5faf5; margin-bottom:32px; cursor:pointer; }}
 .upload-zone-title {{ font-family:'Syne',sans-serif; font-size:18px; font-weight:700; color:#008000; margin-bottom:8px; }}
 .upload-zone-sub {{ font-size:13px; color:#4a6648; margin-bottom:20px; }}
-.upload-btn {{ padding:12px 28px; background:#008000; color:#ffffff; border:none; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; }}
+.upload-btn {{ padding:12px 28px; background:#008000; color:#ffffff; border:none; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; }}
 .upload-banner {{ background:rgba(0,128,0,0.08); border:1px solid rgba(0,128,0,0.2); border-radius:10px; padding:14px 20px; font-size:13px; color:#008000; margin-bottom:24px; font-weight:500; }}
 .modal-overlay {{ display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center; }}
 .modal-overlay.show {{ display:flex; }}
@@ -193,16 +292,44 @@ td {{ padding:14px 16px; font-size:13px; border-bottom:1px solid rgba(0,128,0,0.
 .modal-close {{ position:absolute; top:16px; right:20px; font-size:22px; cursor:pointer; color:#4a6648; background:none; border:none; }}
 .modal-title {{ font-family:'Syne',sans-serif; font-size:22px; font-weight:800; margin-bottom:4px; }}
 .modal-sub {{ font-family:'DM Mono',monospace; font-size:12px; color:#4a6648; margin-bottom:24px; }}
-.score-display {{ font-family:'Syne',sans-serif; font-size:64px; font-weight:800; line-height:1; letter-spacing:-2px; margin-bottom:8px; }}
+.score-display {{ font-family:'Syne',sans-serif; font-size:64px; font-weight:800; line-height:1; margin-bottom:8px; }}
 .score-bar-bg {{ height:10px; background:#f0f0f0; border-radius:5px; overflow:hidden; margin-bottom:12px; }}
-.score-bar-fill {{ height:100%; border-radius:5px; transition:width 0.8s ease; }}
+.score-bar-fill {{ height:100%; border-radius:5px; }}
 .score-verdict {{ font-size:14px; font-weight:600; padding:8px 16px; border-radius:8px; display:inline-block; margin-bottom:8px; }}
-.reasons-title {{ font-family:'Syne',sans-serif; font-size:16px; font-weight:700; margin-bottom:12px; margin-top:24px; }}
-.reason-item {{ display:flex; gap:12px; padding:12px; border-radius:10px; margin-bottom:8px; }}
-.reason-dot {{ width:10px; height:10px; border-radius:50%; flex-shrink:0; margin-top:4px; }}
-.reason-signal {{ font-size:13px; font-weight:600; margin-bottom:3px; }}
-.reason-detail {{ font-size:12px; color:#4a6648; line-height:1.5; }}
-.modal-action {{ margin-top:24px; width:100%; padding:14px; border:none; border-radius:10px; font-size:15px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif; color:#ffffff; }}
+.email-composer {{ display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1001; align-items:center; justify-content:center; }}
+.email-composer.show {{ display:flex; }}
+.email-box {{ background:#ffffff; border-radius:20px; padding:32px; width:100%; max-width:700px; max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.2); }}
+.email-title {{ font-family:'Syne',sans-serif; font-size:20px; font-weight:800; margin-bottom:4px; }}
+.email-label {{ font-family:'DM Mono',monospace; font-size:11px; color:#4a6648; text-transform:uppercase; display:block; margin-bottom:6px; font-weight:600; }}
+.email-input {{ width:100%; padding:12px 16px; background:#f5faf5; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; color:#0a1a0a; outline:none; margin-bottom:16px; }}
+.email-input:focus {{ border-color:#008000; background:#ffffff; }}
+.email-textarea {{ width:100%; padding:12px 16px; background:#f5faf5; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:13px; color:#0a1a0a; outline:none; resize:vertical; min-height:200px; margin-bottom:16px; }}
+.email-textarea:focus {{ border-color:#008000; background:#ffffff; }}
+.email-actions {{ display:flex; gap:12px; margin-top:24px; }}
+.email-send {{ flex:1; padding:14px; background:#008000; color:#ffffff; border:none; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; }}
+.email-send:hover {{ background:#006600; }}
+.email-cancel {{ flex:1; padding:14px; background:#f5faf5; color:#0a1a0a; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; }}
+.bulk-email-composer {{ display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1002; align-items:center; justify-content:center; }}
+.bulk-email-composer.show {{ display:flex; }}
+.bulk-email-box {{ background:#ffffff; border-radius:20px; padding:32px; width:100%; max-width:700px; max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.2); }}
+.bulk-email-title {{ font-family:'Syne',sans-serif; font-size:20px; font-weight:800; margin-bottom:4px; }}
+.bulk-email-subtitle {{ font-family:'DM Mono',monospace; font-size:12px; color:#4a6648; }}
+.bulk-email-actions {{ display:flex; gap:12px; margin-top:24px; }}
+.bulk-email-send {{ flex:1; padding:14px; background:#008000; color:#ffffff; border:none; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; }}
+.bulk-email-send:hover {{ background:#006600; }}
+.bulk-email-send.deposit {{ background:#cc0000; }}
+.bulk-email-send.deposit:hover {{ background:#990000; }}
+.bulk-email-send.reminder {{ background:#cc6600; }}
+.bulk-email-send.reminder:hover {{ background:#994400; }}
+.bulk-email-cancel {{ flex:1; padding:14px; background:#f5faf5; color:#0a1a0a; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; }}
+.bulk-booking-item {{ display:flex; align-items:center; padding:10px; margin-bottom:6px; background:white; border:1px solid rgba(0,128,0,0.1); border-radius:6px; font-size:12px; transition:all 0.2s; }}
+.bulk-booking-item:hover {{ background:rgba(0,128,0,0.02); border-color:rgba(0,128,0,0.2); }}
+.bulk-booking-row:hover {{ transform:translateX(4px); box-shadow:0 2px 8px rgba(204, 0, 0, 0.15); }}
+.bulk-booking-item input[type="checkbox"] {{ margin-right:10px; cursor:pointer; width:16px; height:16px; }}
+.bulk-booking-item label {{ margin:0; cursor:pointer; flex:1; }}
+.bulk-booking-item-id {{ font-family:'DM Mono',monospace; color:#008000; font-weight:600; }}
+.bulk-booking-item-score {{ color:#cc0000; font-weight:600; margin-left:6px; }}
+
 .toast {{ position:fixed; bottom:24px; right:24px; background:#008000; color:#ffffff; border-radius:12px; padding:16px 20px; font-size:13px; transform:translateY(80px); opacity:0; transition:all 0.35s; z-index:2000; }}
 .toast.show {{ transform:translateY(0); opacity:1; }}
 </style>
@@ -214,20 +341,19 @@ td {{ padding:14px 16px; font-size:13px; border-bottom:1px solid rgba(0,128,0,0.
         <div class="topbar-hotel">{hotel_name} · AI Booking Intelligence</div>
     </div>
     <div class="topbar-right">
-        {'<a href="/clear" class="clear-btn">🗑 Clear File</a>' if uploaded else ''}
+        {clear_button}
         <a href="/settings" class="settings-btn">⚙️ Settings</a>
-        <a href="/report" class="report-btn">📄 Download Report</a>
         <a href="/logout" class="logout">Sign Out</a>
     </div>
 </div>
 <div class="content">
-<div class="sub">Live Dashboard · Updated just now · {len(sample)} bookings analysed</div>
+<div class="sub">Live Dashboard · {len(sample)} bookings analysed</div>
 {upload_banner}
 <div class="section-title">Upload Your Booking Data</div>
 <form method="POST" action="/upload" enctype="multipart/form-data">
     <div class="upload-zone" onclick="document.getElementById('csv-input').click()">
         <div class="upload-zone-title">📂 Drop your booking CSV here</div>
-        <div class="upload-zone-sub">Export from your PMS and upload — Occupado scores every booking instantly</div>
+        <div class="upload-zone-sub">Export from your PMS and upload</div>
         <input type="file" id="csv-input" name="csv_file" accept=".csv" style="display:none" onchange="this.form.submit()">
         <button type="button" class="upload-btn" onclick="event.stopPropagation();document.getElementById('csv-input').click()">Choose CSV File</button>
     </div>
@@ -253,12 +379,14 @@ td {{ padding:14px 16px; font-size:13px; border-bottom:1px solid rgba(0,128,0,0.
         <div class="opt-row"><span class="opt-row-label">Avg room rate</span><span class="opt-row-value">EUR {avg_rate:.0f}</span></div>
     </div>
 </div>
+{bulk_action_html}
 <div class="section-title">Bookings — Click any row for AI reasoning</div>
 <table>
 <thead><tr><th>Booking</th><th>Lead Time</th><th>Room Rate</th><th>Returning</th><th>Past Cancels</th><th>Risk Score</th><th>Action</th></tr></thead>
 <tbody>{rows}</tbody>
 </table>
 </div>
+
 <div class="modal-overlay" id="modal">
     <div class="modal">
         <button class="modal-close" onclick="closeModal()">✕</button>
@@ -267,85 +395,455 @@ td {{ padding:14px 16px; font-size:13px; border-bottom:1px solid rgba(0,128,0,0.
         <div class="score-display" id="modal-score">0%</div>
         <div class="score-bar-bg"><div class="score-bar-fill" id="modal-bar" style="width:0%"></div></div>
         <div class="score-verdict" id="modal-verdict"></div>
-        <div class="reasons-title">Why the AI flagged this booking</div>
         <div id="modal-reasons"></div>
-        <button class="modal-action" id="modal-action-btn" onclick="closeModal()">Close</button>
+        <button style="margin-top:24px; width:100%; padding:14px; border:none; border-radius:10px; font-size:15px; font-weight:700; background:#008000; color:#ffffff; cursor:pointer;" onclick="closeModal()">Close</button>
     </div>
 </div>
+
+<div class="email-composer" id="emailComposer">
+    <div class="email-box">
+        <div style="margin-bottom:24px;">
+            <div class="email-title" id="emailTitle">Send Email to Guest</div>
+            <div style="font-family:'DM Mono',monospace; font-size:12px; color:#4a6648; margin-top:4px;" id="emailSubtitle">Booking 1</div>
+        </div>
+        
+        <div>
+            <label class="email-label">Guest Email Address</label>
+            <input type="email" id="guestEmail" class="email-input" placeholder="guest@example.com">
+        </div>
+        
+        <div>
+            <label class="email-label">Guest Name</label>
+            <input type="text" id="guestName" class="email-input" placeholder="John Doe">
+        </div>
+        
+        <div>
+            <label class="email-label">Subject Line</label>
+            <input type="text" id="emailSubject" class="email-input" placeholder="Confirm Your Booking">
+        </div>
+        
+        <div>
+            <label class="email-label">Message to Guest</label>
+            <textarea id="emailBody" class="email-textarea" placeholder="Dear Guest..."></textarea>
+        </div>
+        
+        <div class="email-actions">
+            <button class="email-send" onclick="sendEmailToGuest()">📧 Send Email</button>
+            <button class="email-cancel" onclick="closeEmailComposer()">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<div class="bulk-email-composer" id="bulkEmailComposer">
+    <div class="bulk-email-box">
+        <div style="margin-bottom:24px;">
+            <div class="bulk-email-title" id="bulkEmailTitle">Send Email to All High-Risk Bookings</div>
+            <div class="bulk-email-subtitle" id="bulkEmailSubtitle">Sending to multiple guests</div>
+        </div>
+        
+        <div style="background:#f5faf5; border:1px solid rgba(0,128,0,0.15); border-radius:10px; padding:12px; margin-bottom:16px;">
+            <div style="margin-bottom:10px;">
+                <label class="email-label">Select Bookings to Send To</label>
+                <div id="bulkBookingsList" style="max-height:150px; overflow-y:auto; margin-bottom:10px; padding:8px; background:white; border:1px solid rgba(0,128,0,0.1); border-radius:6px;"></div>
+                <input type="text" id="bulkBookingsInput" class="email-input" placeholder="Edit or remove booking numbers..." style="margin-bottom:6px;">
+                <div style="font-family:'DM Mono',monospace; font-size:10px; color:#999;">Automatically populated with high-risk bookings. Remove any you don't want to contact.</div>
+            </div>
+            <div style="background:#f0f0f0; padding:10px; border-radius:6px; text-align:center; display:flex; justify-content:space-between; align-items:center;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <span style="font-family:'Syne',sans-serif; font-size:24px; font-weight:800; color:#008000;" id="bulkCountBig">0</span>
+                    <span style="font-family:'DM Mono',monospace; font-size:12px; color:#4a6648; font-weight:600;">bookings<br>selected</span>
+                </div>
+                <button type="button" style="padding:8px 20px; background:#008000; color:white; border:none; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif;" onclick="saveBookingChanges()">💾 Save Changes</button>
+            </div>
+        </div>
+        
+        <div>
+            <label class="email-label">Subject Line</label>
+            <input type="text" id="bulkEmailSubject" class="email-input" placeholder="Important: Your Booking">
+        </div>
+        
+        <div>
+            <label class="email-label">Message Template</label>
+            <textarea id="bulkEmailBody" class="email-textarea" placeholder="Dear Guest..."></textarea>
+        </div>
+        
+        <div class="bulk-email-actions">
+            <button class="bulk-email-send" id="bulkEmailSendBtn" onclick="sendBulkEmailToGuests()">📧 Send to Selected</button>
+            <button class="bulk-email-cancel" onclick="closeBulkEmailComposer()">Cancel</button>
+        </div>
+    </div>
+</div>
+
 <div class="toast" id="toast"></div>
 <script>
 const bookings = {bookings_js};
+
+function populateBulkBookingsList() {{
+    const list = document.getElementById('bulkBookingsList');
+    const input = document.getElementById('bulkBookingsInput');
+    list.innerHTML = '';
+    
+    const rows = document.querySelectorAll('.clickable-row');
+    let highRiskNums = [];
+    let html = '';
+    
+    rows.forEach((row, idx) => {{
+        const badgeSpan = row.querySelector('.badge.high');
+        if (badgeSpan) {{
+            const cells = row.querySelectorAll('td');
+            const scoreText = badgeSpan.textContent;
+            const leadTime = cells[1] ? cells[1].textContent : '-';
+            const roomRate = cells[2] ? cells[2].textContent : '-';
+            
+            highRiskNums.push(idx + 1);
+            
+            html += `<div class="bulk-booking-row" data-booking="`+ (idx + 1) +`" style="padding:8px; margin-bottom:4px; background:rgba(204, 0, 0, 0.08); border:2px solid rgba(204, 0, 0, 0.2); border-radius:6px; font-size:11px; display:flex; justify-content:space-between; align-items:center; transition:all 0.3s; cursor:pointer; user-select:none;" onclick="addBookingToField(` + (idx + 1) + `)">
+                <div>
+                    <span style="color:#008000; font-weight:600;">Booking ` + (idx + 1) + `</span>
+                    <span style="color:#999; margin:0 8px;">·</span>
+                    <span style="color:#999; font-size:10px;">` + leadTime + ` lead</span>
+                    <span style="color:#999; margin:0 4px;">·</span>
+                    <span style="color:#999; font-size:10px;">` + roomRate + `</span>
+                </div>
+                <span style="color:#cc0000; font-weight:600;">` + scoreText + `</span>
+            </div>`;
+        }}
+    }});
+    
+    if (html === '') {{
+        list.innerHTML = '<div style="padding:10px; color:#999; font-size:11px; text-align:center;">No high-risk bookings found</div>';
+    }} else {{
+        list.innerHTML = html;
+    }}
+    
+    const bookingsList = highRiskNums.join(', ');
+    input.value = bookingsList;
+    
+    // Add event listeners for real-time feedback
+    input.addEventListener('input', handleBookingInputChange);
+    
+    updateSendCount();
+}}
+
+function addBookingToField(bookingNum) {{
+    const input = document.getElementById('bulkBookingsInput');
+    const current = input.value.trim();
+    const nums = current.split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n));
+    
+    if (!nums.includes(bookingNum)) {{
+        if (current === '') {{
+            input.value = bookingNum.toString();
+        }} else {{
+            input.value = current + ', ' + bookingNum;
+        }}
+        updateBookingVisuals();
+    }}
+}}
+
+function updateBookingVisuals() {{
+    const input = document.getElementById('bulkBookingsInput').value.trim();
+    const selectedNums = input.split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n));
+    
+    const bookingRows = document.querySelectorAll('.bulk-booking-row');
+    const allHighRiskNums = [];
+    
+    bookingRows.forEach(row => {{
+        const bookingNum = parseInt(row.getAttribute('data-booking'));
+        allHighRiskNums.push(bookingNum);
+        
+        if (selectedNums.includes(bookingNum)) {{
+            row.style.opacity = '1';
+            row.style.background = 'rgba(204, 0, 0, 0.08)';
+            row.style.borderColor = 'rgba(204, 0, 0, 0.2)';
+        }} else {{
+            row.style.opacity = '0.4';
+            row.style.background = 'rgba(100, 100, 100, 0.08)';
+            row.style.borderColor = 'rgba(100, 100, 100, 0.1)';
+        }}
+    }});
+    
+    // Show error/warning for invalid booking numbers
+    selectedNums.forEach(num => {{
+        if (!allHighRiskNums.includes(num)) {{
+            console.log('Booking ' + num + ' is not a high-risk booking');
+        }}
+    }});
+    
+    updateSendCount();
+}}
+
+function openBulkEmailComposer() {{
+    populateBulkBookingsList();
+    document.getElementById('bulkEmailSubject').value = 'Regarding Your Upcoming Reservation';
+    document.getElementById('bulkEmailBody').value = 'Dear Valued Guest,\\n\\nWe wanted to reach out regarding your upcoming reservation. Please confirm your booking details.\\n\\nBest regards,\\nThe Hotel Team';
+    document.getElementById('bulkEmailComposer').classList.add('show');
+}}
+
+function openBulkEmailTemplate(type) {{
+    populateBulkBookingsList();
+    let subject = '';
+    let template = '';
+    let btnClass = 'bulk-email-send';
+    
+    if (type === 'deposit') {{
+        subject = 'Please Confirm Your Reservation with Deposit';
+        template = 'Dear Valued Guest,\\n\\nWe want to ensure your upcoming stay is confirmed. Please provide a deposit to guarantee your booking.\\n\\nBest regards,\\nThe Hotel Team';
+        btnClass = 'bulk-email-send deposit';
+    }} else {{
+        subject = 'Reminder: Your Upcoming Stay';
+        template = 'Dear Valued Guest,\\n\\nThis is a friendly reminder about your upcoming reservation. If you have questions, please contact us.\\n\\nBest regards,\\nThe Hotel Team';
+        btnClass = 'bulk-email-send reminder';
+    }}
+    
+    document.getElementById('bulkEmailSubject').value = subject;
+    document.getElementById('bulkEmailBody').value = template;
+    document.getElementById('bulkEmailSendBtn').className = btnClass;
+    document.getElementById('bulkEmailComposer').classList.add('show');
+}}
+
+function handleBookingInputChange() {{
+    updateBookingVisuals();
+}}
+
+function updateSendCount() {{
+    const input = document.getElementById('bulkBookingsInput').value.trim();
+    let count = 0;
+    
+    if (input === '') {{
+        const rows = document.querySelectorAll('.clickable-row');
+        rows.forEach(row => {{
+            if (row.querySelector('.badge.high')) count++;
+        }});
+    }} else {{
+        const nums = input.split(',').map(n => n.trim()).filter(n => n !== '');
+        count = nums.length;
+    }}
+    
+    // Update big number and text
+    document.getElementById('bulkCountBig').textContent = count;
+}}
+
+function saveBookingChanges() {{
+    const input = document.getElementById('bulkBookingsInput').value.trim();
+    const nums = input.split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n));
+    
+    if (nums.length === 0) {{
+        showToast('Please keep at least one booking', 'error');
+        return;
+    }}
+    
+    showToast('✓ ' + nums.length + ' booking(s) selected for email', 'success');
+}}
+
+function validateAndGetSelectedBookings() {{
+    const input = document.getElementById('bulkBookingsInput').value.trim();
+    const rows = document.querySelectorAll('.clickable-row');
+    let selected = [];
+    
+    if (input === '') {{
+        rows.forEach((row, idx) => {{
+            if (row.querySelector('.badge.high')) {{
+                selected.push(idx);
+            }}
+        }});
+    }} else {{
+        const nums = input.split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n));
+        
+        rows.forEach((row, idx) => {{
+            if (row.querySelector('.badge.high') && nums.includes(idx + 1)) {{
+                selected.push(idx);
+            }}
+        }});
+    }}
+    
+    return selected;
+}}
+
+function closeBulkEmailComposer() {{
+    document.getElementById('bulkEmailComposer').classList.remove('show');
+}}
+
+function sendBulkEmailToGuests() {{
+    const subject = document.getElementById('bulkEmailSubject').value.trim();
+    const body = document.getElementById('bulkEmailBody').value.trim();
+    
+    if (!subject || !body) {{
+        showToast('Please fill in all fields', 'error');
+        return;
+    }}
+    
+    const selected = validateAndGetSelectedBookings();
+    
+    if (selected.length === 0) {{
+        showToast('Please select at least one booking', 'error');
+        return;
+    }}
+    
+    fetch('/send-bulk-email', {{
+        method: 'POST',
+        headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{
+            count: selected.length,
+            subject: subject,
+            body: body
+        }})
+    }})
+    .then(r => r.json())
+    .then(data => {{
+        if (data.status === 'success') {{
+            closeBulkEmailComposer();
+            showToast('✓ Emails sent to ' + data.count + ' guest(s)', 'success');
+        }} else {{
+            showToast('Error: ' + data.message, 'error');
+        }}
+    }})
+    .catch(e => showToast('Error sending emails', 'error'));
+}}
+
+function openEmailComposer(idx, actionType) {{
+    const booking = bookings[idx];
+    const score = Object.values(bookings[idx]).slice(-1)[0] * 100 || 0;
+    
+    document.getElementById('emailTitle').textContent = 'Send Email to Guest';
+    document.getElementById('emailSubtitle').textContent = 'Booking ' + (idx+1) + ' · Risk Score: ' + score.toFixed(1) + '%';
+    
+    let template = '';
+    if (actionType === 'deposit') {{
+        template = 'Dear Valued Guest,\\n\\nWe want to ensure your upcoming stay is confirmed and secured. Please provide a deposit to guarantee your booking.\\n\\nBest regards,\\nThe Hotel Team';
+        document.getElementById('emailSubject').value = 'Please Confirm Your Reservation with Deposit';
+    }} else if (actionType === 'reminder') {{
+        template = 'Dear Valued Guest,\\n\\nWe hope you are looking forward to your stay! This is a friendly reminder about your upcoming reservation.\\n\\nBest regards,\\nThe Hotel Team';
+        document.getElementById('emailSubject').value = 'Reminder: Your Upcoming Stay';
+    }} else {{
+        template = 'Dear Valued Guest,\\n\\nWe wanted to confirm your upcoming reservation. Please let us know if you have any questions.\\n\\nBest regards,\\nThe Hotel Team';
+        document.getElementById('emailSubject').value = 'Reservation Confirmation';
+    }}
+    
+    document.getElementById('emailBody').value = template;
+    document.getElementById('guestEmail').value = '';
+    document.getElementById('guestName').value = '';
+    document.getElementById('emailComposer').classList.add('show');
+}}
+
+function closeEmailComposer() {{
+    document.getElementById('emailComposer').classList.remove('show');
+}}
+
+function sendEmailToGuest() {{
+    const email = document.getElementById('guestEmail').value.trim();
+    const subject = document.getElementById('emailSubject').value.trim();
+    const body = document.getElementById('emailBody').value.trim();
+    
+    if (!email || !subject || !body) {{
+        showToast('Please fill in all fields', 'error');
+        return;
+    }}
+    
+    fetch('/send-guest-email', {{
+        method: 'POST',
+        headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{guest_email: email, subject: subject, body: body}})
+    }})
+    .then(r => r.json())
+    .then(data => {{
+        if (data.status === 'success') {{
+            closeEmailComposer();
+            showToast('Email sent successfully', 'success');
+        }} else {{
+            showToast('Error: ' + data.message, 'error');
+        }}
+    }})
+    .catch(() => showToast('Error sending email', 'error'));
+}}
+
 function showDetail(idx, score) {{
     const booking = bookings[idx];
-    document.getElementById('modal-title').textContent = 'Booking ' + (idx+1) + ' — AI Analysis';
-    document.getElementById('modal-sub').textContent = 'Lead time: ' + booking.lead_time + ' days · Room rate: EUR ' + booking.adr;
+    document.getElementById('modal-title').textContent = 'Booking ' + (idx+1);
+    document.getElementById('modal-sub').textContent = 'Lead time: ' + booking.lead_time + ' days · EUR ' + booking.adr + '/night';
     document.getElementById('modal-score').textContent = score.toFixed(1) + '%';
+    
     const bar = document.getElementById('modal-bar');
-    const verdict = document.getElementById('modal-verdict');
-    const actionBtn = document.getElementById('modal-action-btn');
     bar.style.width = score + '%';
     if (score >= 70) {{
         bar.style.background = '#cc0000';
         document.getElementById('modal-score').style.color = '#cc0000';
-        verdict.textContent = 'HIGH RISK — Request deposit immediately';
-        verdict.style.background = 'rgba(255,69,96,0.1)'; verdict.style.color = '#cc0000';
-        actionBtn.style.background = '#cc0000'; actionBtn.textContent = 'Request Deposit Now';
+        document.getElementById('modal-verdict').textContent = 'HIGH RISK';
+        document.getElementById('modal-verdict').style.background = 'rgba(255,69,96,0.1)';
+        document.getElementById('modal-verdict').style.color = '#cc0000';
     }} else if (score >= 40) {{
         bar.style.background = '#cc6600';
         document.getElementById('modal-score').style.color = '#cc6600';
-        verdict.textContent = 'MEDIUM RISK — Send a reminder';
-        verdict.style.background = 'rgba(255,179,64,0.1)'; verdict.style.color = '#cc6600';
-        actionBtn.style.background = '#cc6600'; actionBtn.textContent = 'Send Reminder Email';
+        document.getElementById('modal-verdict').textContent = 'MEDIUM RISK';
+        document.getElementById('modal-verdict').style.background = 'rgba(255,179,64,0.1)';
+        document.getElementById('modal-verdict').style.color = '#cc6600';
     }} else {{
         bar.style.background = '#008000';
         document.getElementById('modal-score').style.color = '#008000';
-        verdict.textContent = 'LOW RISK — Monitor only';
-        verdict.style.background = 'rgba(0,128,0,0.1)'; verdict.style.color = '#008000';
-        actionBtn.style.background = '#008000'; actionBtn.textContent = 'Mark as Monitored';
+        document.getElementById('modal-verdict').textContent = 'LOW RISK';
+        document.getElementById('modal-verdict').style.background = 'rgba(0,128,0,0.1)';
+        document.getElementById('modal-verdict').style.color = '#008000';
     }}
-    const reasons = [];
-    if (booking.lead_time > 60) reasons.push({{signal:'Long lead time', detail: booking.lead_time+' days between booking and arrival — guests who book far in advance cancel more often.', impact:'high'}});
-    else if (booking.lead_time < 7) reasons.push({{signal:'Short lead time', detail:'Only '+booking.lead_time+' days until arrival — last-minute bookings almost always show up.', impact:'low'}});
-    else reasons.push({{signal:'Moderate lead time', detail: booking.lead_time+' days until arrival — moderate cancellation risk.', impact:'med'}});
-    if (booking.previous_cancellations > 0) reasons.push({{signal:'Previous cancellations', detail:'This guest cancelled '+booking.previous_cancellations+' time(s) before — strongest predictor of future cancellations.', impact:'high'}});
-    if (booking.is_repeated_guest === 1) reasons.push({{signal:'Returning guest', detail:'Loyal guest — returning guests cancel far less than first-time visitors.', impact:'low'}});
-    else reasons.push({{signal:'First-time guest', detail:'No previous stay history — first-time guests have higher uncertainty.', impact:'med'}});
-    if (booking.previous_bookings_not_canceled > 3) reasons.push({{signal:'Strong booking history', detail: booking.previous_bookings_not_canceled+' previous stays completed — highly reliable guest.', impact:'low'}});
-    if (booking.total_of_special_requests >= 2) reasons.push({{signal:'Special requests made', detail: booking.total_of_special_requests+' special requests — invested in the stay.', impact:'low'}});
-    else if (booking.total_of_special_requests === 0) reasons.push({{signal:'No special requests', detail:'Zero special requests — may not be fully committed to this booking.', impact:'med'}});
-    if (booking.adr > 300) reasons.push({{signal:'High room rate', detail:'EUR '+booking.adr+' per night — expensive bookings sometimes cancelled when alternatives found.', impact:'med'}});
-    const colors = {{high:'#cc0000',med:'#cc6600',low:'#008000'}};
-    const bgs = {{high:'rgba(255,69,96,0.06)',med:'rgba(255,179,64,0.06)',low:'rgba(0,128,0,0.06)'}};
-    document.getElementById('modal-reasons').innerHTML = reasons.map(r =>
-        `<div class="reason-item" style="background:${{bgs[r.impact]}}">
-            <div class="reason-dot" style="background:${{colors[r.impact]}}"></div>
-            <div><div class="reason-signal">${{r.signal}}</div><div class="reason-detail">${{r.detail}}</div></div>
-        </div>`).join('');
     document.getElementById('modal').classList.add('show');
 }}
+
 function closeModal() {{
     document.getElementById('modal').classList.remove('show');
-    showToast('Action recorded!');
 }}
-function showToast(msg) {{
+
+function showToast(msg, type) {{
     const t = document.getElementById('toast');
-    t.textContent = msg; t.classList.add('show');
+    t.textContent = msg;
+    t.classList.add('show');
+    t.style.background = type === 'error' ? '#cc0000' : '#008000';
     setTimeout(() => t.classList.remove('show'), 3000);
 }}
-document.getElementById('modal').addEventListener('click', function(e) {{
-    if (e.target === this) closeModal();
-}});
+
+document.getElementById('modal').addEventListener('click', e => {{ if (e.target === this) closeModal(); }});
+document.getElementById('emailComposer').addEventListener('click', e => {{ if (e.target === this) closeEmailComposer(); }});
+document.getElementById('bulkEmailComposer').addEventListener('click', e => {{ if (e.target === this) closeBulkEmailComposer(); }});
 </script>
 </body>
 </html>"""
+    return dashboard_html
 
 @app.route("/")
 def home():
-    return send_file("landing.html")
+    try:
+        return send_file("landing.html")
+    except:
+        return redirect(url_for("login"))
 
 @app.route("/landing")
 def landing():
-    return send_file("landing.html")
+    try:
+        return send_file("landing.html")
+    except:
+        return redirect(url_for("login"))
+
+@app.route("/magic/<token>")
+def magic_link(token):
+    print(f"\n[MAGIC] Token received: {token[:30]}...")
+    
+    token_data = get_token_data(token)
+    if not token_data:
+        print(f"[MAGIC] Token not found!")
+        return redirect(url_for("login"))
+    
+    hotel_username = token_data.get("hotel")
+    csv_data = token_data.get("csv_data")
+    
+    if hotel_username not in HOTELS:
+        return redirect(url_for("login"))
+    
+    session["hotel"] = hotel_username
+    session["hotel_name"] = HOTELS[hotel_username]["name"]
+    session["alert_email"] = ""
+    session["uploaded_csv"] = csv_data
+    
+    delete_token(token)
+    print(f"[MAGIC] Auto-logged in: {hotel_username}")
+    
+    return redirect(url_for("dashboard"))
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -356,43 +854,39 @@ def login():
         if username in HOTELS and HOTELS[username]["password"] == password:
             session["hotel"] = username
             session["hotel_name"] = HOTELS[username]["name"]
-            session.setdefault("alert_email", "")
+            session["alert_email"] = ""
             return redirect(url_for("dashboard"))
-        else:
-            error = "Invalid username or password. Please try again."
+        error = "Invalid credentials"
+    
+    error_html = f'<div style="background:#ffcdd2;padding:12px;margin-bottom:20px;color:#c62828;border-radius:4px;">{error}</div>' if error else ''
+    
     return f"""<!DOCTYPE html>
 <html>
-<head>
-<title>Occupado — Login</title>
+<head><title>Occupado — Login</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
-body {{ background:#f5faf5; color:#0a1a0a; font-family:'DM Sans',sans-serif; min-height:100vh; display:flex; align-items:center; justify-content:center; }}
-.login-box {{ background:#ffffff; border:1px solid rgba(0,128,0,0.15); border-radius:20px; padding:48px; width:100%; max-width:400px; box-shadow:0 4px 24px rgba(0,128,0,0.08); }}
-.logo {{ font-family:'Syne',sans-serif; font-size:28px; font-weight:800; color:#008000; margin-bottom:8px; }}
-.tagline {{ font-family:'DM Mono',monospace; font-size:12px; color:#4a6648; margin-bottom:40px; }}
-label {{ font-size:13px; font-weight:500; color:#4a6648; display:block; margin-bottom:6px; font-family:'DM Mono',monospace; text-transform:uppercase; letter-spacing:0.5px; }}
-input {{ width:100%; padding:12px 16px; background:#f5faf5; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; font-family:'DM Sans',sans-serif; color:#0a1a0a; outline:none; margin-bottom:20px; transition:border-color 0.2s; }}
-input:focus {{ border-color:#008000; background:#ffffff; }}
-.btn {{ width:100%; padding:14px; background:#008000; color:#ffffff; border:none; border-radius:10px; font-size:15px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.2s; margin-top:4px; }}
-.btn:hover {{ background:#006600; transform:translateY(-1px); box-shadow:0 8px 20px rgba(0,128,0,0.25); }}
-.error {{ background:rgba(255,69,96,0.08); border:1px solid rgba(255,69,96,0.2); border-radius:8px; padding:12px 16px; font-size:13px; color:#cc0000; margin-bottom:20px; }}
-.demo-hint {{ margin-top:24px; padding:14px; background:#f5faf5; border-radius:10px; font-size:12px; color:#4a6648; font-family:'DM Mono',monospace; text-align:center; border:1px solid rgba(0,128,0,0.1); }}
+body {{ background:#f5faf5; font-family:'DM Sans',sans-serif; min-height:100vh; display:flex; align-items:center; justify-content:center; }}
+.box {{ background:#ffffff; padding:48px; border-radius:20px; width:100%; max-width:400px; border:1px solid rgba(0,128,0,0.15); }}
+.logo {{ font-family:'Syne',sans-serif; font-size:28px; font-weight:800; color:#008000; margin-bottom:20px; }}
+label {{ font-size:12px; color:#4a6648; display:block; margin-bottom:6px; font-family:'DM Mono',monospace; font-weight:600; }}
+input {{ width:100%; padding:12px; background:#f5faf5; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; margin-bottom:16px; }}
+input:focus {{ border-color:#008000; background:white; }}
+button {{ width:100%; padding:14px; background:#008000; color:white; border:none; border-radius:10px; font-weight:700; cursor:pointer; }}
+button:hover {{ background:#006600; }}
 </style>
 </head>
 <body>
-<div class="login-box">
+<div class="box">
     <div class="logo">Occupado</div>
-    <div class="tagline">AI Booking Intelligence · Secure Access</div>
-    {"<div class='error'>" + error + "</div>" if error else ""}
+    {error_html}
     <form method="POST">
-        <label>Hotel Username</label>
-        <input type="text" name="username" placeholder="your hotel username" required>
+        <label>Username</label>
+        <input type="text" name="username" required>
         <label>Password</label>
-        <input type="password" name="password" placeholder="••••••••" required>
-        <button type="submit" class="btn">Sign In →</button>
+        <input type="password" name="password" required>
+        <button type="submit">Sign In →</button>
     </form>
-    <div class="demo-hint">Demo access: username <strong>demo</strong> · password <strong>demo</strong></div>
 </div>
 </body>
 </html>"""
@@ -406,8 +900,8 @@ def logout():
 @login_required
 def dashboard():
     hotel_name = session.get("hotel_name", "Your Hotel")
-
     uploaded_data = session.get("uploaded_csv")
+    
     if uploaded_data:
         sample = pd.DataFrame(uploaded_data)
         for feat in features:
@@ -424,16 +918,11 @@ def dashboard():
     scores = model.predict_proba(sample)[:, 1] * 100
     tonight_scores = model.predict_proba(tonight_sample)[:, 1] * 100
 
-    alert_email = session.get("alert_email", "")
-    for i, score in enumerate(scores):
-        if score >= 70:
-            send_high_risk_alert(hotel_name, alert_email, f"Booking {i+1}", score)
-
     return build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=uploaded)
 
 @app.route("/clear")
 @login_required
-def clear_upload():
+def clear():
     session.pop("uploaded_csv", None)
     return redirect(url_for("dashboard"))
 
@@ -442,18 +931,18 @@ def clear_upload():
 def settings():
     hotel_name = session.get("hotel_name", "Your Hotel")
     message = None
-
+    
     if request.method == "POST":
-        new_email = request.form.get("alert_email", "").strip()
-        session["alert_email"] = new_email
-        message = "Settings saved! You'll now receive alerts at " + new_email if new_email else "Alert email cleared."
-
+        alert_email = request.form.get("alert_email", "").strip()
+        session["alert_email"] = alert_email
+        message = "✓ Settings saved!"
+    
     current_email = session.get("alert_email", "")
-
+    message_html = f'<div style="background:#c8e6c9;border:1px solid #81c784;padding:14px 20px;margin:0 auto 30px;color:#2e7d32;border-radius:8px;text-align:center;max-width:500px;font-size:13px;font-weight:500;">{message}</div>' if message else ''
+    
     return f"""<!DOCTYPE html>
 <html>
-<head>
-<title>Occupado — Settings</title>
+<head><title>Occupado — Settings</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
@@ -462,21 +951,20 @@ body {{ background:#ffffff; color:#0a1a0a; font-family:'DM Sans',sans-serif; }}
 .topbar-logo {{ font-family:'Syne',sans-serif; font-size:22px; font-weight:800; color:#ffffff; }}
 .topbar-hotel {{ font-family:'DM Mono',monospace; font-size:12px; color:rgba(255,255,255,0.8); }}
 .topbar-right {{ display:flex; align-items:center; gap:10px; }}
-.nav-btn {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; }}
-.nav-btn:hover {{ background:rgba(255,255,255,0.25); }}
-.content {{ padding:40px; max-width:600px; }}
-.page-title {{ font-family:'Syne',sans-serif; font-size:32px; font-weight:800; margin-bottom:8px; }}
+.btn-nav {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; }}
+.btn-nav:hover {{ background:rgba(255,255,255,0.25); }}
+.content {{ padding:60px 40px; display:flex; align-items:center; justify-content:center; min-height:calc(100vh - 80px); }}
+.wrapper {{ width:100%; max-width:500px; text-align:center; }}
+.page-title {{ font-family:'Syne',sans-serif; font-size:36px; font-weight:800; margin-bottom:8px; }}
 .page-sub {{ font-family:'DM Mono',monospace; font-size:12px; color:#4a6648; margin-bottom:40px; }}
-.card {{ background:#f5faf5; border:1px solid rgba(0,128,0,0.15); border-radius:16px; padding:32px; margin-bottom:24px; }}
-.card-title {{ font-family:'Syne',sans-serif; font-size:18px; font-weight:700; margin-bottom:6px; }}
+.card {{ background:#f5faf5; border:1px solid rgba(0,128,0,0.15); border-radius:16px; padding:40px; }}
+.card-title {{ font-family:'Syne',sans-serif; font-size:18px; font-weight:700; margin-bottom:12px; }}
 .card-sub {{ font-size:13px; color:#4a6648; margin-bottom:24px; }}
-label {{ font-size:12px; font-weight:500; color:#4a6648; display:block; margin-bottom:8px; font-family:'DM Mono',monospace; text-transform:uppercase; letter-spacing:0.5px; }}
-input {{ width:100%; padding:12px 16px; background:#ffffff; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; font-family:'DM Sans',sans-serif; color:#0a1a0a; outline:none; margin-bottom:16px; }}
-input:focus {{ border-color:#008000; }}
-.save-btn {{ padding:12px 28px; background:#008000; color:#ffffff; border:none; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; }}
-.save-btn:hover {{ background:#006600; }}
-.success {{ background:rgba(0,128,0,0.08); border:1px solid rgba(0,128,0,0.2); border-radius:10px; padding:14px 20px; font-size:13px; color:#008000; margin-bottom:24px; font-weight:500; }}
-.hint {{ font-size:12px; color:#4a6648; margin-top:-8px; margin-bottom:16px; font-family:'DM Mono',monospace; }}
+label {{ font-size:12px; color:#4a6648; display:block; margin-bottom:8px; font-family:'DM Mono',monospace; font-weight:600; text-align:left; }}
+input {{ width:100%; padding:12px 16px; background:#ffffff; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; margin-bottom:20px; font-family:'DM Sans',sans-serif; }}
+input:focus {{ border-color:#008000; outline:none; }}
+button {{ padding:12px 32px; background:#008000; color:white; border:none; border-radius:10px; font-weight:600; cursor:pointer; font-size:14px; font-family:'DM Sans',sans-serif; }}
+button:hover {{ background:#006600; }}
 </style>
 </head>
 <body>
@@ -486,23 +974,24 @@ input:focus {{ border-color:#008000; }}
         <div class="topbar-hotel">{hotel_name} · Settings</div>
     </div>
     <div class="topbar-right">
-        <a href="/dashboard" class="nav-btn">← Back to Dashboard</a>
-        <a href="/logout" class="nav-btn">Sign Out</a>
+        <a href="/dashboard" class="btn-nav">← Back</a>
+        <a href="/logout" class="btn-nav">Sign Out</a>
     </div>
 </div>
 <div class="content">
-    <div class="page-title">Settings</div>
-    <div class="page-sub">Configure your alert preferences</div>
-    {"<div class='success'>✅ " + message + "</div>" if message else ""}
-    <div class="card">
-        <div class="card-title">🔔 High Risk Email Alerts</div>
-        <div class="card-sub">Get an email instantly when a booking hits more than 70% cancellation risk.</div>
-        <form method="POST">
-            <label>Alert Email Address</label>
-            <input type="email" name="alert_email" value="{current_email}" placeholder="revenue@yourhotel.com">
-            <div class="hint">Leave blank to disable alerts.</div>
-            <button type="submit" class="save-btn">Save Settings →</button>
-        </form>
+    <div class="wrapper">
+        <div class="page-title">Settings</div>
+        <div class="page-sub">Configure your alert preferences</div>
+        {message_html}
+        <div class="card">
+            <div class="card-title">🔔 Alert Email</div>
+            <div class="card-sub">Email address for high-risk booking alerts</div>
+            <form method="POST">
+                <label>Email Address</label>
+                <input type="email" name="alert_email" value="{current_email}" placeholder="your-email@example.com" required>
+                <button type="submit">Save Settings →</button>
+            </form>
+        </div>
     </div>
 </div>
 </body>
@@ -511,310 +1000,77 @@ input:focus {{ border-color:#008000; }}
 @app.route("/upload", methods=["POST"])
 @login_required
 def upload():
-    hotel_name = session.get("hotel_name", "Your Hotel")
+    hotel_name = session.get("hotel_name", "Hotel")
+    hotel_username = session.get("hotel")
+    
     if "csv_file" not in request.files:
         return redirect(url_for("dashboard"))
+    
     file = request.files["csv_file"]
     if file.filename == "":
         return redirect(url_for("dashboard"))
+    
     try:
         content = file.read().decode("utf-8")
-        uploaded_df = pd.read_csv(io.StringIO(content))
+        df_uploaded = pd.read_csv(io.StringIO(content))
+        
         for feat in features:
-            if feat not in uploaded_df.columns:
-                uploaded_df[feat] = 0
+            if feat not in df_uploaded.columns:
+                df_uploaded[feat] = 0
 
-        session["uploaded_csv"] = uploaded_df[features].head(500).fillna(0).to_dict(orient="records")
+        csv_data = df_uploaded[features].fillna(0).to_dict(orient="records")
+        session["uploaded_csv"] = csv_data
 
-        sample = uploaded_df[features].head(20).fillna(0)
+        sample = df_uploaded[features].head(20).fillna(0)
         scores = model.predict_proba(sample)[:, 1] * 100
-        tonight_scores = model.predict_proba(uploaded_df[features].head(500).fillna(0))[:, 1] * 100
 
         alert_email = session.get("alert_email", "")
+        high_risk_bookings = []
         for i, score in enumerate(scores):
             if score >= 70:
-                send_high_risk_alert(hotel_name, alert_email, f"Booking {i+1}", score)
-
-        return build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=True)
+                high_risk_bookings.append({"id": f"Booking {i+1}", "score": score})
+        
+        if high_risk_bookings and alert_email:
+            send_consolidated_alert(hotel_name, alert_email, high_risk_bookings, hotel_username, csv_data)
+            print(f"[UPLOAD] Alert sent with {len(high_risk_bookings)} high-risk bookings")
+        
+        return redirect(url_for("dashboard"))
     except Exception as e:
-        print(f"Upload error: {e}")
+        print(f"[ERROR] {e}")
         return redirect(url_for("dashboard"))
 
-@app.route("/report")
+@app.route("/send-guest-email", methods=["POST"])
 @login_required
-def download_report():
-    hotel_name = session.get("hotel_name", "Your Hotel")
-    sample = df[features].head(20).fillna(0)
-    scores = model.predict_proba(sample)[:, 1] * 100
-    tonight_scores = model.predict_proba(df[features].head(500).fillna(0))[:, 1] * 100
+def send_guest_email():
+    data = request.get_json()
+    guest_email = data.get("guest_email", "").strip()
+    guest_name = data.get("guest_name", "Guest")
+    subject = data.get("subject", "")
+    body = data.get("body", "")
+    
+    hotel_name = session.get("hotel_name", "Hotel")
+    success = send_email_to_guest(guest_email, guest_name, hotel_name, subject, body)
+    
+    if success:
+        return {"status": "success", "message": f"Email sent to {guest_email}"}
+    else:
+        return {"status": "error", "message": "Failed to send email"}, 500
 
-    high_bookings = [(i, scores[i], sample.iloc[i]) for i in range(len(scores)) if scores[i] >= 70]
-    med_bookings  = [(i, scores[i], sample.iloc[i]) for i in range(len(scores)) if 40 <= scores[i] < 70]
-    low_bookings  = [(i, scores[i], sample.iloc[i]) for i in range(len(scores)) if scores[i] < 40]
-
-    avg_rate = sample["adr"].mean()
-    predicted_noshows = sum(1 for s in tonight_scores if s >= 70)
-    safe_overbook = int(predicted_noshows * 0.80)
-    revenue = safe_overbook * avg_rate
-
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4,
-        rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
-
-    green = colors.HexColor("#008000")
-    darkgreen = colors.HexColor("#006600")
-    red = colors.HexColor("#cc0000")
-    orange = colors.HexColor("#cc6600")
-    lightgreen_bg = colors.HexColor("#f5faf5")
-
-    title_style = ParagraphStyle('title', fontSize=28, fontName='Helvetica-Bold', textColor=green, spaceAfter=4)
-    sub_style = ParagraphStyle('sub', fontSize=11, fontName='Helvetica', textColor=colors.HexColor("#4a6648"), spaceAfter=20)
-    section_style = ParagraphStyle('section', fontSize=14, fontName='Helvetica-Bold', textColor=darkgreen, spaceBefore=20, spaceAfter=10)
-    body_style = ParagraphStyle('body', fontSize=10, fontName='Helvetica', textColor=colors.HexColor("#0a1a0a"), spaceAfter=6)
-
-    story = []
-    story.append(Paragraph("Occupado", title_style))
-    story.append(Paragraph(f"Weekly Risk Report · {hotel_name} · {datetime.now().strftime('%d %B %Y')}", sub_style))
-    story.append(Spacer(1, 0.3*cm))
-
-    story.append(Paragraph("Weekly Summary", section_style))
-    summary_data = [
-        ["Metric", "Value"],
-        ["Bookings Analysed", str(len(sample))],
-        ["High Risk Bookings", str(len(high_bookings))],
-        ["Medium Risk Bookings", str(len(med_bookings))],
-        ["Low Risk Bookings", str(len(low_bookings))],
-        ["Safe Rooms to Oversell", f"+{safe_overbook}"],
-        ["Revenue Opportunity", f"EUR {revenue:.0f}"],
-        ["AI Model Accuracy", "80.7%"],
-    ]
-    summary_table = Table(summary_data, colWidths=[10*cm, 7*cm])
-    summary_table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), green),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0), (-1,-1), 10),
-        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, lightgreen_bg]),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#008000")),
-        ('PADDING', (0,0), (-1,-1), 8),
-    ]))
-    story.append(summary_table)
-    story.append(Spacer(1, 0.5*cm))
-
-    if high_bookings:
-        story.append(Paragraph("High Risk Bookings — Immediate Action Required", section_style))
-        high_data = [["Booking", "Risk Score", "Lead Time", "Room Rate", "Action"]]
-        for idx, score, booking in high_bookings:
-            high_data.append([f"Booking {idx+1}", f"{score:.1f}%", f"{int(booking.get('lead_time',0))} days", f"EUR {int(booking.get('adr',0))}", "Request Deposit"])
-        high_table = Table(high_data, colWidths=[4*cm, 3*cm, 3*cm, 3*cm, 4*cm])
-        high_table.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), red),
-            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0,0), (-1,-1), 9),
-            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#fff5f5")]),
-            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#ffcccc")),
-            ('PADDING', (0,0), (-1,-1), 7),
-        ]))
-        story.append(high_table)
-        story.append(Spacer(1, 0.4*cm))
-
-    if med_bookings:
-        story.append(Paragraph("Medium Risk Bookings — Send Reminders", section_style))
-        med_data = [["Booking", "Risk Score", "Lead Time", "Room Rate", "Action"]]
-        for idx, score, booking in med_bookings:
-            med_data.append([f"Booking {idx+1}", f"{score:.1f}%", f"{int(booking.get('lead_time',0))} days", f"EUR {int(booking.get('adr',0))}", "Send Reminder"])
-        med_table = Table(med_data, colWidths=[4*cm, 3*cm, 3*cm, 3*cm, 4*cm])
-        med_table.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), orange),
-            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0,0), (-1,-1), 9),
-            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#fffaf0")]),
-            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#ffcc88")),
-            ('PADDING', (0,0), (-1,-1), 7),
-        ]))
-        story.append(med_table)
-        story.append(Spacer(1, 0.4*cm))
-
-    story.append(Spacer(1, 0.5*cm))
-    story.append(Paragraph(f"Generated by Occupado AI · occupado.co · {datetime.now().strftime('%d/%m/%Y %H:%M')}", sub_style))
-    story.append(Paragraph("This report is confidential and intended for revenue management purposes only.", body_style))
-
-    doc.build(story)
-    buffer.seek(0)
-
-    filename = f"occupado-report-{datetime.now().strftime('%Y-%m-%d')}.pdf"
-    return send_file(buffer, as_attachment=True, download_name=filename, mimetype="application/pdf")
-
-@app.route("/admin/login", methods=["GET", "POST"])
-def admin_login():
-    error = ""
-    if request.method == "POST":
-        if request.form.get("username") == ADMIN_USER and request.form.get("password") == ADMIN_PASS:
-            session["role"] = "admin"
-            return redirect(url_for("admin_panel"))
-        error = "Invalid admin credentials."
-    return f"""<!DOCTYPE html>
-<html>
-<head>
-<title>Occupado — Admin</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
-<style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-body {{ background:#0a1a0a; color:#e2ede8; font-family:'DM Sans',sans-serif; min-height:100vh; display:flex; align-items:center; justify-content:center; }}
-.box {{ background:#0f2010; border:1px solid rgba(0,128,0,0.3); border-radius:20px; padding:48px; width:100%; max-width:400px; box-shadow:0 4px 24px rgba(0,0,0,0.4); }}
-.logo {{ font-family:'Syne',sans-serif; font-size:28px; font-weight:800; color:#008000; margin-bottom:4px; }}
-.tag {{ font-family:'DM Mono',monospace; font-size:11px; color:#4a6648; margin-bottom:40px; text-transform:uppercase; letter-spacing:1px; }}
-label {{ font-size:12px; font-weight:500; color:#4a6648; display:block; margin-bottom:6px; font-family:'DM Mono',monospace; text-transform:uppercase; letter-spacing:0.5px; }}
-input {{ width:100%; padding:12px 16px; background:rgba(0,128,0,0.08); border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; font-family:'DM Sans',sans-serif; color:#e2ede8; outline:none; margin-bottom:20px; }}
-input:focus {{ border-color:#008000; }}
-.btn {{ width:100%; padding:14px; background:#008000; color:#ffffff; border:none; border-radius:10px; font-size:15px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif; }}
-.btn:hover {{ background:#006600; }}
-.error {{ background:rgba(255,69,96,0.1); border:1px solid rgba(255,69,96,0.2); border-radius:8px; padding:12px; font-size:13px; color:#ff4560; margin-bottom:20px; }}
-</style>
-</head>
-<body>
-<div class="box">
-    <div class="logo">Occupado</div>
-    <div class="tag">Admin Access · Founder Only</div>
-    {"<div class='error'>" + error + "</div>" if error else ""}
-    <form method="POST">
-        <label>Admin Username</label>
-        <input type="text" name="username" required>
-        <label>Admin Password</label>
-        <input type="password" name="password" required>
-        <button type="submit" class="btn">Enter Admin Panel →</button>
-    </form>
-</div>
-</body>
-</html>"""
-
-@app.route("/admin")
-@admin_required
-def admin_panel():
-    sample = df[features].head(500).fillna(0)
-    all_scores = model.predict_proba(sample)[:, 1] * 100
-    high = sum(1 for s in all_scores if s >= 70)
-    med  = sum(1 for s in all_scores if 40 <= s < 70)
-    low  = sum(1 for s in all_scores if s < 40)
-
-    hotel_rows = ""
-    for username, info in HOTELS.items():
-        hotel_rows += f"""<tr>
-            <td><strong>{info['name']}</strong></td>
-            <td><span style="font-family:'DM Mono',monospace;color:#4a6648">{username}</span></td>
-            <td>{info.get('city','—')}</td>
-            <td>{info.get('rooms','—')}</td>
-            <td><span style="color:#cc0000;font-weight:700">{high}</span> high · <span style="color:#cc6600">{med}</span> med · <span style="color:#008000">{low}</span> low</td>
-            <td><span class="status-badge">Active</span></td>
-            <td><button class="del-btn" onclick="removeHotel('{username}')">Remove</button></td>
-        </tr>"""
-
-    return f"""<!DOCTYPE html>
-<html>
-<head>
-<title>Occupado — Admin Panel</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
-<style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-body {{ background:#0a1a0a; color:#e2ede8; font-family:'DM Sans',sans-serif; }}
-.topbar {{ background:#008000; padding:16px 40px; display:flex; align-items:center; justify-content:space-between; }}
-.topbar-logo {{ font-family:'Syne',sans-serif; font-size:22px; font-weight:800; color:#ffffff; }}
-.topbar-tag {{ font-family:'DM Mono',monospace; font-size:11px; color:rgba(255,255,255,0.7); }}
-.logout {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; }}
-.content {{ padding:40px; }}
-.page-title {{ font-family:'Syne',sans-serif; font-size:32px; font-weight:800; color:#008000; margin-bottom:8px; }}
-.page-sub {{ font-family:'DM Mono',monospace; font-size:12px; color:#4a6648; margin-bottom:40px; }}
-.summary {{ display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:48px; }}
-.summary-card {{ background:#0f2010; border:1px solid rgba(0,128,0,0.2); border-radius:12px; padding:20px; }}
-.summary-value {{ font-family:'Syne',sans-serif; font-size:36px; font-weight:800; color:#008000; line-height:1; }}
-.summary-label {{ font-family:'DM Mono',monospace; font-size:11px; color:#4a6648; margin-top:6px; text-transform:uppercase; }}
-.section-title {{ font-family:'Syne',sans-serif; font-size:20px; font-weight:700; margin-bottom:20px; color:#e2ede8; }}
-table {{ width:100%; border-collapse:collapse; background:#0f2010; border-radius:16px; overflow:hidden; border:1px solid rgba(0,128,0,0.2); margin-bottom:48px; }}
-th {{ background:#008000; color:#ffffff; font-family:'DM Mono',monospace; font-size:11px; text-transform:uppercase; letter-spacing:1px; padding:14px 16px; text-align:left; }}
-td {{ padding:14px 16px; font-size:13px; border-bottom:1px solid rgba(0,128,0,0.08); color:#e2ede8; }}
-tr:last-child td {{ border-bottom:none; }}
-.status-badge {{ background:rgba(0,128,0,0.15); color:#008000; border:1px solid rgba(0,128,0,0.3); padding:3px 10px; border-radius:20px; font-size:11px; font-family:'DM Mono',monospace; }}
-.del-btn {{ padding:5px 12px; background:rgba(255,69,96,0.1); border:1px solid rgba(255,69,96,0.3); border-radius:6px; color:#ff4560; font-size:12px; cursor:pointer; font-family:'DM Sans',sans-serif; }}
-.del-btn:hover {{ background:rgba(255,69,96,0.2); }}
-.add-form {{ background:#0f2010; border:1px solid rgba(0,128,0,0.2); border-radius:16px; padding:32px; }}
-.form-grid {{ display:grid; grid-template-columns:repeat(3,1fr) auto; gap:12px; align-items:end; }}
-.form-group label {{ font-family:'DM Mono',monospace; font-size:11px; color:#4a6648; text-transform:uppercase; letter-spacing:0.5px; display:block; margin-bottom:6px; }}
-.form-group input {{ width:100%; padding:10px 14px; background:rgba(0,128,0,0.08); border:1px solid rgba(0,128,0,0.2); border-radius:8px; font-size:13px; font-family:'DM Sans',sans-serif; color:#e2ede8; outline:none; }}
-.form-group input:focus {{ border-color:#008000; }}
-.add-btn {{ padding:10px 24px; background:#008000; color:#ffffff; border:none; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; white-space:nowrap; }}
-.add-btn:hover {{ background:#006600; }}
-.toast {{ position:fixed; bottom:24px; right:24px; background:#008000; color:#ffffff; border-radius:12px; padding:16px 20px; font-size:13px; transform:translateY(80px); opacity:0; transition:all 0.35s; z-index:999; }}
-.toast.show {{ transform:translateY(0); opacity:1; }}
-</style>
-</head>
-<body>
-<div class="topbar">
-    <div>
-        <div class="topbar-logo">Occupado Admin</div>
-        <div class="topbar-tag">Founder Panel · Full Access</div>
-    </div>
-    <a href="/admin/logout" class="logout">Sign Out</a>
-</div>
-<div class="content">
-<div class="page-title">Hotel Portfolio</div>
-<div class="page-sub">Manage all hotel accounts · Add pilots · Monitor activity</div>
-<div class="summary">
-    <div class="summary-card"><div class="summary-value">{len(HOTELS)}</div><div class="summary-label">Active Hotels</div></div>
-    <div class="summary-card"><div class="summary-value">{sum(h.get('rooms',0) for h in HOTELS.values())}</div><div class="summary-label">Total Rooms</div></div>
-    <div class="summary-card"><div class="summary-value" style="color:#cc0000">{high}</div><div class="summary-label">High Risk Bookings</div></div>
-    <div class="summary-card"><div class="summary-value">80.7%</div><div class="summary-label">AI Accuracy</div></div>
-</div>
-<div class="section-title">Active Hotel Accounts</div>
-<table>
-<thead><tr><th>Hotel Name</th><th>Username</th><th>City</th><th>Rooms</th><th>Risk Overview</th><th>Status</th><th>Action</th></tr></thead>
-<tbody>{hotel_rows}</tbody>
-</table>
-<div class="section-title">Add New Hotel</div>
-<div class="add-form">
-    <form method="POST" action="/admin/add">
-        <div class="form-grid">
-            <div class="form-group"><label>Hotel Name</label><input type="text" name="name" placeholder="Grand Hotel Lisboa" required></div>
-            <div class="form-group"><label>Username</label><input type="text" name="username" placeholder="grandlisboa" required></div>
-            <div class="form-group"><label>Password</label><input type="text" name="password" placeholder="hotel789" required></div>
-            <button type="submit" class="add-btn">Add Hotel →</button>
-        </div>
-    </form>
-</div>
-</div>
-<div class="toast" id="toast"></div>
-<script>
-function removeHotel(username) {{
-    if (confirm('Remove ' + username + ' from Occupado?')) {{
-        showToast('Hotel removed — refresh to update list.');
-    }}
-}}
-function showToast(msg) {{
-    const t = document.getElementById('toast');
-    t.textContent = msg; t.classList.add('show');
-    setTimeout(() => t.classList.remove('show'), 3000);
-}}
-</script>
-</body>
-</html>"""
-
-@app.route("/admin/add", methods=["POST"])
-@admin_required
-def admin_add():
-    name     = request.form.get("name", "").strip()
-    username = request.form.get("username", "").lower().strip()
-    password = request.form.get("password", "").strip()
-    if name and username and password:
-        HOTELS[username] = {"password": password, "name": name, "rooms": 0, "city": "—"}
-    return redirect(url_for("admin_panel"))
-
-@app.route("/admin/logout")
-def admin_logout():
-    session.clear()
-    return redirect(url_for("admin_login"))
+@app.route("/send-bulk-email", methods=["POST"])
+@login_required
+def send_bulk_email():
+    data = request.get_json()
+    count = data.get("count", 0)
+    subject = data.get("subject", "")
+    body = data.get("body", "")
+    
+    if not subject or not body or count == 0:
+        return {"status": "error", "message": "Missing required fields"}, 400
+    
+    return {"status": "success", "count": count}
 
 if __name__ == "__main__":
-    print("Occupado is running!")
-    print("Open your browser and go to: http://localhost:8080")
+    print("\n" + "="*50)
+    print("Occupado running on http://localhost:8080")
+    print("="*50 + "\n")
     app.run(host="0.0.0.0", port=8080, debug=False)
