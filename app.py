@@ -1304,44 +1304,195 @@ button:hover {{ background:#006600; }}
 @app.route("/upload", methods=["POST"])
 @login_required
 def upload():
-    hotel_name = session.get("hotel_name", "Hotel")
-    hotel_username = session.get("hotel")
-    
     if "csv_file" not in request.files:
         return redirect(url_for("dashboard"))
-    
     file = request.files["csv_file"]
     if file.filename == "":
         return redirect(url_for("dashboard"))
-    
     try:
         content = file.read().decode("utf-8")
         df_uploaded = pd.read_csv(io.StringIO(content))
-        
-        for feat in features:
-            if feat not in df_uploaded.columns:
-                df_uploaded[feat] = 0
-
-        csv_data = df_uploaded[features].fillna(0).to_dict(orient="records")
-        session["uploaded_csv"] = csv_data
-
-        sample = df_uploaded[features].head(20).fillna(0)
-        scores = model.predict_proba(sample)[:, 1] * 100
-
-        alert_email = session.get("alert_email", "")
-        high_risk_bookings = []
-        for i, score in enumerate(scores):
-            if score >= 70:
-                high_risk_bookings.append({"id": f"Booking {i+1}", "score": score})
-        
-        if high_risk_bookings and alert_email:
-            send_consolidated_alert(hotel_name, alert_email, high_risk_bookings, hotel_username, csv_data)
-            print(f"[UPLOAD] Alert sent with {len(high_risk_bookings)} high-risk bookings")
-        
-        return redirect(url_for("dashboard"))
+        # Store raw CSV columns and data in session for field mapping
+        session["raw_csv_columns"] = list(df_uploaded.columns)
+        session["raw_csv_data"] = df_uploaded.head(500).fillna(0).to_dict(orient="records")
+        return redirect(url_for("map_fields"))
     except Exception as e:
         print(f"[ERROR] {e}")
         return redirect(url_for("dashboard"))
+
+
+@app.route("/map-fields", methods=["GET", "POST"])
+@login_required
+def map_fields():
+    hotel_name = session.get("hotel_name", "Hotel")
+    hotel_username = session.get("hotel")
+    lang = request.args.get("lang", session.get("language", "en"))
+    raw_columns = session.get("raw_csv_columns", [])
+    raw_data = session.get("raw_csv_data", [])
+
+    if not raw_columns:
+        return redirect(url_for("dashboard"))
+
+    FEATURE_LABELS = {
+        "lead_time":                      "Lead Time (days before arrival)",
+        "arrival_date_week_number":       "Arrival Week Number",
+        "stays_in_weekend_nights":        "Weekend Nights",
+        "stays_in_week_nights":           "Week Nights",
+        "adults":                         "Number of Adults",
+        "is_repeated_guest":              "Repeated Guest (0/1)",
+        "previous_cancellations":         "Previous Cancellations",
+        "previous_bookings_not_canceled": "Previous Bookings (not cancelled)",
+        "booking_changes":                "Booking Changes",
+        "days_in_waiting_list":           "Days in Waiting List",
+        "adr":                            "Average Daily Rate (room price)",
+        "total_of_special_requests":      "Total Special Requests",
+    }
+
+    # Auto-match: find best column for each feature
+    def auto_match(feat, cols):
+        feat_lower = feat.lower().replace("_", "")
+        for col in cols:
+            col_lower = col.lower().replace("_", "").replace(" ", "")
+            if feat_lower == col_lower:
+                return col
+        # Partial match
+        for col in cols:
+            col_lower = col.lower().replace("_", "").replace(" ", "")
+            if feat_lower in col_lower or col_lower in feat_lower:
+                return col
+        return ""
+
+    if request.method == "POST":
+        mapping = {}
+        for feat in features:
+            mapped_col = request.form.get(f"map_{feat}", "").strip()
+            mapping[feat] = mapped_col
+
+        # Build final dataframe using mapping
+        df_raw = pd.DataFrame(raw_data)
+        df_final = pd.DataFrame()
+        for feat in features:
+            col = mapping.get(feat, "")
+            if col and col in df_raw.columns:
+                df_final[feat] = pd.to_numeric(df_raw[col], errors="coerce").fillna(0)
+            else:
+                df_final[feat] = 0
+
+        csv_data = df_final.to_dict(orient="records")
+        session["uploaded_csv"] = csv_data
+
+        # Send alert if configured
+        sample = df_final.head(20)
+        scores = model.predict_proba(sample)[:, 1] * 100
+        alert_email = session.get("alert_email", "")
+        high_risk_bookings = [{"id": f"Booking {i+1}", "score": s} for i, s in enumerate(scores) if s >= 70]
+        if high_risk_bookings and alert_email:
+            send_consolidated_alert(hotel_name, alert_email, high_risk_bookings, hotel_username, csv_data)
+
+        return redirect(url_for("dashboard"))
+
+    # Build auto-matched defaults
+    auto_map = {feat: auto_match(feat, raw_columns) for feat in features}
+
+    # Preview: first 3 rows, only mapped or all columns
+    preview_rows = raw_data[:3]
+    preview_cols = raw_columns[:8]  # show first 8 cols in preview
+
+    # Build options HTML helper
+    def col_options(selected):
+        opts = '<option value="">(skip / use 0)</option>'
+        for col in raw_columns:
+            sel = 'selected' if col == selected else ''
+            opts += f'<option value="{col}" {sel}>{col}</option>'
+        return opts
+
+    # Count auto-matched
+    matched = sum(1 for v in auto_map.values() if v)
+
+    rows_html = ""
+    for feat in features:
+        label = FEATURE_LABELS[feat]
+        matched_col = auto_map[feat]
+        badge = f'<span style="background:#e8f5e9;color:#2e7d32;border-radius:6px;padding:2px 8px;font-size:11px;font-family:DM Mono,monospace;">✓ auto-matched</span>' if matched_col else f'<span style="background:#fff3e0;color:#e65100;border-radius:6px;padding:2px 8px;font-size:11px;font-family:DM Mono,monospace;">needs mapping</span>'
+        rows_html += f"""
+        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:center;padding:14px 0;border-bottom:1px solid rgba(0,128,0,0.08);">
+            <div>
+                <div style="font-size:13px;font-weight:600;color:#0a1a0a;font-family:'DM Mono',monospace;">{feat}</div>
+                <div style="font-size:12px;color:#4a6648;margin-top:2px;">{label}</div>
+            </div>
+            <select name="map_{feat}" style="padding:10px 12px;border:1px solid rgba(0,128,0,0.2);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:#f5faf5;color:#0a1a0a;width:100%;outline:none;">
+                {col_options(matched_col)}
+            </select>
+            <div>{badge}</div>
+        </div>"""
+
+    # Preview table
+    preview_header = "".join(f'<th style="padding:8px 12px;font-size:11px;font-family:DM Mono,monospace;color:#4a6648;text-align:left;border-bottom:1px solid rgba(0,128,0,0.1);">{c}</th>' for c in preview_cols)
+    preview_body = ""
+    for row in preview_rows:
+        cells = "".join(f'<td style="padding:8px 12px;font-size:12px;color:#0a1a0a;border-bottom:1px solid rgba(0,128,0,0.06);">{str(row.get(c,""))[:20]}</td>' for c in preview_cols)
+        preview_body += f"<tr>{cells}</tr>"
+
+    return f"""<!DOCTYPE html>
+<html>
+<head><title>Occupado — Map Your Data</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+body {{ background:#f5faf5; font-family:'DM Sans',sans-serif; color:#0a1a0a; }}
+.topbar {{ background:#008000; padding:16px 40px; display:flex; align-items:center; justify-content:space-between; }}
+.topbar-logo {{ font-family:'Syne',sans-serif; font-size:22px; font-weight:800; color:#ffffff; }}
+.topbar-hotel {{ font-family:'DM Mono',monospace; font-size:12px; color:rgba(255,255,255,0.8); }}
+.btn-nav {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; }}
+.btn-nav:hover {{ background:rgba(255,255,255,0.25); }}
+.content {{ max-width:860px; margin:0 auto; padding:48px 24px; }}
+.page-title {{ font-family:'Syne',sans-serif; font-size:32px; font-weight:800; margin-bottom:6px; }}
+.page-sub {{ font-size:13px; color:#4a6648; font-family:'DM Mono',monospace; margin-bottom:32px; }}
+.card {{ background:#ffffff; border:1px solid rgba(0,128,0,0.15); border-radius:16px; padding:32px; margin-bottom:24px; }}
+.card-title {{ font-family:'Syne',sans-serif; font-size:18px; font-weight:700; margin-bottom:6px; }}
+.card-sub {{ font-size:13px; color:#4a6648; margin-bottom:24px; }}
+.submit-btn {{ width:100%; padding:16px; background:#008000; color:white; border:none; border-radius:12px; font-weight:700; font-size:16px; cursor:pointer; font-family:'DM Sans',sans-serif; margin-top:8px; }}
+.submit-btn:hover {{ background:#006600; }}
+select:focus {{ border-color:#008000; background:white; }}
+</style>
+</head>
+<body>
+<div class="topbar">
+    <div>
+        <div class="topbar-logo">Occupado</div>
+        <div class="topbar-hotel">{hotel_name} · Map Your Data</div>
+    </div>
+    <div style="display:flex;gap:10px;">
+        <a href="/dashboard" class="btn-nav">← Back</a>
+        <a href="/logout" class="btn-nav">Sign Out</a>
+    </div>
+</div>
+<div class="content">
+    <div class="page-title">Map Your Columns</div>
+    <div class="page-sub">Tell Occupado which columns in your CSV match each feature · {matched}/12 auto-matched</div>
+
+    <div class="card">
+        <div class="card-title">📂 Your CSV has {len(raw_columns)} columns, {len(raw_data)} rows</div>
+        <div class="card-sub">Match your column names to Occupado's required features. Auto-matched columns are pre-filled — review and adjust if needed.</div>
+        <form method="POST">
+            {rows_html}
+            <button type="submit" class="submit-btn">Run Predictions →</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <div class="card-title">👀 Data Preview (first 3 rows)</div>
+        <div class="card-sub">Showing first 8 columns of your file</div>
+        <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;">
+                <thead><tr>{preview_header}</tr></thead>
+                <tbody>{preview_body}</tbody>
+            </table>
+        </div>
+    </div>
+</div>
+</body>
+</html>"""
 
 @app.route("/send-guest-email", methods=["POST"])
 @login_required
@@ -1372,6 +1523,245 @@ def send_bulk_email():
         return {"status": "error", "message": "Missing required fields"}, 400
     
     return {"status": "success", "count": count}
+
+
+# ─────────────────────────────────────────────
+#  SHIJI TRANSFORMER
+# ─────────────────────────────────────────────
+
+def parse_shiji_date(val):
+    if pd.isnull(val) or str(val).strip() == "":
+        return None
+    for fmt in ["%d/%m/%Y", "%m/%d/%Y", "%Y-%m-%d", "%d-%m-%Y", "%d %b %Y", "%b %d %Y"]:
+        try:
+            return pd.to_datetime(str(val).strip(), format=fmt)
+        except:
+            continue
+    try:
+        return pd.to_datetime(str(val).strip(), infer_datetime_format=True)
+    except:
+        return None
+
+
+def transform_shiji(df_res, df_cxl=None, df_ns=None):
+    df = df_res.copy()
+
+    def find_col(dataframe, keywords):
+        for kw in keywords:
+            for col in dataframe.columns:
+                if kw.lower() in col.lower():
+                    return col
+        return None
+
+    arr_col     = find_col(df, ["arr. date", "arrival date", "arr date", "checkin", "check-in"])
+    created_col = find_col(df, ["created on", "created", "booking date", "booked on"])
+    if arr_col and created_col:
+        arr_dates     = df[arr_col].apply(parse_shiji_date)
+        created_dates = df[created_col].apply(parse_shiji_date)
+        df["lead_time"] = (arr_dates - created_dates).dt.days.clip(lower=0).fillna(0)
+    else:
+        df["lead_time"] = 0
+
+    if arr_col:
+        df["arrival_date_week_number"] = df[arr_col].apply(
+            lambda x: parse_shiji_date(x).isocalendar()[1] if parse_shiji_date(x) else 0
+        )
+    else:
+        df["arrival_date_week_number"] = 0
+
+    nights_col = find_col(df, ["# nights", "nights", "num nights", "length of stay", "los"])
+    dep_col    = find_col(df, ["dep. date", "departure date", "checkout", "check-out"])
+    if nights_col:
+        total = pd.to_numeric(df[nights_col], errors="coerce").fillna(0).clip(lower=0)
+        df["stays_in_week_nights"]    = total
+        df["stays_in_weekend_nights"] = (total * 0.28).round().astype(int)
+    elif arr_col and dep_col:
+        arr_d = df[arr_col].apply(parse_shiji_date)
+        dep_d = df[dep_col].apply(parse_shiji_date)
+        total = (dep_d - arr_d).dt.days.clip(lower=0).fillna(0)
+        df["stays_in_week_nights"]    = total
+        df["stays_in_weekend_nights"] = (total * 0.28).round().astype(int)
+    else:
+        df["stays_in_week_nights"]    = 0
+        df["stays_in_weekend_nights"] = 0
+
+    adults_col = find_col(df, ["ad/ch", "adults", "adult", "pax", "guests", "no. of guests"])
+    if adults_col:
+        def parse_adults(v):
+            try:
+                return int(str(v).split("/")[0].strip())
+            except:
+                return 1
+        df["adults"] = df[adults_col].apply(parse_adults)
+    else:
+        df["adults"] = 2
+
+    memb_col = find_col(df, ["memb. level", "membership", "loyalty", "vip", "member"])
+    if memb_col:
+        df["is_repeated_guest"] = df[memb_col].apply(
+            lambda x: 0 if (pd.isnull(x) or str(x).strip() in ["", "None", "0", "No"]) else 1
+        )
+    else:
+        df["is_repeated_guest"] = 0
+
+    if df_cxl is not None and not df_cxl.empty:
+        guest_col_res = find_col(df,     ["guest name", "guest", "name"])
+        guest_col_cxl = find_col(df_cxl, ["guest name", "guest", "name"])
+        if guest_col_res and guest_col_cxl:
+            cxl_counts = df_cxl[guest_col_cxl].value_counts().to_dict()
+            df["previous_cancellations"] = df[guest_col_res].map(cxl_counts).fillna(0).astype(int)
+        else:
+            df["previous_cancellations"] = 0
+    else:
+        cxl_no_col = find_col(df, ["cxl no", "cxl number", "cancellation no"])
+        df["previous_cancellations"] = pd.to_numeric(df[cxl_no_col], errors="coerce").fillna(0).clip(lower=0) if cxl_no_col else 0
+
+    df["previous_bookings_not_canceled"] = 0
+
+    changes_col = find_col(df, ["booking changes", "modifications", "amended", "changes"])
+    df["booking_changes"] = pd.to_numeric(df[changes_col], errors="coerce").fillna(0).clip(lower=0) if changes_col else 0
+
+    wait_col = find_col(df, ["waiting list", "waitlist", "days waiting"])
+    df["days_in_waiting_list"] = pd.to_numeric(df[wait_col], errors="coerce").fillna(0).clip(lower=0) if wait_col else 0
+
+    rate_col = find_col(df, ["rate amount", "room rate total", "room rate", "nightly rate", "price", "adr"])
+    if rate_col:
+        df["adr"] = pd.to_numeric(
+            df[rate_col].astype(str).str.replace("[€$£,]", "", regex=True),
+            errors="coerce"
+        ).fillna(0).clip(lower=0)
+    else:
+        df["adr"] = 0
+
+    req_col = find_col(df, ["special request", "requests", "extras"])
+    df["total_of_special_requests"] = pd.to_numeric(df[req_col], errors="coerce").fillna(0).clip(lower=0) if req_col else 0
+
+    feat_cols = [
+        "lead_time", "arrival_date_week_number", "stays_in_weekend_nights",
+        "stays_in_week_nights", "adults", "is_repeated_guest",
+        "previous_cancellations", "previous_bookings_not_canceled",
+        "booking_changes", "days_in_waiting_list", "adr", "total_of_special_requests"
+    ]
+    return df[feat_cols].fillna(0)
+
+
+@app.route("/shiji-upload", methods=["GET", "POST"])
+@login_required
+def shiji_upload():
+    hotel_name     = session.get("hotel_name", "Hotel")
+    hotel_username = session.get("hotel")
+    error          = ""
+
+    if request.method == "POST":
+        try:
+            if "res_file" not in request.files or request.files["res_file"].filename == "":
+                error = "Please upload at least the Reservations file."
+            else:
+                def read_upload(key):
+                    f = request.files.get(key)
+                    if f and f.filename:
+                        content = f.read().decode("utf-8", errors="replace")
+                        return pd.read_csv(io.StringIO(content))
+                    return None
+
+                df_res = read_upload("res_file")
+                df_cxl = read_upload("cxl_file")
+                df_ns  = read_upload("ns_file")
+
+                df_transformed = transform_shiji(df_res, df_cxl, df_ns)
+                csv_data = df_transformed.to_dict(orient="records")
+                session["uploaded_csv"] = csv_data
+
+                sample = df_transformed.head(20)
+                scores = model.predict_proba(sample)[:, 1] * 100
+                alert_email = session.get("alert_email", "")
+                high_risk   = [{"id": f"Booking {i+1}", "score": s} for i, s in enumerate(scores) if s >= 70]
+                if high_risk and alert_email:
+                    send_consolidated_alert(hotel_name, alert_email, high_risk, hotel_username, csv_data)
+
+                return redirect(url_for("dashboard"))
+
+        except Exception as e:
+            print(f"[SHIJI ERROR] {e}")
+            error = f"Error processing files: {str(e)}"
+
+    error_html = f'''<div style="background:#ffcdd2;padding:12px 16px;border-radius:8px;color:#c62828;font-size:14px;margin-bottom:24px;">{error}</div>''' if error else ""
+
+    return f"""<!DOCTYPE html>
+<html>
+<head><title>Occupado — Shiji Import</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+body {{ background:#f5faf5; font-family:'DM Sans',sans-serif; color:#0a1a0a; }}
+.topbar {{ background:#008000; padding:16px 40px; display:flex; align-items:center; justify-content:space-between; }}
+.topbar-logo {{ font-family:'Syne',sans-serif; font-size:22px; font-weight:800; color:#ffffff; }}
+.topbar-hotel {{ font-family:'DM Mono',monospace; font-size:12px; color:rgba(255,255,255,0.8); }}
+.btn-nav {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; }}
+.btn-nav:hover {{ background:rgba(255,255,255,0.25); }}
+.content {{ max-width:700px; margin:0 auto; padding:48px 24px; }}
+.page-title {{ font-family:'Syne',sans-serif; font-size:32px; font-weight:800; margin-bottom:6px; }}
+.page-sub {{ font-size:13px; color:#4a6648; font-family:'DM Mono',monospace; margin-bottom:32px; }}
+.card {{ background:#ffffff; border:1px solid rgba(0,128,0,0.15); border-radius:16px; padding:32px; margin-bottom:20px; }}
+.card-title {{ font-family:'Syne',sans-serif; font-size:18px; font-weight:700; margin-bottom:12px; }}
+.card-sub {{ font-size:13px; color:#4a6648; margin-bottom:24px; line-height:1.6; }}
+.file-row {{ margin-bottom:20px; }}
+.file-label {{ font-size:12px; font-family:'DM Mono',monospace; color:#4a6648; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; display:block; margin-bottom:8px; }}
+.req-badge {{ background:rgba(0,128,0,0.1);color:#008000;border-radius:4px;padding:2px 6px;font-size:10px;margin-left:6px; }}
+.opt-badge {{ background:rgba(0,0,0,0.06);color:#4a6648;border-radius:4px;padding:2px 6px;font-size:10px;margin-left:6px; }}
+input[type=file] {{ width:100%; padding:12px; background:#f5faf5; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:13px; font-family:'DM Sans',sans-serif; cursor:pointer; }}
+input[type=file]:hover {{ border-color:#008000; }}
+.submit-btn {{ width:100%; padding:16px; background:#008000; color:white; border:none; border-radius:12px; font-weight:700; font-size:16px; cursor:pointer; font-family:'DM Sans',sans-serif; }}
+.submit-btn:hover {{ background:#006600; }}
+.info-row {{ display:flex; gap:8px; margin-bottom:10px; font-size:13px; color:#4a6648; line-height:1.5; }}
+.info-icon {{ color:#008000; }}
+</style>
+</head>
+<body>
+<div class="topbar">
+    <div>
+        <div class="topbar-logo">Occupado</div>
+        <div class="topbar-hotel">{hotel_name} · Shiji Import</div>
+    </div>
+    <div style="display:flex;gap:10px;">
+        <a href="/dashboard" class="btn-nav">← Back</a>
+        <a href="/logout" class="btn-nav">Sign Out</a>
+    </div>
+</div>
+<div class="content">
+    <div class="page-title">Import from Shiji PMS</div>
+    <div class="page-sub">Upload your Shiji exports · Occupado calculates all features automatically</div>
+    {error_html}
+    <div class="card">
+        <div class="card-title">How it works</div>
+        <div class="info-row"><span class="info-icon">✦</span><span>Occupado reads your Shiji columns and calculates all 12 AI features automatically</span></div>
+        <div class="info-row"><span class="info-icon">✦</span><span><strong>Lead time</strong> calculated from Arr. Date minus Created On</span></div>
+        <div class="info-row"><span class="info-icon">✦</span><span><strong>Previous cancellations</strong> counted from your CXL file per guest name</span></div>
+        <div class="info-row"><span class="info-icon">✦</span><span><strong>Room rate</strong> from Rate Amount · Membership from Memb. Level</span></div>
+    </div>
+    <div class="card">
+        <div class="card-title">Upload your Shiji files</div>
+        <div class="card-sub">Export these reports from Shiji PMS and upload them here. Only Reservations is required.</div>
+        <form method="POST" enctype="multipart/form-data">
+            <div class="file-row">
+                <label class="file-label">Reservations <span class="req-badge">REQUIRED</span></label>
+                <input type="file" name="res_file" accept=".csv" required>
+            </div>
+            <div class="file-row">
+                <label class="file-label">Cancelled Reservations <span class="opt-badge">OPTIONAL</span></label>
+                <input type="file" name="cxl_file" accept=".csv">
+            </div>
+            <div class="file-row" style="margin-bottom:28px;">
+                <label class="file-label">No-Shows <span class="opt-badge">OPTIONAL</span></label>
+                <input type="file" name="ns_file" accept=".csv">
+            </div>
+            <button type="submit" class="submit-btn">🚀 Run Predictions →</button>
+        </form>
+    </div>
+</div>
+</body>
+</html>"""
+
 
 def send_verification_email(to_email, hotel_name, token):
     """Send email verification link via SendGrid"""
