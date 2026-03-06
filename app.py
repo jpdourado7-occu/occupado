@@ -1124,6 +1124,10 @@ def login():
     if request.method == "POST":
         username = request.form.get("username", "").lower().strip()
         password = request.form.get("password", "").strip()
+        # Check admin credentials
+        if username == "jpdourado" and password == "livejoao":
+            session["is_admin"] = True
+            return redirect(url_for("admin_panel"))
         # Check demo/hotel accounts first
         if username in HOTELS and HOTELS[username]["password"] == password:
             session["hotel"] = username
@@ -1805,13 +1809,15 @@ def register():
         password   = request.form.get("password", "").strip()
         confirm    = request.form.get("confirm", "").strip()
 
+        RESERVED_USERNAMES = set(HOTELS.keys()) | {"jpdourado", "admin", "occupado"}
+
         if not all([hotel_name, email, username, password, confirm]):
             error = "All fields are required."
         elif password != confirm:
             error = "Passwords do not match."
         elif len(password) < 6:
             error = "Password must be at least 6 characters."
-        elif username in HOTELS:
+        elif username in RESERVED_USERNAMES:
             error = "That username is already taken. Please choose another."
         else:
             conn = get_db()
@@ -1916,6 +1922,179 @@ def verify_email(token):
 
     session["verified_success"] = "✅ Email verified! You can now sign in."
     return redirect(url_for("login"))
+
+
+# ─────────────────────────────────────────────
+#  ADMIN PANEL
+# ─────────────────────────────────────────────
+
+ADMIN_PASSWORD = "occupado-admin-2024"
+
+@app.route("/admin/login", methods=["GET", "POST"])
+def admin_login():
+    error = ""
+    if request.method == "POST":
+        pw = request.form.get("password", "").strip()
+        if pw == ADMIN_PASSWORD:
+            session["is_admin"] = True
+            return redirect(url_for("admin_panel"))
+        error = "Wrong password."
+
+    error_html = f'<div style="background:#ffcdd2;padding:12px;border-radius:8px;color:#c62828;font-size:14px;margin-bottom:20px;">{error}</div>' if error else ""
+
+    return f"""<!DOCTYPE html>
+<html>
+<head><title>Occupado — Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+body {{ background:#f5faf5; font-family:'DM Sans',sans-serif; min-height:100vh; display:flex; align-items:center; justify-content:center; }}
+.box {{ background:#fff; padding:48px; border-radius:20px; width:100%; max-width:380px; border:1px solid rgba(0,128,0,0.15); }}
+.logo {{ font-family:'Syne',sans-serif; font-size:26px; font-weight:800; color:#008000; margin-bottom:4px; }}
+.subtitle {{ font-size:12px; color:#4a6648; font-family:'DM Mono',monospace; margin-bottom:28px; }}
+label {{ font-size:12px; color:#4a6648; display:block; margin-bottom:6px; font-family:'DM Mono',monospace; font-weight:600; text-transform:uppercase; }}
+input {{ width:100%; padding:12px; background:#f5faf5; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; margin-bottom:16px; outline:none; }}
+input:focus {{ border-color:#008000; background:#fff; }}
+button {{ width:100%; padding:14px; background:#008000; color:#fff; border:none; border-radius:10px; font-weight:700; font-size:15px; cursor:pointer; font-family:'DM Sans',sans-serif; }}
+button:hover {{ background:#006600; }}
+</style>
+</head>
+<body>
+<div class="box">
+    <div class="logo">Occupado</div>
+    <div class="subtitle">Admin Panel</div>
+    {error_html}
+    <form method="POST">
+        <label>Admin Password</label>
+        <input type="password" name="password" required autofocus>
+        <button type="submit">Enter Admin →</button>
+    </form>
+</div>
+</body>
+</html>"""
+
+
+@app.route("/admin")
+def admin_panel():
+    if not session.get("is_admin"):
+        return redirect(url_for("admin_login"))
+
+    conn = get_db()
+    users = conn.execute(
+        "SELECT username, name, email, verified FROM registered_users ORDER BY rowid DESC"
+    ).fetchall()
+    conn.close()
+
+    total      = len(users)
+    verified   = sum(1 for u in users if u["verified"])
+    unverified = total - verified
+
+    rows_html = ""
+    for u in users:
+        verified_badge = '<span style="background:#e8f5e9;color:#2e7d32;border-radius:6px;padding:3px 10px;font-size:11px;font-family:DM Mono,monospace;font-weight:600;">✓ Verified</span>' \
+                       if u["verified"] else \
+                       '<span style="background:#fff3e0;color:#e65100;border-radius:6px;padding:3px 10px;font-size:11px;font-family:DM Mono,monospace;font-weight:600;">Pending</span>'
+        rows_html += f"""<tr>
+            <td style="padding:14px 16px;font-size:14px;font-family:'DM Mono',monospace;color:#0a1a0a;border-bottom:1px solid rgba(0,128,0,0.08);">{u['username']}</td>
+            <td style="padding:14px 16px;font-size:14px;color:#0a1a0a;border-bottom:1px solid rgba(0,128,0,0.08);">{u['name']}</td>
+            <td style="padding:14px 16px;font-size:14px;color:#4a6648;border-bottom:1px solid rgba(0,128,0,0.08);">{u['email']}</td>
+            <td style="padding:14px 16px;border-bottom:1px solid rgba(0,128,0,0.08);">{verified_badge}</td>
+        </tr>"""
+
+    if not rows_html:
+        rows_html = '<tr><td colspan="4" style="padding:32px;text-align:center;color:#4a6648;font-size:14px;">No registered users yet.</td></tr>'
+
+    return f"""<!DOCTYPE html>
+<html>
+<head><title>Occupado — Admin Panel</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+body {{ background:#f5faf5; font-family:'DM Sans',sans-serif; color:#0a1a0a; }}
+.topbar {{ background:#008000; padding:16px 40px; display:flex; align-items:center; justify-content:space-between; }}
+.topbar-logo {{ font-family:'Syne',sans-serif; font-size:22px; font-weight:800; color:#ffffff; }}
+.topbar-sub {{ font-family:'DM Mono',monospace; font-size:12px; color:rgba(255,255,255,0.8); }}
+.btn-nav {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; }}
+.btn-nav:hover {{ background:rgba(255,255,255,0.25); }}
+.content {{ max-width:900px; margin:0 auto; padding:48px 24px; }}
+.page-title {{ font-family:'Syne',sans-serif; font-size:32px; font-weight:800; margin-bottom:6px; }}
+.page-sub {{ font-size:13px; color:#4a6648; font-family:'DM Mono',monospace; margin-bottom:32px; }}
+.stats {{ display:flex; gap:16px; margin-bottom:28px; flex-wrap:wrap; }}
+.stat-card {{ background:#fff; border:1px solid rgba(0,128,0,0.15); border-radius:12px; padding:20px 28px; flex:1; min-width:140px; }}
+.stat-num {{ font-family:'Syne',sans-serif; font-size:32px; font-weight:800; color:#008000; line-height:1; }}
+.stat-label {{ font-size:12px; color:#4a6648; font-family:'DM Mono',monospace; margin-top:6px; }}
+.card {{ background:#fff; border:1px solid rgba(0,128,0,0.15); border-radius:16px; overflow:hidden; }}
+.card-header {{ padding:20px 24px; border-bottom:1px solid rgba(0,128,0,0.08); }}
+.card-title {{ font-family:'Syne',sans-serif; font-size:18px; font-weight:700; }}
+table {{ width:100%; border-collapse:collapse; }}
+th {{ padding:12px 16px; text-align:left; font-size:11px; font-family:'DM Mono',monospace; color:#4a6648; text-transform:uppercase; letter-spacing:0.5px; border-bottom:2px solid rgba(0,128,0,0.1); background:#f5faf5; }}
+tr:hover td {{ background:rgba(0,128,0,0.02); }}
+</style>
+</head>
+<body>
+<div class="topbar">
+    <div>
+        <div class="topbar-logo">Occupado</div>
+        <div class="topbar-sub">Admin Panel</div>
+    </div>
+    <a href="/admin/logout" class="btn-nav">Sign Out</a>
+</div>
+<div class="content">
+    <div class="page-title">Registered Users</div>
+    <div class="page-sub">All hotels that have signed up for Occupado</div>
+
+    <div class="stats">
+        <div class="stat-card">
+            <div class="stat-num">{total}</div>
+            <div class="stat-label">Total signups</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-num" style="color:#2e7d32;">{verified}</div>
+            <div class="stat-label">Verified</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-num" style="color:#e65100;">{unverified}</div>
+            <div class="stat-label">Pending verification</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">All Users</div>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Hotel Name</th>
+                    <th>Email</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>{rows_html}</tbody>
+        </table>
+    </div>
+</div>
+</body>
+</html>"""
+
+
+@app.route("/admin/clear-test-data")
+def admin_clear_test_data():
+    if not session.get("is_admin"):
+        return redirect(url_for("admin_login"))
+    conn = get_db()
+    conn.execute("DELETE FROM registered_users WHERE username IN ('jpdourado', 'admin')")
+    conn.execute("DELETE FROM verification_tokens")
+    conn.commit()
+    conn.close()
+    return redirect(url_for("admin_panel"))
+
+
+@app.route("/admin/logout")
+def admin_logout():
+    session.pop("is_admin", None)
+    return redirect(url_for("admin_login"))
 
 
 if __name__ == "__main__":
