@@ -19,6 +19,248 @@ app.secret_key = "occupado-secret-2024"
 TOKEN_DIR = "/tmp/occupado_tokens"
 os.makedirs(TOKEN_DIR, exist_ok=True)
 
+# Language Translations (English, Dutch, French)
+TRANSLATIONS = {
+    "en": {
+        "occupado": "Occupado",
+        "ai_booking": "AI Booking Intelligence",
+        "settings": "Settings",
+        "sign_out": "Sign Out",
+        "live_dashboard": "Live Dashboard",
+        "bookings_analysed": "bookings analysed",
+        "upload_data": "Upload Your Booking Data",
+        "drop_csv": "📂 Drop your booking CSV here",
+        "export_pms": "Export from your PMS and upload",
+        "choose_file": "Choose CSV File",
+        "high_risk": "High Risk",
+        "medium_risk": "Medium Risk",
+        "low_risk": "Low Risk",
+        "optimizer": "Overbooking Optimizer",
+        "safe_rooms": "Safe rooms to oversell tonight",
+        "revenue": "Revenue opportunity: EUR",
+        "apply": "Apply Recommendation",
+        "bookings_analysed_stat": "Bookings analysed",
+        "predicted": "Predicted no-shows",
+        "confidence": "AI confidence",
+        "walk_risk": "Walk risk",
+        "avg_rate": "Avg room rate",
+        "take_action": "Take Action on High-Risk Bookings",
+        "send_mass": "Send Mass Email",
+        "send_high": "Send to all {high} high-risk bookings",
+        "send_btn": "Send Email to All →",
+        "request_dep": "Request Deposits",
+        "dep_template": "Quick template for deposits",
+        "dep_btn": "Send Deposit Request →",
+        "reminders": "Send Reminders",
+        "rem_template": "Quick template for reminders",
+        "rem_btn": "Send Reminder →",
+        "click_row": "Bookings — Click any row for AI reasoning",
+        "booking": "Booking",
+        "lead": "Lead Time",
+        "rate": "Room Rate",
+        "returning": "Returning",
+        "cancels": "Past Cancels",
+        "risk": "Risk Score",
+        "action": "Action",
+        "days": "days",
+        "yes": "Yes",
+        "no": "No",
+        "high": "HIGH",
+        "medium": "MEDIUM",
+        "low": "LOW",
+        "req_dep": "Request Deposit",
+        "send_rem": "Send Reminder",
+        "monitor": "Monitor",
+        "email_guest": "Send Email to Guest",
+        "guest_email": "Guest Email Address",
+        "guest_name": "Guest Name",
+        "subject": "Subject Line",
+        "message": "Message to Guest",
+        "send_email": "📧 Send Email",
+        "cancel": "Cancel",
+        "bulk_email": "Send Email to All High-Risk Bookings",
+        "select_book": "Select Bookings to Send To",
+        "selected_count": "bookings selected",
+        "save_changes": "💾 Save Changes",
+        "send_selected": "📧 Send to Selected",
+        "fill_fields": "Please fill in all fields",
+        "select_one": "Please select at least one booking",
+        "sent_success": "✓ Emails sent to {count} guest(s)",
+        "error": "Error sending emails",
+        "settings_title": "Settings",
+        "config_alert": "Configure your alert preferences",
+        "alert_email": "🔔 Alert Email",
+        "alert_desc": "Email address for high-risk booking alerts",
+        "email_addr": "Email Address",
+        "save": "Save Settings →",
+        "saved": "✓ Settings saved!",
+        "back": "← Back",
+        "auto_pop": "Automatically populated with high-risk bookings. Remove any you don't want to contact.",
+    },
+    "nl": {
+        "occupado": "Occupado",
+        "ai_booking": "AI Boekingintelligentie",
+        "settings": "Instellingen",
+        "sign_out": "Afmelden",
+        "live_dashboard": "Live Dashboard",
+        "bookings_analysed": "boekingen geanalyseerd",
+        "upload_data": "Upload uw boekingsgegevens",
+        "drop_csv": "📂 Sleep uw boeking CSV hier",
+        "export_pms": "Exporteer uit uw PMS en upload",
+        "choose_file": "Kies CSV-bestand",
+        "high_risk": "Hoog risico",
+        "medium_risk": "Gemiddeld risico",
+        "low_risk": "Laag risico",
+        "optimizer": "Overbooking Optimizer",
+        "safe_rooms": "Veilige kamers om vanavond te overboeken",
+        "revenue": "Omzetmogelijkheid: EUR",
+        "apply": "Aanbeveling toepassen",
+        "bookings_analysed_stat": "Boekingen geanalyseerd",
+        "predicted": "Voorspelde no-shows",
+        "confidence": "AI-betrouwbaarheid",
+        "walk_risk": "Walk-risico",
+        "avg_rate": "Gem. kamerprijs",
+        "take_action": "Maatregelen nemen voor risicovolle boekingen",
+        "send_mass": "E-mail verzenden naar meerdere",
+        "send_high": "Verzenden naar alle {high} risicovolle boekingen",
+        "send_btn": "E-mail naar iedereen verzenden →",
+        "request_dep": "Aanbetaling aanvragen",
+        "dep_template": "Snelle sjabloon voor aanbetaling",
+        "dep_btn": "Aanbetaling aanvragen →",
+        "reminders": "Herinneringen verzenden",
+        "rem_template": "Snelle sjabloon voor herinneringen",
+        "rem_btn": "Herinnering verzenden →",
+        "click_row": "Boekingen — Klik op een rij voor AI-redenering",
+        "booking": "Boeking",
+        "lead": "Aanlooptijd",
+        "rate": "Kamerprijs",
+        "returning": "Klant keert terug",
+        "cancels": "Eerdere annuleringen",
+        "risk": "Risicoscore",
+        "action": "Actie",
+        "days": "dagen",
+        "yes": "Ja",
+        "no": "Nee",
+        "high": "HOOG",
+        "medium": "GEMIDDELD",
+        "low": "LAAG",
+        "req_dep": "Aanbetaling aanvragen",
+        "send_rem": "Herinnering verzenden",
+        "monitor": "Bewaken",
+        "email_guest": "E-mail naar gast verzenden",
+        "guest_email": "E-mailadres gast",
+        "guest_name": "Gastnaam",
+        "subject": "Onderwerpregel",
+        "message": "Bericht aan gast",
+        "send_email": "📧 E-mail verzenden",
+        "cancel": "Annuleren",
+        "bulk_email": "E-mail verzenden naar alle risicovolle boekingen",
+        "select_book": "Selecteer boekingen om naar te verzenden",
+        "selected_count": "boekingen geselecteerd",
+        "save_changes": "💾 Wijzigingen opslaan",
+        "send_selected": "📧 Naar geselecteerden verzenden",
+        "fill_fields": "Vul alstublieft alle velden in",
+        "select_one": "Selecteer alstublieft minstens één boeking",
+        "sent_success": "✓ E-mails verzonden naar {count} gast(en)",
+        "error": "Fout bij verzenden van e-mails",
+        "settings_title": "Instellingen",
+        "config_alert": "Configureer uw waarschuwingsvoorkeuren",
+        "alert_email": "🔔 Waarschuwing per e-mail",
+        "alert_desc": "E-mailadres voor waarschuwingen van risicovolle boekingen",
+        "email_addr": "E-mailadres",
+        "save": "Instellingen opslaan →",
+        "saved": "✓ Instellingen opgeslagen!",
+        "back": "← Terug",
+        "auto_pop": "Automatisch ingevuld met risicovolle boekingen. Verwijder degenen die u niet wilt contacteren.",
+    },
+    "fr": {
+        "occupado": "Occupado",
+        "ai_booking": "Intelligence de Réservation IA",
+        "settings": "Paramètres",
+        "sign_out": "Déconnexion",
+        "live_dashboard": "Tableau de bord en direct",
+        "bookings_analysed": "réservations analysées",
+        "upload_data": "Téléchargez vos données de réservation",
+        "drop_csv": "📂 Déposez votre CSV de réservation ici",
+        "export_pms": "Exporter depuis votre PMS et télécharger",
+        "choose_file": "Choisir un fichier CSV",
+        "high_risk": "Risque élevé",
+        "medium_risk": "Risque moyen",
+        "low_risk": "Risque faible",
+        "optimizer": "Optimiseur de Surréservation",
+        "safe_rooms": "Chambres sûres à surréserver ce soir",
+        "revenue": "Opportunité de revenus: EUR",
+        "apply": "Appliquer la recommandation",
+        "bookings_analysed_stat": "Réservations analysées",
+        "predicted": "Absences prévues",
+        "confidence": "Confiance IA",
+        "walk_risk": "Risque d'annulation",
+        "avg_rate": "Tarif moyen par chambre",
+        "take_action": "Agir sur les réservations à risque élevé",
+        "send_mass": "Envoyer un e-mail en masse",
+        "send_high": "Envoyer à tous les {high} réservations à risque",
+        "send_btn": "Envoyer un e-mail à tous →",
+        "request_dep": "Demander les dépôts",
+        "dep_template": "Modèle rapide pour dépôts",
+        "dep_btn": "Demander un dépôt →",
+        "reminders": "Envoyer des rappels",
+        "rem_template": "Modèle rapide pour rappels",
+        "rem_btn": "Envoyer un rappel →",
+        "click_row": "Réservations — Cliquez sur une ligne pour le raisonnement IA",
+        "booking": "Réservation",
+        "lead": "Délai d'approche",
+        "rate": "Tarif de la chambre",
+        "returning": "Client de retour",
+        "cancels": "Annulations antérieures",
+        "risk": "Score de risque",
+        "action": "Action",
+        "days": "jours",
+        "yes": "Oui",
+        "no": "Non",
+        "high": "ÉLEVÉ",
+        "medium": "MOYEN",
+        "low": "FAIBLE",
+        "req_dep": "Demander un dépôt",
+        "send_rem": "Envoyer un rappel",
+        "monitor": "Surveiller",
+        "email_guest": "Envoyer un e-mail à un client",
+        "guest_email": "Adresse e-mail du client",
+        "guest_name": "Nom du client",
+        "subject": "Ligne d'objet",
+        "message": "Message au client",
+        "send_email": "📧 Envoyer un e-mail",
+        "cancel": "Annuler",
+        "bulk_email": "Envoyer un e-mail à toutes les réservations à risque",
+        "select_book": "Sélectionnez les réservations à envoyer",
+        "selected_count": "réservations sélectionnées",
+        "save_changes": "💾 Enregistrer les modifications",
+        "send_selected": "📧 Envoyer aux sélectionnés",
+        "fill_fields": "Veuillez remplir tous les champs",
+        "select_one": "Veuillez sélectionner au moins une réservation",
+        "sent_success": "✓ E-mails envoyés à {count} client(s)",
+        "error": "Erreur lors de l'envoi des e-mails",
+        "settings_title": "Paramètres",
+        "config_alert": "Configurez vos préférences d'alerte",
+        "alert_email": "🔔 Alerte par e-mail",
+        "alert_desc": "Adresse e-mail pour les alertes de réservations à risque",
+        "email_addr": "Adresse e-mail",
+        "save": "Enregistrer les paramètres →",
+        "saved": "✓ Paramètres enregistrés!",
+        "back": "← Retour",
+        "auto_pop": "Rempli automatiquement avec les réservations à risque élevé. Supprimez celles que vous ne souhaitez pas contacter.",
+    }
+}
+
+def t(key, lang="en", **kwargs):
+    """Translate a key to the specified language"""
+    text = TRANSLATIONS.get(lang, {}).get(key, TRANSLATIONS.get("en", {}).get(key, key))
+    if kwargs:
+        try:
+            return text.format(**kwargs)
+        except:
+            return text
+    return text
+
 def generate_magic_token(hotel_username, csv_data):
     token = secrets.token_urlsafe(32)
     token_file = os.path.join(TOKEN_DIR, f"{token}.json")
@@ -154,7 +396,7 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated
 
-def build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=False):
+def build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=False, lang="en"):
     high = sum(1 for s in scores if s >= 70)
     med  = sum(1 for s in scores if 40 <= s < 70)
     low  = sum(1 for s in scores if s < 40)
@@ -173,51 +415,51 @@ def build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=False):
     for i, (_, booking) in enumerate(sample.iterrows()):
         score = scores[i]
         if score >= 70:
-            badge = f'<span class="badge high">HIGH {score:.1f}%</span>'
-            action = '<button class="btn dep" onclick="event.stopPropagation(); openEmailComposer('+str(i)+', \'deposit\')">Request Deposit</button>'
+            badge = f'<span class="badge high">{t("high", lang)} {score:.1f}%</span>'
+            action = f'<button class="btn dep" onclick="event.stopPropagation(); openEmailComposer({i}, \'deposit\')">{t("req_dep", lang)}</button>'
         elif score >= 40:
-            badge = f'<span class="badge med">MEDIUM {score:.1f}%</span>'
-            action = '<button class="btn rem" onclick="event.stopPropagation(); openEmailComposer('+str(i)+', \'reminder\')">Send Reminder</button>'
+            badge = f'<span class="badge med">{t("medium", lang)} {score:.1f}%</span>'
+            action = f'<button class="btn rem" onclick="event.stopPropagation(); openEmailComposer({i}, \'reminder\')">{t("send_rem", lang)}</button>'
         else:
-            badge = f'<span class="badge low">LOW {score:.1f}%</span>'
-            action = '<button class="btn mon" onclick="event.stopPropagation(); openEmailComposer('+str(i)+', \'monitor\')">Monitor</button>'
+            badge = f'<span class="badge low">{t("low", lang)} {score:.1f}%</span>'
+            action = f'<button class="btn mon" onclick="event.stopPropagation(); openEmailComposer({i}, \'monitor\')">{t("monitor", lang)}</button>'
 
         lead = int(booking.get("lead_time", 0))
         adr = int(booking.get("adr", 0))
-        rep = "Yes" if booking.get("is_repeated_guest", 0) else "No"
+        rep = t("yes", lang) if booking.get("is_repeated_guest", 0) else t("no", lang)
         canc = int(booking.get("previous_cancellations", 0))
 
         rows += f"""<tr class="clickable-row" onclick="showDetail({i}, {score:.1f})">
-            <td><span style="color:#008000;font-weight:600">Booking {i+1}</span></td>
-            <td>{lead} days</td><td>EUR {adr}</td><td>{rep}</td><td>{canc}</td>
+            <td><span style="color:#008000;font-weight:600">{t("booking", lang)} {i+1}</span></td>
+            <td>{lead} {t("days", lang)}</td><td>EUR {adr}</td><td>{rep}</td><td>{canc}</td>
             <td>{badge}</td><td>{action}</td>
         </tr>"""
 
     upload_banner = ""
     clear_button = ""
     if uploaded:
-        upload_banner = '<div class="upload-banner">📂 Your uploaded data is loaded</div>'
-        clear_button = '<a href="/clear" class="clear-btn">🗑 Clear File</a>'
+        upload_banner = f'<div class="upload-banner">📂 Your uploaded data is loaded</div>'
+        clear_button = f'<a href="/clear" class="clear-btn">🗑 Clear File</a>'
 
-    bulk_action_html = f'''<div class="section-title">Take Action on High-Risk Bookings</div>
+    bulk_action_html = f'''<div class="section-title">{t("take_action", lang)}</div>
 <div class="bulk-action-zone">
     <div class="bulk-action-card">
         <div class="bulk-action-icon">📧</div>
-        <div class="bulk-action-title">Send Mass Email</div>
-        <div class="bulk-action-sub">Send to all {high} high-risk bookings</div>
-        <button class="bulk-action-btn" onclick="openBulkEmailComposer()">Send Email to All →</button>
+        <div class="bulk-action-title">{t("send_mass", lang)}</div>
+        <div class="bulk-action-sub">{t("send_high", lang, high=high)}</div>
+        <button class="bulk-action-btn" onclick="openBulkEmailComposer()">{t("send_btn", lang)}</button>
     </div>
     <div class="bulk-action-card">
         <div class="bulk-action-icon">💰</div>
-        <div class="bulk-action-title">Request Deposits</div>
-        <div class="bulk-action-sub">Quick template for deposits</div>
-        <button class="bulk-action-btn deposit-btn" onclick="openBulkEmailTemplate('deposit')">Send Deposit Request →</button>
+        <div class="bulk-action-title">{t("request_dep", lang)}</div>
+        <div class="bulk-action-sub">{t("dep_template", lang)}</div>
+        <button class="bulk-action-btn deposit-btn" onclick="openBulkEmailTemplate('deposit')">{t("dep_btn", lang)}</button>
     </div>
     <div class="bulk-action-card">
         <div class="bulk-action-icon">⏰</div>
-        <div class="bulk-action-title">Send Reminders</div>
-        <div class="bulk-action-sub">Quick template for reminders</div>
-        <button class="bulk-action-btn reminder-btn" onclick="openBulkEmailTemplate('reminder')">Send Reminder →</button>
+        <div class="bulk-action-title">{t("reminders", lang)}</div>
+        <div class="bulk-action-sub">{t("rem_template", lang)}</div>
+        <button class="bulk-action-btn reminder-btn" onclick="openBulkEmailTemplate('reminder')">{t("rem_btn", lang)}</button>
     </div>
 </div>'''
 
@@ -233,6 +475,8 @@ body {{ background:#ffffff; color:#0a1a0a; font-family:'DM Sans',sans-serif; }}
 .topbar-logo {{ font-family:'Syne',sans-serif; font-size:22px; font-weight:800; color:#ffffff; }}
 .topbar-hotel {{ font-family:'DM Mono',monospace; font-size:12px; color:rgba(255,255,255,0.8); }}
 .topbar-right {{ display:flex; align-items:center; gap:10px; }}
+.lang-selector {{ padding:8px 16px; background:#008000; border:1px solid rgba(0,128,0,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; }}
+.lang-selector:hover {{ background:#006600; }}
 .logout {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; }}
 .logout:hover {{ background:rgba(255,255,255,0.25); }}
 .settings-btn {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; }}
@@ -322,14 +566,8 @@ td {{ padding:14px 16px; font-size:13px; border-bottom:1px solid rgba(0,128,0,0.
 .bulk-email-send.reminder {{ background:#cc6600; }}
 .bulk-email-send.reminder:hover {{ background:#994400; }}
 .bulk-email-cancel {{ flex:1; padding:14px; background:#f5faf5; color:#0a1a0a; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; }}
-.bulk-booking-item {{ display:flex; align-items:center; padding:10px; margin-bottom:6px; background:white; border:1px solid rgba(0,128,0,0.1); border-radius:6px; font-size:12px; transition:all 0.2s; }}
-.bulk-booking-item:hover {{ background:rgba(0,128,0,0.02); border-color:rgba(0,128,0,0.2); }}
+.bulk-booking-row {{ padding:8px; margin-bottom:4px; background:rgba(204, 0, 0, 0.08); border:2px solid rgba(204, 0, 0, 0.2); border-radius:6px; font-size:11px; display:flex; justify-content:space-between; align-items:center; transition:all 0.3s; cursor:pointer; user-select:none; }}
 .bulk-booking-row:hover {{ transform:translateX(4px); box-shadow:0 2px 8px rgba(204, 0, 0, 0.15); }}
-.bulk-booking-item input[type="checkbox"] {{ margin-right:10px; cursor:pointer; width:16px; height:16px; }}
-.bulk-booking-item label {{ margin:0; cursor:pointer; flex:1; }}
-.bulk-booking-item-id {{ font-family:'DM Mono',monospace; color:#008000; font-weight:600; }}
-.bulk-booking-item-score {{ color:#cc0000; font-weight:600; margin-left:6px; }}
-
 .toast {{ position:fixed; bottom:24px; right:24px; background:#008000; color:#ffffff; border-radius:12px; padding:16px 20px; font-size:13px; transform:translateY(80px); opacity:0; transition:all 0.35s; z-index:2000; }}
 .toast.show {{ transform:translateY(0); opacity:1; }}
 </style>
@@ -337,52 +575,57 @@ td {{ padding:14px 16px; font-size:13px; border-bottom:1px solid rgba(0,128,0,0.
 <body>
 <div class="topbar">
     <div>
-        <div class="topbar-logo">Occupado</div>
-        <div class="topbar-hotel">{hotel_name} · AI Booking Intelligence</div>
+        <div class="topbar-logo">{t("occupado", lang)}</div>
+        <div class="topbar-hotel">{hotel_name} · {t("ai_booking", lang)}</div>
     </div>
     <div class="topbar-right">
         {clear_button}
-        <a href="/settings" class="settings-btn">⚙️ Settings</a>
-        <a href="/logout" class="logout">Sign Out</a>
+        <select class="lang-selector" onchange="changeLanguage(this.value)">
+            <option value="en" {"selected" if lang == "en" else ""}>🇬🇧 English</option>
+            <option value="nl" {"selected" if lang == "nl" else ""}>🇳🇱 Nederlands</option>
+            <option value="fr" {"selected" if lang == "fr" else ""}>🇫🇷 Français</option>
+        </select>
+        <a href="/settings" class="settings-btn">⚙️ {t("settings", lang)}</a>
+        <a href="/logout" class="logout">{t("sign_out", lang)}</a>
     </div>
 </div>
 <div class="content">
-<div class="sub">Live Dashboard · {len(sample)} bookings analysed</div>
+<div class="sub">{t("live_dashboard", lang)} · {len(sample)} {t("bookings_analysed", lang)}</div>
 {upload_banner}
-<div class="section-title">Upload Your Booking Data</div>
+<div class="section-title">{t("upload_data", lang)}</div>
 <form method="POST" action="/upload" enctype="multipart/form-data">
     <div class="upload-zone" onclick="document.getElementById('csv-input').click()">
-        <div class="upload-zone-title">📂 Drop your booking CSV here</div>
-        <div class="upload-zone-sub">Export from your PMS and upload</div>
+        <div class="upload-zone-title">{t("drop_csv", lang)}</div>
+        <div class="upload-zone-sub">{t("export_pms", lang)}</div>
         <input type="file" id="csv-input" name="csv_file" accept=".csv" style="display:none" onchange="this.form.submit()">
-        <button type="button" class="upload-btn" onclick="event.stopPropagation();document.getElementById('csv-input').click()">Choose CSV File</button>
+        <button type="button" class="upload-btn" onclick="event.stopPropagation();document.getElementById('csv-input').click()">{t("choose_file", lang)}</button>
     </div>
 </form>
 <div class="stats">
-    <div class="stat"><div class="stat-value" style="color:#cc0000">{high}</div><div class="stat-label">High Risk</div></div>
-    <div class="stat"><div class="stat-value" style="color:#cc6600">{med}</div><div class="stat-label">Medium Risk</div></div>
-    <div class="stat"><div class="stat-value" style="color:#008000">{low}</div><div class="stat-label">Low Risk</div></div>
+    <div class="stat"><div class="stat-value" style="color:#cc0000">{high}</div><div class="stat-label">{t("high_risk", lang)}</div></div>
+    <div class="stat"><div class="stat-value" style="color:#cc6600">{med}</div><div class="stat-label">{t("medium_risk", lang)}</div></div>
+    <div class="stat"><div class="stat-value" style="color:#008000">{low}</div><div class="stat-label">{t("low_risk", lang)}</div></div>
 </div>
-<div class="section-title">Overbooking Optimizer</div>
+<div class="section-title">{t("optimizer", lang)}</div>
 <div class="optimizer">
     <div class="opt-main">
-        <div class="opt-label">Safe rooms to oversell tonight</div>
+        <div class="opt-label">{t("safe_rooms", lang)}</div>
         <div class="opt-value">+{safe_overbook}</div>
-        <div class="opt-label" style="margin-top:8px">Revenue opportunity: EUR {revenue:.0f}</div>
-        <button class="opt-btn" onclick="showToast('Recommendation applied! {safe_overbook} rooms released.')">Apply Recommendation</button>
+        <div class="opt-label" style="margin-top:8px">{t("revenue", lang)} {revenue:.0f}</div>
+        <button class="opt-btn" onclick="showToast('Recommendation applied! {safe_overbook} rooms released.')">{t("apply", lang)}</button>
     </div>
     <div class="opt-stats">
-        <div class="opt-row"><span class="opt-row-label">Bookings analysed</span><span class="opt-row-value">{len(sample)}</span></div>
-        <div class="opt-row"><span class="opt-row-label">Predicted no-shows</span><span class="opt-row-value" style="color:#cc0000">{predicted_noshows}</span></div>
-        <div class="opt-row"><span class="opt-row-label">AI confidence</span><span class="opt-row-value" style="color:#008000">80.7%</span></div>
-        <div class="opt-row"><span class="opt-row-label">Walk risk</span><span class="opt-row-value" style="color:#008000">2.1%</span></div>
-        <div class="opt-row"><span class="opt-row-label">Avg room rate</span><span class="opt-row-value">EUR {avg_rate:.0f}</span></div>
+        <div class="opt-row"><span class="opt-row-label">{t("bookings_analysed_stat", lang)}</span><span class="opt-row-value">{len(sample)}</span></div>
+        <div class="opt-row"><span class="opt-row-label">{t("predicted", lang)}</span><span class="opt-row-value" style="color:#cc0000">{predicted_noshows}</span></div>
+        <div class="opt-row"><span class="opt-row-label">{t("confidence", lang)}</span><span class="opt-row-value" style="color:#008000">80.7%</span></div>
+        <div class="opt-row"><span class="opt-row-label">{t("walk_risk", lang)}</span><span class="opt-row-value" style="color:#008000">2.1%</span></div>
+        <div class="opt-row"><span class="opt-row-label">{t("avg_rate", lang)}</span><span class="opt-row-value">EUR {avg_rate:.0f}</span></div>
     </div>
 </div>
 {bulk_action_html}
-<div class="section-title">Bookings — Click any row for AI reasoning</div>
+<div class="section-title">{t("click_row", lang)}</div>
 <table>
-<thead><tr><th>Booking</th><th>Lead Time</th><th>Room Rate</th><th>Returning</th><th>Past Cancels</th><th>Risk Score</th><th>Action</th></tr></thead>
+<thead><tr><th>{t("booking", lang)}</th><th>{t("lead", lang)}</th><th>{t("rate", lang)}</th><th>{t("returning", lang)}</th><th>{t("cancels", lang)}</th><th>{t("risk", lang)}</th><th>{t("action", lang)}</th></tr></thead>
 <tbody>{rows}</tbody>
 </table>
 </div>
@@ -403,33 +646,33 @@ td {{ padding:14px 16px; font-size:13px; border-bottom:1px solid rgba(0,128,0,0.
 <div class="email-composer" id="emailComposer">
     <div class="email-box">
         <div style="margin-bottom:24px;">
-            <div class="email-title" id="emailTitle">Send Email to Guest</div>
+            <div class="email-title" id="emailTitle">{t("email_guest", lang)}</div>
             <div style="font-family:'DM Mono',monospace; font-size:12px; color:#4a6648; margin-top:4px;" id="emailSubtitle">Booking 1</div>
         </div>
         
         <div>
-            <label class="email-label">Guest Email Address</label>
+            <label class="email-label">{t("guest_email", lang)}</label>
             <input type="email" id="guestEmail" class="email-input" placeholder="guest@example.com">
         </div>
         
         <div>
-            <label class="email-label">Guest Name</label>
+            <label class="email-label">{t("guest_name", lang)}</label>
             <input type="text" id="guestName" class="email-input" placeholder="John Doe">
         </div>
         
         <div>
-            <label class="email-label">Subject Line</label>
+            <label class="email-label">{t("subject", lang)}</label>
             <input type="text" id="emailSubject" class="email-input" placeholder="Confirm Your Booking">
         </div>
         
         <div>
-            <label class="email-label">Message to Guest</label>
+            <label class="email-label">{t("message", lang)}</label>
             <textarea id="emailBody" class="email-textarea" placeholder="Dear Guest..."></textarea>
         </div>
         
         <div class="email-actions">
-            <button class="email-send" onclick="sendEmailToGuest()">📧 Send Email</button>
-            <button class="email-cancel" onclick="closeEmailComposer()">Cancel</button>
+            <button class="email-send" onclick="sendEmailToGuest()">{t("send_email", lang)}</button>
+            <button class="email-cancel" onclick="closeEmailComposer()">{t("cancel", lang)}</button>
         </div>
     </div>
 </div>
@@ -437,39 +680,39 @@ td {{ padding:14px 16px; font-size:13px; border-bottom:1px solid rgba(0,128,0,0.
 <div class="bulk-email-composer" id="bulkEmailComposer">
     <div class="bulk-email-box">
         <div style="margin-bottom:24px;">
-            <div class="bulk-email-title" id="bulkEmailTitle">Send Email to All High-Risk Bookings</div>
-            <div class="bulk-email-subtitle" id="bulkEmailSubtitle">Sending to multiple guests</div>
+            <div class="bulk-email-title" id="bulkEmailTitle">{t("bulk_email", lang)}</div>
+            <div class="bulk-email-subtitle" id="bulkEmailSubtitle">{t("select_book", lang)}</div>
         </div>
         
         <div style="background:#f5faf5; border:1px solid rgba(0,128,0,0.15); border-radius:10px; padding:12px; margin-bottom:16px;">
             <div style="margin-bottom:10px;">
-                <label class="email-label">Select Bookings to Send To</label>
+                <label class="email-label">{t("select_book", lang)}</label>
                 <div id="bulkBookingsList" style="max-height:150px; overflow-y:auto; margin-bottom:10px; padding:8px; background:white; border:1px solid rgba(0,128,0,0.1); border-radius:6px;"></div>
                 <input type="text" id="bulkBookingsInput" class="email-input" placeholder="Edit or remove booking numbers..." style="margin-bottom:6px;">
-                <div style="font-family:'DM Mono',monospace; font-size:10px; color:#999;">Automatically populated with high-risk bookings. Remove any you don't want to contact.</div>
+                <div style="font-family:'DM Mono',monospace; font-size:10px; color:#999;">{t("auto_pop", lang)}</div>
             </div>
             <div style="background:#f0f0f0; padding:10px; border-radius:6px; text-align:center; display:flex; justify-content:space-between; align-items:center;">
                 <div style="display:flex; align-items:center; gap:12px;">
                     <span style="font-family:'Syne',sans-serif; font-size:24px; font-weight:800; color:#008000;" id="bulkCountBig">0</span>
-                    <span style="font-family:'DM Mono',monospace; font-size:12px; color:#4a6648; font-weight:600;">bookings<br>selected</span>
+                    <span style="font-family:'DM Mono',monospace; font-size:12px; color:#4a6648; font-weight:600;">{t("selected_count", lang)}</span>
                 </div>
-                <button type="button" style="padding:8px 20px; background:#008000; color:white; border:none; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif;" onclick="saveBookingChanges()">💾 Save Changes</button>
+                <button type="button" style="padding:8px 20px; background:#008000; color:white; border:none; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif;" onclick="saveBookingChanges()">{t("save_changes", lang)}</button>
             </div>
         </div>
         
         <div>
-            <label class="email-label">Subject Line</label>
+            <label class="email-label">{t("subject", lang)}</label>
             <input type="text" id="bulkEmailSubject" class="email-input" placeholder="Important: Your Booking">
         </div>
         
         <div>
-            <label class="email-label">Message Template</label>
+            <label class="email-label">{t("message", lang)}</label>
             <textarea id="bulkEmailBody" class="email-textarea" placeholder="Dear Guest..."></textarea>
         </div>
         
         <div class="bulk-email-actions">
-            <button class="bulk-email-send" id="bulkEmailSendBtn" onclick="sendBulkEmailToGuests()">📧 Send to Selected</button>
-            <button class="bulk-email-cancel" onclick="closeBulkEmailComposer()">Cancel</button>
+            <button class="bulk-email-send" id="bulkEmailSendBtn" onclick="sendBulkEmailToGuests()">{t("send_selected", lang)}</button>
+            <button class="bulk-email-cancel" onclick="closeBulkEmailComposer()">{t("cancel", lang)}</button>
         </div>
     </div>
 </div>
@@ -477,6 +720,16 @@ td {{ padding:14px 16px; font-size:13px; border-bottom:1px solid rgba(0,128,0,0.
 <div class="toast" id="toast"></div>
 <script>
 const bookings = {bookings_js};
+const currentLang = "{lang}";
+const translations = {json.dumps(TRANSLATIONS)};
+
+function changeLanguage(lang) {{
+    window.location.href = '/dashboard?lang=' + lang;
+}}
+
+function t(key) {{
+    return translations[currentLang][key] || translations['en'][key] || key;
+}}
 
 function populateBulkBookingsList() {{
     const list = document.getElementById('bulkBookingsList');
@@ -497,7 +750,7 @@ function populateBulkBookingsList() {{
             
             highRiskNums.push(idx + 1);
             
-            html += `<div class="bulk-booking-row" data-booking="`+ (idx + 1) +`" style="padding:8px; margin-bottom:4px; background:rgba(204, 0, 0, 0.08); border:2px solid rgba(204, 0, 0, 0.2); border-radius:6px; font-size:11px; display:flex; justify-content:space-between; align-items:center; transition:all 0.3s; cursor:pointer; user-select:none;" onclick="addBookingToField(` + (idx + 1) + `)">
+            html += `<div class="bulk-booking-row" data-booking="` + (idx + 1) + `" style="padding:8px; margin-bottom:4px; background:rgba(204, 0, 0, 0.08); border:2px solid rgba(204, 0, 0, 0.2); border-radius:6px; font-size:11px; display:flex; justify-content:space-between; align-items:center; transition:all 0.3s; cursor:pointer; user-select:none;" onclick="addBookingToField(` + (idx + 1) + `)">
                 <div>
                     <span style="color:#008000; font-weight:600;">Booking ` + (idx + 1) + `</span>
                     <span style="color:#999; margin:0 8px;">·</span>
@@ -519,7 +772,6 @@ function populateBulkBookingsList() {{
     const bookingsList = highRiskNums.join(', ');
     input.value = bookingsList;
     
-    // Add event listeners for real-time feedback
     input.addEventListener('input', handleBookingInputChange);
     
     updateSendCount();
@@ -545,11 +797,9 @@ function updateBookingVisuals() {{
     const selectedNums = input.split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n));
     
     const bookingRows = document.querySelectorAll('.bulk-booking-row');
-    const allHighRiskNums = [];
     
     bookingRows.forEach(row => {{
         const bookingNum = parseInt(row.getAttribute('data-booking'));
-        allHighRiskNums.push(bookingNum);
         
         if (selectedNums.includes(bookingNum)) {{
             row.style.opacity = '1';
@@ -559,13 +809,6 @@ function updateBookingVisuals() {{
             row.style.opacity = '0.4';
             row.style.background = 'rgba(100, 100, 100, 0.08)';
             row.style.borderColor = 'rgba(100, 100, 100, 0.1)';
-        }}
-    }});
-    
-    // Show error/warning for invalid booking numbers
-    selectedNums.forEach(num => {{
-        if (!allHighRiskNums.includes(num)) {{
-            console.log('Booking ' + num + ' is not a high-risk booking');
         }}
     }});
     
@@ -619,7 +862,6 @@ function updateSendCount() {{
         count = nums.length;
     }}
     
-    // Update big number and text
     document.getElementById('bulkCountBig').textContent = count;
 }}
 
@@ -855,6 +1097,7 @@ def login():
             session["hotel"] = username
             session["hotel_name"] = HOTELS[username]["name"]
             session["alert_email"] = ""
+            session["language"] = "en"
             return redirect(url_for("dashboard"))
         error = "Invalid credentials"
     
@@ -900,6 +1143,12 @@ def logout():
 @login_required
 def dashboard():
     hotel_name = session.get("hotel_name", "Your Hotel")
+    lang = request.args.get("lang", session.get("language", "en"))
+    
+    if lang not in TRANSLATIONS:
+        lang = "en"
+    
+    session["language"] = lang
     uploaded_data = session.get("uploaded_csv")
     
     if uploaded_data:
@@ -918,7 +1167,7 @@ def dashboard():
     scores = model.predict_proba(sample)[:, 1] * 100
     tonight_scores = model.predict_proba(tonight_sample)[:, 1] * 100
 
-    return build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=uploaded)
+    return build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=uploaded, lang=lang)
 
 @app.route("/clear")
 @login_required
@@ -930,19 +1179,20 @@ def clear():
 @login_required
 def settings():
     hotel_name = session.get("hotel_name", "Your Hotel")
+    lang = session.get("language", "en")
     message = None
     
     if request.method == "POST":
         alert_email = request.form.get("alert_email", "").strip()
         session["alert_email"] = alert_email
-        message = "✓ Settings saved!"
+        message = t("saved", lang)
     
     current_email = session.get("alert_email", "")
     message_html = f'<div style="background:#c8e6c9;border:1px solid #81c784;padding:14px 20px;margin:0 auto 30px;color:#2e7d32;border-radius:8px;text-align:center;max-width:500px;font-size:13px;font-weight:500;">{message}</div>' if message else ''
     
     return f"""<!DOCTYPE html>
 <html>
-<head><title>Occupado — Settings</title>
+<head><title>Occupado — {t("settings_title", lang)}</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
@@ -970,26 +1220,26 @@ button:hover {{ background:#006600; }}
 <body>
 <div class="topbar">
     <div>
-        <div class="topbar-logo">Occupado</div>
-        <div class="topbar-hotel">{hotel_name} · Settings</div>
+        <div class="topbar-logo">{t("occupado", lang)}</div>
+        <div class="topbar-hotel">{hotel_name} · {t("settings_title", lang)}</div>
     </div>
     <div class="topbar-right">
-        <a href="/dashboard" class="btn-nav">← Back</a>
-        <a href="/logout" class="btn-nav">Sign Out</a>
+        <a href="/dashboard" class="btn-nav">{t("back", lang)}</a>
+        <a href="/logout" class="btn-nav">{t("sign_out", lang)}</a>
     </div>
 </div>
 <div class="content">
     <div class="wrapper">
-        <div class="page-title">Settings</div>
-        <div class="page-sub">Configure your alert preferences</div>
+        <div class="page-title">{t("settings_title", lang)}</div>
+        <div class="page-sub">{t("config_alert", lang)}</div>
         {message_html}
         <div class="card">
-            <div class="card-title">🔔 Alert Email</div>
-            <div class="card-sub">Email address for high-risk booking alerts</div>
+            <div class="card-title">{t("alert_email", lang)}</div>
+            <div class="card-sub">{t("alert_desc", lang)}</div>
             <form method="POST">
-                <label>Email Address</label>
+                <label>{t("email_addr", lang)}</label>
                 <input type="email" name="alert_email" value="{current_email}" placeholder="your-email@example.com" required>
-                <button type="submit">Save Settings →</button>
+                <button type="submit">{t("save", lang)}</button>
             </form>
         </div>
     </div>
