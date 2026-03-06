@@ -349,7 +349,10 @@ footer {
 
 <nav>
   <div class="nav-logo">Occupado</div>
-  <a href="/dashboard" class="nav-btn">Live Demo →</a>
+  <div style="display:flex; gap:12px; align-items:center;">
+    <a href="/login" class="nav-btn" style="background:transparent; color:var(--green); border:2px solid var(--green-border);">Sign In</a>
+    <a href="/register" class="nav-btn">Register Free →</a>
+  </div>
 </nav>
 
 <div class="hero">
@@ -441,10 +444,10 @@ footer {
 
 <div class="cta" id="demo">
   <h2>Ready to stop losing revenue<br>to empty rooms?</h2>
-  <p>Join our free 90-day pilot. No contract. No cost. Just results.</p>
+  <p>Join our free 40-day pilot. No contract. No cost. Just results.</p>
   <div class="demo-form">
     <input class="demo-input" type="email" placeholder="your@hotel.com" id="email-input">
-    <button class="btn-white" onclick="requestDemo()">Request Pilot →</button>
+    <a href="/register" class="btn-white" style="text-decoration:none; display:inline-block;">Register Now →</a>
   </div>
 </div>
 

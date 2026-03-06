@@ -7,6 +7,7 @@ from functools import wraps
 from datetime import datetime
 import os
 import secrets
+import sqlite3
 from dotenv import load_dotenv
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
@@ -18,6 +19,35 @@ app.secret_key = "occupado-secret-2024"
 
 TOKEN_DIR = "/tmp/occupado_tokens"
 os.makedirs(TOKEN_DIR, exist_ok=True)
+
+DB_PATH = "/tmp/occupado_users.db"
+
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    conn = get_db()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS registered_users (
+            username TEXT PRIMARY KEY,
+            password TEXT NOT NULL,
+            name TEXT NOT NULL,
+            email TEXT NOT NULL,
+            verified INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS verification_tokens (
+            token TEXT PRIMARY KEY,
+            username TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+init_db()
 
 # Language Translations (English, Dutch, French)
 TRANSLATIONS = {
@@ -1090,19 +1120,37 @@ def magic_link(token):
 @app.route("/login", methods=["GET", "POST"])
 def login():
     error = ""
+    success = session.pop("verified_success", "")
     if request.method == "POST":
         username = request.form.get("username", "").lower().strip()
         password = request.form.get("password", "").strip()
+        # Check demo/hotel accounts first
         if username in HOTELS and HOTELS[username]["password"] == password:
             session["hotel"] = username
             session["hotel_name"] = HOTELS[username]["name"]
             session["alert_email"] = ""
             session["language"] = "en"
             return redirect(url_for("dashboard"))
-        error = "Invalid credentials"
-    
-    error_html = f'<div style="background:#ffcdd2;padding:12px;margin-bottom:20px;color:#c62828;border-radius:4px;">{error}</div>' if error else ''
-    
+        # Check registered users in SQLite
+        if not error:
+            conn = get_db()
+            user = conn.execute("SELECT * FROM registered_users WHERE username=?", (username,)).fetchone()
+            conn.close()
+            if user and user["password"] == password:
+                if not user["verified"]:
+                    error = "Please verify your email before logging in. Check your inbox."
+                else:
+                    session["hotel"] = username
+                    session["hotel_name"] = user["name"]
+                    session["alert_email"] = user["email"]
+                    session["language"] = "en"
+                    return redirect(url_for("dashboard"))
+            else:
+                error = "Invalid credentials"
+
+    error_html   = f'<div style="background:#ffcdd2;padding:12px;margin-bottom:20px;color:#c62828;border-radius:8px;font-size:14px;">{error}</div>' if error else ''
+    success_html = f'<div style="background:#e8f5e9;padding:12px;margin-bottom:20px;color:#2e7d32;border-radius:8px;font-size:14px;">{success}</div>' if success else ''
+
     return f"""<!DOCTYPE html>
 <html>
 <head><title>Occupado — Login</title>
@@ -1111,25 +1159,31 @@ def login():
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 body {{ background:#f5faf5; font-family:'DM Sans',sans-serif; min-height:100vh; display:flex; align-items:center; justify-content:center; }}
 .box {{ background:#ffffff; padding:48px; border-radius:20px; width:100%; max-width:400px; border:1px solid rgba(0,128,0,0.15); }}
-.logo {{ font-family:'Syne',sans-serif; font-size:28px; font-weight:800; color:#008000; margin-bottom:20px; }}
+.logo {{ font-family:'Syne',sans-serif; font-size:28px; font-weight:800; color:#008000; margin-bottom:8px; }}
+.subtitle {{ font-size:13px; color:#4a6648; margin-bottom:28px; font-family:'DM Mono',monospace; }}
 label {{ font-size:12px; color:#4a6648; display:block; margin-bottom:6px; font-family:'DM Mono',monospace; font-weight:600; }}
-input {{ width:100%; padding:12px; background:#f5faf5; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; margin-bottom:16px; }}
+input {{ width:100%; padding:12px; background:#f5faf5; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; margin-bottom:16px; outline:none; }}
 input:focus {{ border-color:#008000; background:white; }}
-button {{ width:100%; padding:14px; background:#008000; color:white; border:none; border-radius:10px; font-weight:700; cursor:pointer; }}
+button {{ width:100%; padding:14px; background:#008000; color:white; border:none; border-radius:10px; font-weight:700; cursor:pointer; font-size:15px; font-family:'DM Sans',sans-serif; }}
 button:hover {{ background:#006600; }}
+.switch-link {{ text-align:center; margin-top:20px; font-size:13px; color:#4a6648; }}
+.switch-link a {{ color:#008000; font-weight:700; text-decoration:none; }}
+.switch-link a:hover {{ text-decoration:underline; }}
 </style>
 </head>
 <body>
 <div class="box">
     <div class="logo">Occupado</div>
-    {error_html}
+    <div class="subtitle">AI Booking Intelligence</div>
+    {error_html}{success_html}
     <form method="POST">
         <label>Username</label>
-        <input type="text" name="username" required>
+        <input type="text" name="username" required autocomplete="username">
         <label>Password</label>
-        <input type="password" name="password" required>
+        <input type="password" name="password" required autocomplete="current-password">
         <button type="submit">Sign In →</button>
     </form>
+    <div class="switch-link">Don't have an account? <a href="/register">Register free →</a></div>
 </div>
 </body>
 </html>"""
@@ -1318,6 +1372,161 @@ def send_bulk_email():
         return {"status": "error", "message": "Missing required fields"}, 400
     
     return {"status": "success", "count": count}
+
+def send_verification_email(to_email, hotel_name, token):
+    """Send email verification link via SendGrid"""
+    base_url = os.environ.get("BASE_URL", "https://occupado.co")
+    verify_url = f"{base_url}/verify/{token}"
+    api_key = os.environ.get("SENDGRID_API_KEY")
+    from_email = os.environ.get("ALERT_FROM_EMAIL", "team@occupado.co")
+    if not api_key:
+        return False
+    try:
+        html = f"""
+        <div style="font-family:'DM Sans',sans-serif;max-width:480px;margin:0 auto;">
+          <div style="background:#008000;padding:24px 32px;border-radius:12px 12px 0 0;">
+            <span style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:#fff;">Occupado</span>
+          </div>
+          <div style="background:#ffffff;padding:32px;border:1px solid rgba(0,128,0,0.15);border-radius:0 0 12px 12px;">
+            <h2 style="font-family:'Syne',sans-serif;color:#0a1a0a;margin-bottom:12px;">Verify your email</h2>
+            <p style="color:#4a6648;margin-bottom:24px;line-height:1.6;">Hi <strong>{hotel_name}</strong>, thanks for registering with Occupado. Click the button below to activate your account.</p>
+            <a href="{verify_url}" style="display:inline-block;background:#008000;color:#fff;padding:14px 28px;border-radius:10px;font-weight:700;text-decoration:none;font-size:15px;">Verify Email →</a>
+            <p style="color:#4a6648;font-size:12px;margin-top:24px;">Or copy this link: {verify_url}</p>
+          </div>
+        </div>"""
+        message = Mail(from_email=from_email, to_emails=to_email,
+                       subject="Verify your Occupado account", html_content=html)
+        sg = SendGridAPIClient(api_key)
+        sg.send(message)
+        return True
+    except Exception as e:
+        print(f"Verification email error: {e}")
+        return False
+
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    error = ""
+    success = ""
+    if request.method == "POST":
+        hotel_name = request.form.get("hotel_name", "").strip()
+        email      = request.form.get("email", "").strip().lower()
+        username   = request.form.get("username", "").strip().lower()
+        password   = request.form.get("password", "").strip()
+        confirm    = request.form.get("confirm", "").strip()
+
+        if not all([hotel_name, email, username, password, confirm]):
+            error = "All fields are required."
+        elif password != confirm:
+            error = "Passwords do not match."
+        elif len(password) < 6:
+            error = "Password must be at least 6 characters."
+        elif username in HOTELS:
+            error = "That username is already taken. Please choose another."
+        else:
+            conn = get_db()
+            existing = conn.execute("SELECT username FROM registered_users WHERE username=?", (username,)).fetchone()
+            if existing:
+                error = "That username is already taken. Please choose another."
+                conn.close()
+            else:
+                token = secrets.token_urlsafe(32)
+                conn.execute("INSERT INTO registered_users (username, password, name, email, verified) VALUES (?,?,?,?,0)",
+                             (username, password, hotel_name, email))
+                conn.execute("INSERT INTO verification_tokens (token, username) VALUES (?,?)", (token, username))
+                conn.commit()
+                conn.close()
+                sent = send_verification_email(email, hotel_name, token)
+                if sent:
+                    success = f"Account created! A verification email has been sent to {email}. Please check your inbox."
+                else:
+                    conn2 = get_db()
+                    conn2.execute("UPDATE registered_users SET verified=1 WHERE username=?", (username,))
+                    conn2.execute("DELETE FROM verification_tokens WHERE token=?", (token,))
+                    conn2.commit()
+                    conn2.close()
+                    success = "Account created! (Email verification skipped — no SendGrid key detected.) You can now sign in."
+
+    error_html   = f'<div style="background:#ffcdd2;padding:12px;margin-bottom:20px;color:#c62828;border-radius:8px;font-size:14px;">{error}</div>' if error else ''
+    success_html = f'<div style="background:#e8f5e9;padding:12px;margin-bottom:20px;color:#2e7d32;border-radius:8px;font-size:14px;">{success}</div>' if success else ''
+
+    return f"""<!DOCTYPE html>
+<html>
+<head><title>Occupado — Register</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+body {{ background:#f5faf5; font-family:'DM Sans',sans-serif; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }}
+.box {{ background:#ffffff; padding:48px; border-radius:20px; width:100%; max-width:440px; border:1px solid rgba(0,128,0,0.15); }}
+.logo {{ font-family:'Syne',sans-serif; font-size:28px; font-weight:800; color:#008000; margin-bottom:4px; }}
+.subtitle {{ font-size:13px; color:#4a6648; margin-bottom:28px; font-family:'DM Mono',monospace; }}
+label {{ font-size:12px; color:#4a6648; display:block; margin-bottom:6px; font-family:'DM Mono',monospace; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }}
+input {{ width:100%; padding:12px; background:#f5faf5; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; margin-bottom:16px; outline:none; font-family:'DM Sans',sans-serif; }}
+input:focus {{ border-color:#008000; background:white; }}
+button {{ width:100%; padding:14px; background:#008000; color:white; border:none; border-radius:10px; font-weight:700; cursor:pointer; font-size:15px; font-family:'DM Sans',sans-serif; }}
+button:hover {{ background:#006600; }}
+.switch-link {{ text-align:center; margin-top:20px; font-size:13px; color:#4a6648; }}
+.switch-link a {{ color:#008000; font-weight:700; text-decoration:none; }}
+.switch-link a:hover {{ text-decoration:underline; }}
+.badge {{ display:inline-block; background:rgba(0,128,0,0.08); border:1px solid rgba(0,128,0,0.2); border-radius:20px; padding:6px 14px; font-family:'DM Mono',monospace; font-size:11px; color:#008000; margin-bottom:24px; letter-spacing:0.5px; }}
+</style>
+</head>
+<body>
+<div class="box">
+    <div class="logo">Occupado</div>
+    <div class="subtitle">AI Booking Intelligence</div>
+    <div class="badge">✦ Free 40-day pilot · No credit card</div>
+    {error_html}{success_html}
+    {'<div style="text-align:center;margin-top:12px;"><a href="/login" style="color:#008000;font-weight:700;text-decoration:none;">← Back to Sign In</a></div>' if success else f"""
+    <form method="POST">
+        <label>Hotel Name</label>
+        <input type="text" name="hotel_name" placeholder="e.g. Grand Hotel Lisbon" required>
+        <label>Email Address</label>
+        <input type="email" name="email" placeholder="you@hotel.com" required>
+        <label>Username</label>
+        <input type="text" name="username" placeholder="Choose a username" required>
+        <label>Password</label>
+        <input type="password" name="password" placeholder="Min. 6 characters" required>
+        <label>Confirm Password</label>
+        <input type="password" name="confirm" placeholder="Repeat password" required>
+        <button type="submit">Create Account →</button>
+    </form>
+    <div class="switch-link">Already have an account? <a href="/login">Sign in →</a></div>
+    """}
+</div>
+</body>
+</html>"""
+
+
+@app.route("/verify/<token>")
+def verify_email(token):
+    conn = get_db()
+    row = conn.execute("SELECT username FROM verification_tokens WHERE token=?", (token,)).fetchone()
+    if not row:
+        conn.close()
+        return f"""<!DOCTYPE html>
+<html>
+<head><title>Occupado — Verification Failed</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>* {{margin:0;padding:0;box-sizing:border-box;}} body {{background:#f5faf5;font-family:'DM Sans',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;}} .box {{background:#fff;padding:48px;border-radius:20px;max-width:400px;text-align:center;border:1px solid rgba(0,128,0,0.15);}}</style>
+</head>
+<body><div class="box">
+<div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:#008000;margin-bottom:16px;">Occupado</div>
+<div style="font-size:36px;margin-bottom:16px;">❌</div>
+<h2 style="margin-bottom:12px;color:#0a1a0a;">Invalid or expired link</h2>
+<p style="color:#4a6648;margin-bottom:24px;">This verification link is not valid. Please register again.</p>
+<a href="/register" style="color:#008000;font-weight:700;text-decoration:none;">Register →</a>
+</div></body></html>"""
+
+    username = row["username"]
+    conn.execute("UPDATE registered_users SET verified=1 WHERE username=?", (username,))
+    conn.execute("DELETE FROM verification_tokens WHERE token=?", (token,))
+    conn.commit()
+    conn.close()
+
+    session["verified_success"] = "✅ Email verified! You can now sign in."
+    return redirect(url_for("login"))
+
 
 if __name__ == "__main__":
     print("\n" + "="*50)
