@@ -35,7 +35,8 @@ def init_db():
             password TEXT NOT NULL,
             name TEXT NOT NULL,
             email TEXT NOT NULL,
-            verified INTEGER NOT NULL DEFAULT 0
+            verified INTEGER NOT NULL DEFAULT 0,
+            signed_up TEXT DEFAULT ''
         )
     """)
     conn.execute("""
@@ -44,6 +45,11 @@ def init_db():
             username TEXT NOT NULL
         )
     """)
+    # Migrate: add signed_up column if it doesn't exist yet
+    try:
+        conn.execute("ALTER TABLE registered_users ADD COLUMN signed_up TEXT DEFAULT ''")
+    except:
+        pass
     conn.commit()
     conn.close()
 
@@ -1834,8 +1840,8 @@ def register():
                 conn.close()
             else:
                 token = secrets.token_urlsafe(32)
-                conn.execute("INSERT INTO registered_users (username, password, name, email, verified) VALUES (?,?,?,?,0)",
-                             (username, password, hotel_name, email))
+                conn.execute("INSERT INTO registered_users (username, password, name, email, verified, signed_up) VALUES (?,?,?,?,0,?)",
+                             (username, password, hotel_name, email, datetime.now().strftime("%d %b %Y")))
                 conn.execute("INSERT INTO verification_tokens (token, username) VALUES (?,?)", (token, username))
                 conn.commit()
                 conn.close()
@@ -1988,7 +1994,7 @@ def admin_panel():
 
     conn = get_db()
     users = conn.execute(
-        "SELECT username, name, email, verified FROM registered_users ORDER BY rowid DESC"
+        "SELECT username, name, email, verified, signed_up FROM registered_users ORDER BY rowid DESC"
     ).fetchall()
     conn.close()
 
@@ -2001,15 +2007,23 @@ def admin_panel():
         verified_badge = '<span style="background:#e8f5e9;color:#2e7d32;border-radius:6px;padding:3px 10px;font-size:11px;font-family:DM Mono,monospace;font-weight:600;">✓ Verified</span>' \
                        if u["verified"] else \
                        '<span style="background:#fff3e0;color:#e65100;border-radius:6px;padding:3px 10px;font-size:11px;font-family:DM Mono,monospace;font-weight:600;">Pending</span>'
+        uname = u["username"]
+        verify_btn = "" if u["verified"] else \
+            f'<a href="/admin/verify-user/{uname}" style="font-size:12px;color:#008000;font-weight:600;text-decoration:none;margin-right:12px;" onclick="return confirm(\'Manually verify {uname}?\')">✓ Verify</a>'
+        delete_btn = f'<a href="/admin/delete-user/{uname}" style="font-size:12px;color:#c62828;font-weight:600;text-decoration:none;" onclick="return confirm(\'Delete {uname}? This cannot be undone.\')">✕ Delete</a>'
+        signed_up  = u["signed_up"] or "—"
+
         rows_html += f"""<tr>
             <td style="padding:14px 16px;font-size:14px;font-family:'DM Mono',monospace;color:#0a1a0a;border-bottom:1px solid rgba(0,128,0,0.08);">{u['username']}</td>
             <td style="padding:14px 16px;font-size:14px;color:#0a1a0a;border-bottom:1px solid rgba(0,128,0,0.08);">{u['name']}</td>
             <td style="padding:14px 16px;font-size:14px;color:#4a6648;border-bottom:1px solid rgba(0,128,0,0.08);">{u['email']}</td>
+            <td style="padding:14px 16px;font-size:13px;color:#4a6648;border-bottom:1px solid rgba(0,128,0,0.08);font-family:'DM Mono',monospace;">{signed_up}</td>
             <td style="padding:14px 16px;border-bottom:1px solid rgba(0,128,0,0.08);">{verified_badge}</td>
+            <td style="padding:14px 16px;border-bottom:1px solid rgba(0,128,0,0.08);">{verify_btn}{delete_btn}</td>
         </tr>"""
 
     if not rows_html:
-        rows_html = '<tr><td colspan="4" style="padding:32px;text-align:center;color:#4a6648;font-size:14px;">No registered users yet.</td></tr>'
+        rows_html = '<tr><td colspan="6" style="padding:32px;text-align:center;color:#4a6648;font-size:14px;">No registered users yet.</td></tr>'
 
     return f"""<!DOCTYPE html>
 <html>
@@ -2023,7 +2037,7 @@ body {{ background:#f5faf5; font-family:'DM Sans',sans-serif; color:#0a1a0a; }}
 .topbar-sub {{ font-family:'DM Mono',monospace; font-size:12px; color:rgba(255,255,255,0.8); }}
 .btn-nav {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; }}
 .btn-nav:hover {{ background:rgba(255,255,255,0.25); }}
-.content {{ max-width:900px; margin:0 auto; padding:48px 24px; }}
+.content {{ max-width:1000px; margin:0 auto; padding:48px 24px; }}
 .page-title {{ font-family:'Syne',sans-serif; font-size:32px; font-weight:800; margin-bottom:6px; }}
 .page-sub {{ font-size:13px; color:#4a6648; font-family:'DM Mono',monospace; margin-bottom:32px; }}
 .stats {{ display:flex; gap:16px; margin-bottom:28px; flex-wrap:wrap; }}
@@ -2075,7 +2089,9 @@ tr:hover td {{ background:rgba(0,128,0,0.02); }}
                     <th>Username</th>
                     <th>Hotel Name</th>
                     <th>Email</th>
+                    <th>Signed Up</th>
                     <th>Status</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>{rows_html}</tbody>
@@ -2084,6 +2100,30 @@ tr:hover td {{ background:rgba(0,128,0,0.02); }}
 </div>
 </body>
 </html>"""
+
+
+@app.route("/admin/delete-user/<username>")
+def admin_delete_user(username):
+    if not session.get("is_admin"):
+        return redirect(url_for("admin_login"))
+    conn = get_db()
+    conn.execute("DELETE FROM registered_users WHERE username=?", (username,))
+    conn.execute("DELETE FROM verification_tokens WHERE username=?", (username,))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("admin_panel"))
+
+
+@app.route("/admin/verify-user/<username>")
+def admin_verify_user(username):
+    if not session.get("is_admin"):
+        return redirect(url_for("admin_login"))
+    conn = get_db()
+    conn.execute("UPDATE registered_users SET verified=1 WHERE username=?", (username,))
+    conn.execute("DELETE FROM verification_tokens WHERE username=?", (username,))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("admin_panel"))
 
 
 @app.route("/admin/clear-test-data")
