@@ -426,7 +426,7 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated
 
-def build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=False, lang="en"):
+def build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=False, lang="en", first_login=False):
     high = sum(1 for s in scores if s >= 70)
     med  = sum(1 for s in scores if 40 <= s < 70)
     low  = sum(1 for s in scores if s < 40)
@@ -619,6 +619,10 @@ td {{ padding:14px 16px; font-size:13px; border-bottom:1px solid rgba(0,128,0,0.
         <a href="/logout" class="logout">{t("sign_out", lang)}</a>
     </div>
 </div>
+{f'''<div id="welcome-banner" style="background:rgba(0,128,0,0.07);border-bottom:1px solid rgba(0,128,0,0.15);padding:12px 40px;display:flex;align-items:center;justify-content:space-between;">
+    <span style="font-size:14px;color:#2e5f2e;">👋 Welcome to Occupado, <strong>{hotel_name}</strong>. Upload your booking data to get your first AI risk scores.</span>
+    <button onclick="document.getElementById('welcome-banner').style.display='none'" style="background:none;border:none;color:#4a6648;font-size:18px;cursor:pointer;padding:0 4px;line-height:1;">×</button>
+</div>''' if first_login else ''}
 <div class="content">
 <div class="sub">{t("live_dashboard", lang)} · {len(sample)} {t("bookings_analysed", lang)}</div>
 {upload_banner}
@@ -1134,6 +1138,7 @@ def login():
             session["hotel_name"] = HOTELS[username]["name"]
             session["alert_email"] = ""
             session["language"] = "en"
+            session["first_login"] = True
             return redirect(url_for("dashboard"))
         # Check registered users in SQLite
         if not error:
@@ -1148,6 +1153,7 @@ def login():
                     session["hotel_name"] = user["name"]
                     session["alert_email"] = user["email"]
                     session["language"] = "en"
+                    session["first_login"] = True
                     return redirect(url_for("dashboard"))
             else:
                 error = "Invalid credentials"
@@ -1225,7 +1231,8 @@ def dashboard():
     scores = model.predict_proba(sample)[:, 1] * 100
     tonight_scores = model.predict_proba(tonight_sample)[:, 1] * 100
 
-    return build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=uploaded, lang=lang)
+    first_login = session.pop("first_login", False)
+    return build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=uploaded, lang=lang, first_login=first_login)
 
 @app.route("/clear")
 @login_required
