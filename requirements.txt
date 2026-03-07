@@ -1,8 +1,9 @@
 flask
-gunicorn
 pandas
-xgboost
 scikit-learn
-reportlab
+xgboost
 sendgrid
 python-dotenv
+bcrypt
+gunicorn
+reportlab

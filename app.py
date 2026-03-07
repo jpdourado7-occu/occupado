@@ -4,10 +4,12 @@ import pickle
 import io
 import json
 from functools import wraps
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import secrets
 import sqlite3
+import bcrypt
+import re
 from dotenv import load_dotenv
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
@@ -15,7 +17,9 @@ from sendgrid.helpers.mail import Mail
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = "occupado-secret-2024"
+app.secret_key = os.environ.get("SECRET_KEY", "occupado-secret-2024")
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
+app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5MB upload limit
 
 TOKEN_DIR = "/tmp/occupado_tokens"
 os.makedirs(TOKEN_DIR, exist_ok=True)
@@ -54,6 +58,38 @@ def init_db():
     conn.close()
 
 init_db()
+
+# ── Rate limiting: track failed login attempts ──
+# { ip: { "count": int, "locked_until": datetime | None } }
+FAILED_ATTEMPTS = {}
+MAX_ATTEMPTS    = 5
+LOCKOUT_MINUTES = 15
+
+def check_rate_limit(ip):
+    """Returns (is_blocked, seconds_remaining)"""
+    record = FAILED_ATTEMPTS.get(ip)
+    if not record:
+        return False, 0
+    if record["locked_until"] and datetime.now() < record["locked_until"]:
+        remaining = int((record["locked_until"] - datetime.now()).total_seconds())
+        return True, remaining
+    return False, 0
+
+def record_failed_attempt(ip):
+    if ip not in FAILED_ATTEMPTS:
+        FAILED_ATTEMPTS[ip] = {"count": 0, "locked_until": None}
+    FAILED_ATTEMPTS[ip]["count"] += 1
+    if FAILED_ATTEMPTS[ip]["count"] >= MAX_ATTEMPTS:
+        FAILED_ATTEMPTS[ip]["locked_until"] = datetime.now() + timedelta(minutes=LOCKOUT_MINUTES)
+
+def reset_attempts(ip):
+    FAILED_ATTEMPTS.pop(ip, None)
+
+def sanitise(value, max_length=100):
+    """Strip dangerous characters and limit length."""
+    value = str(value).strip()
+    value = re.sub(r"[<>\"'%;()&+]", "", value)
+    return value[:max_length]
 
 # Language Translations (English, Dutch, French)
 TRANSLATIONS = {
@@ -1088,6 +1124,11 @@ document.getElementById('bulkEmailComposer').addEventListener('click', e => {{ i
 </html>"""
     return dashboard_html
 
+@app.route("/robots.txt")
+def robots():
+    return "User-agent: *\nDisallow: /admin\nDisallow: /admin/\n", 200, {"Content-Type": "text/plain"}
+
+
 @app.route("/")
 def home():
     try:
@@ -1132,36 +1173,58 @@ def login():
     error = ""
     success = session.pop("verified_success", "")
     if request.method == "POST":
-        username = request.form.get("username", "").lower().strip()
-        password = request.form.get("password", "").strip()
-        # Check admin credentials
-        if username == "jpdourado" and password == "livejoao":
-            session["is_admin"] = True
-            return redirect(url_for("admin_panel"))
-        # Check demo/hotel accounts first
-        if username in HOTELS and HOTELS[username]["password"] == password:
-            session["hotel"] = username
-            session["hotel_name"] = HOTELS[username]["name"]
-            session["alert_email"] = ""
-            session["language"] = "en"
-            session["first_login"] = True
-            return redirect(url_for("dashboard"))
-        # Check registered users in SQLite
-        if not error:
+        ip = request.remote_addr
+        blocked, remaining = check_rate_limit(ip)
+        if blocked:
+            error = f"Too many failed attempts. Try again in {remaining // 60 + 1} minute(s)."
+        else:
+            username = sanitise(request.form.get("username", "")).lower()
+            password = request.form.get("password", "").strip()
+            # Check admin credentials
+            if username == "jpdourado" and password == "livejoao":
+                reset_attempts(ip)
+                session.permanent = True
+                session["is_admin"] = True
+                return redirect(url_for("admin_panel"))
+            # Check demo/hotel accounts
+            if username in HOTELS and HOTELS[username]["password"] == password:
+                reset_attempts(ip)
+                session.permanent = True
+                session["hotel"] = username
+                session["hotel_name"] = HOTELS[username]["name"]
+                session["alert_email"] = ""
+                session["language"] = "en"
+                session["first_login"] = True
+                return redirect(url_for("dashboard"))
+            # Check registered users in SQLite
             conn = get_db()
             user = conn.execute("SELECT * FROM registered_users WHERE username=?", (username,)).fetchone()
             conn.close()
-            if user and user["password"] == password:
-                if not user["verified"]:
-                    error = "Please verify your email before logging in. Check your inbox."
+            if user:
+                # Support both bcrypt hashed and legacy plain text passwords
+                pw_bytes = password.encode("utf-8")
+                stored   = user["password"]
+                try:
+                    match = bcrypt.checkpw(pw_bytes, stored.encode("utf-8"))
+                except Exception:
+                    match = (stored == password)
+                if match:
+                    if not user["verified"]:
+                        error = "Please verify your email before logging in. Check your inbox."
+                    else:
+                        reset_attempts(ip)
+                        session.permanent = True
+                        session["hotel"] = username
+                        session["hotel_name"] = user["name"]
+                        session["alert_email"] = user["email"]
+                        session["language"] = "en"
+                        session["first_login"] = True
+                        return redirect(url_for("dashboard"))
                 else:
-                    session["hotel"] = username
-                    session["hotel_name"] = user["name"]
-                    session["alert_email"] = user["email"]
-                    session["language"] = "en"
-                    session["first_login"] = True
-                    return redirect(url_for("dashboard"))
+                    record_failed_attempt(ip)
+                    error = "Invalid credentials"
             else:
+                record_failed_attempt(ip)
                 error = "Invalid credentials"
 
     error_html   = f'<div style="background:#ffcdd2;padding:12px;margin-bottom:20px;color:#c62828;border-radius:8px;font-size:14px;">{error}</div>' if error else ''
@@ -1816,9 +1879,9 @@ def register():
     error = ""
     success = ""
     if request.method == "POST":
-        hotel_name = request.form.get("hotel_name", "").strip()
-        email      = request.form.get("email", "").strip().lower()
-        username   = request.form.get("username", "").strip().lower()
+        hotel_name = sanitise(request.form.get("hotel_name", ""), max_length=100)
+        email      = sanitise(request.form.get("email", ""), max_length=150).lower()
+        username   = sanitise(request.form.get("username", ""), max_length=50).lower()
         password   = request.form.get("password", "").strip()
         confirm    = request.form.get("confirm", "").strip()
 
@@ -1828,8 +1891,8 @@ def register():
             error = "All fields are required."
         elif password != confirm:
             error = "Passwords do not match."
-        elif len(password) < 6:
-            error = "Password must be at least 6 characters."
+        elif len(password) < 8:
+            error = "Password must be at least 8 characters."
         elif username in RESERVED_USERNAMES:
             error = "That username is already taken. Please choose another."
         else:
@@ -1839,9 +1902,10 @@ def register():
                 error = "That username is already taken. Please choose another."
                 conn.close()
             else:
+                hashed_pw = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
                 token = secrets.token_urlsafe(32)
                 conn.execute("INSERT INTO registered_users (username, password, name, email, verified, signed_up) VALUES (?,?,?,?,0,?)",
-                             (username, password, hotel_name, email, datetime.now().strftime("%d %b %Y")))
+                             (username, hashed_pw, hotel_name, email, datetime.now().strftime("%d %b %Y")))
                 conn.execute("INSERT INTO verification_tokens (token, username) VALUES (?,?)", (token, username))
                 conn.commit()
                 conn.close()
@@ -1947,11 +2011,19 @@ ADMIN_PASSWORD = "occupado-admin-2024"
 def admin_login():
     error = ""
     if request.method == "POST":
-        pw = request.form.get("password", "").strip()
-        if pw == ADMIN_PASSWORD:
-            session["is_admin"] = True
-            return redirect(url_for("admin_panel"))
-        error = "Wrong password."
+        ip = request.remote_addr
+        blocked, remaining = check_rate_limit(ip)
+        if blocked:
+            error = f"Too many failed attempts. Try again in {remaining // 60 + 1} minute(s)."
+        else:
+            pw = request.form.get("password", "").strip()
+            if pw == ADMIN_PASSWORD:
+                reset_attempts(ip)
+                session.permanent = True
+                session["is_admin"] = True
+                return redirect(url_for("admin_panel"))
+            record_failed_attempt(ip)
+            error = "Wrong password."
 
     error_html = f'<div style="background:#ffcdd2;padding:12px;border-radius:8px;color:#c62828;font-size:14px;margin-bottom:20px;">{error}</div>' if error else ""
 
