@@ -1338,8 +1338,11 @@ def settings():
     
     if request.method == "POST":
         alert_email = request.form.get("alert_email", "").strip()
-        session["alert_email"] = alert_email
-        message = t("saved", lang)
+        if alert_email and not is_valid_email(alert_email):
+            message = "Please enter a valid email address."
+        else:
+            session["alert_email"] = alert_email
+            message = t("saved", lang)
     
     current_email = session.get("alert_email", "")
     message_html = f'<div style="background:#c8e6c9;border:1px solid #81c784;padding:14px 20px;margin:0 auto 30px;color:#2e7d32;border-radius:8px;text-align:center;max-width:500px;font-size:13px;font-weight:500;">{message}</div>' if message else ''
@@ -1619,14 +1622,18 @@ def send_guest_email():
 @app.route("/send-bulk-email", methods=["POST"])
 @login_required
 def send_bulk_email():
-    data = request.get_json()
-    count = data.get("count", 0)
-    subject = data.get("subject", "")
-    body = data.get("body", "")
-    
-    if not subject or not body or count == 0:
-        return {"status": "error", "message": "Missing required fields"}, 400
-    
+    data    = request.get_json()
+    count   = data.get("count", 0)
+    subject = sanitise(data.get("subject", ""), max_length=200)
+    body    = data.get("body", "").strip()
+
+    if not subject or not body:
+        return {"status": "error", "message": "Subject and message are required"}, 400
+    if count == 0:
+        return {"status": "error", "message": "No bookings selected"}, 400
+    if len(body) > 5000:
+        return {"status": "error", "message": "Message is too long (max 5000 characters)"}, 400
+
     return {"status": "success", "count": count}
 
 
@@ -1914,6 +1921,10 @@ def register():
 
         if not all([hotel_name, email, username, password, confirm]):
             error = "All fields are required."
+        elif not is_valid_email(email):
+            error = "Please enter a valid email address."
+        elif not re.match(r"^[a-z0-9_]{3,50}$", username):
+            error = "Username must be 3–50 characters, letters, numbers and underscores only."
         elif password != confirm:
             error = "Passwords do not match."
         elif len(password) < 8:
