@@ -1635,6 +1635,10 @@ select:focus {{ border-color:#008000; background:white; }}
 @app.route("/send-guest-email", methods=["POST"])
 @login_required
 def send_guest_email():
+    ip = request.remote_addr
+    blocked, remaining = check_rate_limit(ip)
+    if blocked:
+        return {"status": "error", "message": f"Too many attempts. Try again in {remaining} minutes."}, 429
     data = request.get_json()
     guest_email = sanitise(data.get("guest_email", "")).strip()
     guest_name  = sanitise(data.get("guest_name", "Guest"))
@@ -1945,12 +1949,17 @@ def send_verification_email(to_email, hotel_name, token):
 def register():
     error = ""
     success = ""
+    ip = request.remote_addr
     if request.method == "POST":
-        hotel_name = sanitise(request.form.get("hotel_name", ""), max_length=100)
-        email      = sanitise(request.form.get("email", ""), max_length=150).lower()
-        username   = sanitise(request.form.get("username", ""), max_length=50).lower()
-        password   = request.form.get("password", "").strip()
-        confirm    = request.form.get("confirm", "").strip()
+        blocked, remaining = check_rate_limit(ip)
+        if blocked:
+            error = f"Too many attempts. Try again in {remaining} minutes."
+        else:
+            hotel_name = sanitise(request.form.get("hotel_name", ""), max_length=100)
+            email      = sanitise(request.form.get("email", ""), max_length=150).lower()
+            username   = sanitise(request.form.get("username", ""), max_length=50).lower()
+            password   = request.form.get("password", "").strip()
+            confirm    = request.form.get("confirm", "").strip()
 
         RESERVED_USERNAMES = set(HOTELS.keys()) | {"jpdourado", "admin", "occupado"}
 
