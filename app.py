@@ -69,7 +69,8 @@ def init_db():
     cur.execute("""
         CREATE TABLE IF NOT EXISTS verification_tokens (
             token TEXT PRIMARY KEY,
-            username TEXT NOT NULL
+            username TEXT NOT NULL,
+            expires_at TIMESTAMP NOT NULL DEFAULT (NOW() + INTERVAL '24 hours')
         )
     """)
     conn.commit()
@@ -83,6 +84,16 @@ def init_db():
         conn2.commit()
         cur2.close()
         conn2.close()
+    except:
+        pass
+    # Migrate: add expires_at column to verification_tokens
+    try:
+        conn3 = get_db()
+        cur3 = conn3.cursor()
+        cur3.execute("ALTER TABLE verification_tokens ADD COLUMN expires_at TIMESTAMP NOT NULL DEFAULT (NOW() + INTERVAL '24 hours')")
+        conn3.commit()
+        cur3.close()
+        conn3.close()
     except:
         pass
 
@@ -1989,7 +2000,7 @@ def register():
                 token = secrets.token_urlsafe(32)
                 cur.execute("INSERT INTO registered_users (username, password, name, email, verified, signed_up) VALUES (%s,%s,%s,%s,0,%s)",
                              (username, hashed_pw, hotel_name, email, datetime.now().strftime("%d %b %Y")))
-                cur.execute("INSERT INTO verification_tokens (token, username) VALUES (%s,%s)", (token, username))
+                cur.execute("INSERT INTO verification_tokens (token, username, expires_at) VALUES (%s,%s, NOW() + INTERVAL '24 hours')", (token, username))
                 conn.commit()
                 cur.close()
                 conn.close()
@@ -2061,7 +2072,7 @@ button:hover {{ background:#006600; }}
 def verify_email(token):
     conn = get_db()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT username FROM verification_tokens WHERE token=%s", (token,))
+    cur.execute("SELECT username, expires_at FROM verification_tokens WHERE token=%s", (token,))
     row = cur.fetchone()
     if not row:
         cur.close()
@@ -2078,6 +2089,30 @@ def verify_email(token):
 <h2 style="margin-bottom:12px;color:#0a1a0a;">Invalid or expired link</h2>
 <p style="color:#4a6648;margin-bottom:24px;">This verification link is not valid. Please register again.</p>
 <a href="/register" style="color:#008000;font-weight:700;text-decoration:none;">Register →</a>
+</div></body></html>"""
+
+    # Check token expiry
+    from datetime import timezone
+    expires_at = row["expires_at"]
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) > expires_at:
+        cur.execute("DELETE FROM verification_tokens WHERE token=%s", (token,))
+        conn.commit()
+        cur.close()
+        conn.close()
+        return f"""<!DOCTYPE html>
+<html>
+<head><title>Occupado — Link Expired</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>* {{margin:0;padding:0;box-sizing:border-box;}} body {{background:#f5faf5;font-family:'DM Sans',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;}} .box {{background:#fff;padding:48px;border-radius:20px;max-width:400px;text-align:center;border:1px solid rgba(0,128,0,0.15);}}</style>
+</head>
+<body><div class="box">
+<div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:#008000;margin-bottom:16px;">Occupado</div>
+<div style="font-size:36px;margin-bottom:16px;">⏰</div>
+<h2 style="margin-bottom:12px;color:#0a1a0a;">Verification link expired</h2>
+<p style="color:#4a6648;margin-bottom:24px;">This link expired after 24 hours. Please register again to get a new link.</p>
+<a href="/register" style="color:#008000;font-weight:700;text-decoration:none;">Register again →</a>
 </div></body></html>"""
 
     username = row["username"]
