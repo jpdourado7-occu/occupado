@@ -7,7 +7,8 @@ from functools import wraps
 from datetime import datetime, timedelta
 import os
 import secrets
-import sqlite3
+import psycopg2
+import psycopg2.extras
 import bcrypt
 import re
 from dotenv import load_dotenv
@@ -24,16 +25,15 @@ app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5MB upload limit
 TOKEN_DIR = "/tmp/occupado_tokens"
 os.makedirs(TOKEN_DIR, exist_ok=True)
 
-DB_PATH = "/tmp/occupado_users.db"
-
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    DATABASE_URL = os.environ.get("DATABASE_URL", "")
+    conn = psycopg2.connect(DATABASE_URL)
     return conn
 
 def init_db():
     conn = get_db()
-    conn.execute("""
+    cur = conn.cursor()
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS registered_users (
             username TEXT PRIMARY KEY,
             password TEXT NOT NULL,
@@ -43,7 +43,7 @@ def init_db():
             signed_up TEXT DEFAULT ''
         )
     """)
-    conn.execute("""
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS verification_tokens (
             token TEXT PRIMARY KEY,
             username TEXT NOT NULL
@@ -51,10 +51,11 @@ def init_db():
     """)
     # Migrate: add signed_up column if it doesn't exist yet
     try:
-        conn.execute("ALTER TABLE registered_users ADD COLUMN signed_up TEXT DEFAULT ''")
+        cur.execute("ALTER TABLE registered_users ADD COLUMN signed_up TEXT DEFAULT ''")
     except:
-        pass
+        conn.rollback()
     conn.commit()
+    cur.close()
     conn.close()
 
 init_db()
@@ -1172,7 +1173,10 @@ def magic_link(token):
         hotel_name = HOTELS[hotel_username]["name"]
     else:
         conn = get_db()
-        user = conn.execute("SELECT name FROM registered_users WHERE username=?", (hotel_username,)).fetchone()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT name FROM registered_users WHERE username=%s", (hotel_username,))
+        user = cur.fetchone()
+        cur.close()
         conn.close()
         if not user:
             return redirect(url_for("login"))
@@ -1218,7 +1222,10 @@ def login():
                 return redirect(url_for("dashboard"))
             # Check registered users in SQLite
             conn = get_db()
-            user = conn.execute("SELECT * FROM registered_users WHERE username=?", (username,)).fetchone()
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("SELECT * FROM registered_users WHERE username=%s", (username,))
+            user = cur.fetchone()
+            cur.close()
             conn.close()
             if user:
                 # Support both bcrypt hashed and legacy plain text passwords
@@ -1933,26 +1940,32 @@ def register():
             error = "That username is already taken. Please choose another."
         else:
             conn = get_db()
-            existing = conn.execute("SELECT username FROM registered_users WHERE username=?", (username,)).fetchone()
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("SELECT username FROM registered_users WHERE username=%s", (username,))
+            existing = cur.fetchone()
             if existing:
                 error = "That username is already taken. Please choose another."
+                cur.close()
                 conn.close()
             else:
                 hashed_pw = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
                 token = secrets.token_urlsafe(32)
-                conn.execute("INSERT INTO registered_users (username, password, name, email, verified, signed_up) VALUES (?,?,?,?,0,?)",
+                cur.execute("INSERT INTO registered_users (username, password, name, email, verified, signed_up) VALUES (%s,%s,%s,%s,0,%s)",
                              (username, hashed_pw, hotel_name, email, datetime.now().strftime("%d %b %Y")))
-                conn.execute("INSERT INTO verification_tokens (token, username) VALUES (?,?)", (token, username))
+                cur.execute("INSERT INTO verification_tokens (token, username) VALUES (%s,%s)", (token, username))
                 conn.commit()
+                cur.close()
                 conn.close()
                 sent = send_verification_email(email, hotel_name, token)
                 if sent:
                     success = f"Account created! A verification email has been sent to {email}. Please check your inbox."
                 else:
                     conn2 = get_db()
-                    conn2.execute("UPDATE registered_users SET verified=1 WHERE username=?", (username,))
-                    conn2.execute("DELETE FROM verification_tokens WHERE token=?", (token,))
+                    cur2 = conn2.cursor()
+                    cur2.execute("UPDATE registered_users SET verified=1 WHERE username=%s", (username,))
+                    cur2.execute("DELETE FROM verification_tokens WHERE token=%s", (token,))
                     conn2.commit()
+                    cur2.close()
                     conn2.close()
                     success = "Account created! (Email verification skipped — no SendGrid key detected.) You can now sign in."
 
@@ -2010,8 +2023,11 @@ button:hover {{ background:#006600; }}
 @app.route("/verify/<token>")
 def verify_email(token):
     conn = get_db()
-    row = conn.execute("SELECT username FROM verification_tokens WHERE token=?", (token,)).fetchone()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT username FROM verification_tokens WHERE token=%s", (token,))
+    row = cur.fetchone()
     if not row:
+        cur.close()
         conn.close()
         return f"""<!DOCTYPE html>
 <html>
@@ -2028,9 +2044,10 @@ def verify_email(token):
 </div></body></html>"""
 
     username = row["username"]
-    conn.execute("UPDATE registered_users SET verified=1 WHERE username=?", (username,))
-    conn.execute("DELETE FROM verification_tokens WHERE token=?", (token,))
+    cur.execute("UPDATE registered_users SET verified=1 WHERE username=%s", (username,))
+    cur.execute("DELETE FROM verification_tokens WHERE token=%s", (token,))
     conn.commit()
+    cur.close()
     conn.close()
 
     session["verified_success"] = "✅ Email verified! You can now sign in."
@@ -2099,9 +2116,10 @@ button:hover {{ background:#006600; }}
 @admin_required
 def admin_panel():
     conn = get_db()
-    users = conn.execute(
-        "SELECT username, name, email, verified, signed_up FROM registered_users ORDER BY rowid DESC"
-    ).fetchall()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT username, name, email, verified, signed_up FROM registered_users ORDER BY username")
+    users = cur.fetchall()
+    cur.close()
     conn.close()
 
     total      = len(users)
@@ -2220,9 +2238,11 @@ tr:hover td {{ background:rgba(0,128,0,0.02); }}
 def admin_delete_user(username):
     username = sanitise(username)
     conn = get_db()
-    conn.execute("DELETE FROM registered_users WHERE username=?", (username,))
-    conn.execute("DELETE FROM verification_tokens WHERE username=?", (username,))
+    cur = conn.cursor()
+    cur.execute("DELETE FROM registered_users WHERE username=%s", (username,))
+    cur.execute("DELETE FROM verification_tokens WHERE username=%s", (username,))
     conn.commit()
+    cur.close()
     conn.close()
     return redirect(url_for("admin_panel"))
 
@@ -2232,9 +2252,11 @@ def admin_delete_user(username):
 def admin_verify_user(username):
     username = sanitise(username)
     conn = get_db()
-    conn.execute("UPDATE registered_users SET verified=1 WHERE username=?", (username,))
-    conn.execute("DELETE FROM verification_tokens WHERE username=?", (username,))
+    cur = conn.cursor()
+    cur.execute("UPDATE registered_users SET verified=1 WHERE username=%s", (username,))
+    cur.execute("DELETE FROM verification_tokens WHERE username=%s", (username,))
     conn.commit()
+    cur.close()
     conn.close()
     return redirect(url_for("admin_panel"))
 
@@ -2243,9 +2265,11 @@ def admin_verify_user(username):
 @admin_required
 def admin_clear_test_data():
     conn = get_db()
-    conn.execute("DELETE FROM registered_users WHERE username IN ('jpdourado', 'admin')")
-    conn.execute("DELETE FROM verification_tokens")
+    cur = conn.cursor()
+    cur.execute("DELETE FROM registered_users WHERE username IN ('jpdourado', 'admin')")
+    cur.execute("DELETE FROM verification_tokens")
     conn.commit()
+    cur.close()
     conn.close()
     return redirect(url_for("admin_panel"))
 

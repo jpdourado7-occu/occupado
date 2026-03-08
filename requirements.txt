@@ -7,3 +7,4 @@ python-dotenv
 bcrypt
 gunicorn
 reportlab
+psycopg2-binary
