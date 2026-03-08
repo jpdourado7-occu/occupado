@@ -22,6 +22,29 @@ app.secret_key = os.environ.get("SECRET_KEY", "occupado-secret-2024")
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5MB upload limit
 
+@app.after_request
+def add_security_headers(response):
+    # Content Security Policy
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data:; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none';"
+    )
+    # Prevent clickjacking
+    response.headers["X-Frame-Options"] = "DENY"
+    # Prevent MIME sniffing
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    # Force HTTPS
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # Hide server info
+    response.headers["X-Powered-By"] = ""
+    response.headers["Server"] = ""
+    return response
+
 TOKEN_DIR = "/tmp/occupado_tokens"
 os.makedirs(TOKEN_DIR, exist_ok=True)
 
