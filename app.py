@@ -73,6 +73,13 @@ def init_db():
             expires_at TIMESTAMP NOT NULL DEFAULT (NOW() + INTERVAL '24 hours')
         )
     """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS password_reset_tokens (
+            token TEXT PRIMARY KEY,
+            username TEXT NOT NULL,
+            expires_at TIMESTAMP NOT NULL DEFAULT (NOW() + INTERVAL '1 hour')
+        )
+    """)
     conn.commit()
     cur.close()
     conn.close()
@@ -1329,6 +1336,7 @@ button:hover {{ background:#006600; }}
         <button type="submit">Sign In →</button>
     </form>
     <div class="switch-link">Don't have an account? <a href="/register">Register free →</a></div>
+    <div class="switch-link" style="margin-top:10px;"><a href="/forgot-password">Forgot password?</a></div>
 </div>
 </body>
 </html>"""
@@ -1954,6 +1962,205 @@ def send_verification_email(to_email, hotel_name, token):
     except Exception as e:
         print(f"Verification email error: {e}")
         return False
+
+
+def send_reset_email(to_email, hotel_name, token):
+    """Send password reset link via SendGrid"""
+    base_url  = os.environ.get("BASE_URL", "https://occupado.co")
+    reset_url = f"{base_url}/reset-password/{token}"
+    api_key   = os.environ.get("SENDGRID_API_KEY")
+    from_email = os.environ.get("ALERT_FROM_EMAIL", "team@occupado.co")
+    if not api_key:
+        return False
+    try:
+        html = f"""
+        <div style="font-family:'DM Sans',sans-serif;max-width:480px;margin:0 auto;">
+          <div style="background:#008000;padding:24px 32px;border-radius:12px 12px 0 0;">
+            <span style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:#fff;">Occupado</span>
+          </div>
+          <div style="background:#ffffff;padding:32px;border:1px solid rgba(0,128,0,0.15);border-radius:0 0 12px 12px;">
+            <h2 style="font-family:'Syne',sans-serif;color:#0a1a0a;margin-bottom:12px;">Reset your password</h2>
+            <p style="color:#4a6648;margin-bottom:24px;line-height:1.6;">Hi <strong>{hotel_name}</strong>, click the button below to reset your password. This link expires in <strong>1 hour</strong>.</p>
+            <a href="{reset_url}" style="display:inline-block;background:#008000;color:#fff;padding:14px 28px;border-radius:10px;font-weight:700;text-decoration:none;font-size:15px;">Reset Password →</a>
+            <p style="color:#4a6648;font-size:12px;margin-top:24px;">If you didn't request this, ignore this email. Your password won't change.</p>
+            <p style="color:#4a6648;font-size:12px;margin-top:8px;">Or copy this link: {reset_url}</p>
+          </div>
+        </div>"""
+        message = Mail(from_email=from_email, to_emails=to_email,
+                       subject="Reset your Occupado password", html_content=html)
+        sg = SendGridAPIClient(api_key)
+        sg.send(message)
+        return True
+    except Exception as e:
+        print(f"Reset email error: {e}")
+        return False
+
+
+@app.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    ip = request.remote_addr
+    message = ""
+    if request.method == "POST":
+        blocked, remaining = check_rate_limit(ip)
+        if blocked:
+            message = f"Too many attempts. Try again in {remaining} minutes."
+        else:
+            email = sanitise(request.form.get("email", ""), max_length=150).lower().strip()
+            if not is_valid_email(email):
+                message = "Please enter a valid email address."
+            else:
+                # Always show success message (don't reveal if email exists)
+                conn = get_db()
+                cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cur.execute("SELECT username, name FROM registered_users WHERE email=%s AND verified=1", (email,))
+                user = cur.fetchone()
+                if user:
+                    token = secrets.token_urlsafe(32)
+                    cur.execute("INSERT INTO password_reset_tokens (token, username, expires_at) VALUES (%s,%s, NOW() + INTERVAL '1 hour')", (token, user["username"]))
+                    conn.commit()
+                    send_reset_email(email, user["name"], token)
+                cur.close()
+                conn.close()
+                message = "success"
+
+    if message == "success":
+        success_html = '<div style="background:#e8f5e9;padding:12px;margin-bottom:20px;color:#2e7d32;border-radius:8px;font-size:14px;">If that email is registered, a reset link has been sent. Check your inbox.</div>'
+        error_html   = ""
+    else:
+        error_html   = f'<div style="background:#ffcdd2;padding:12px;margin-bottom:20px;color:#c62828;border-radius:8px;font-size:14px;">{message}</div>' if message else ""
+        success_html = ""
+
+    return f"""<!DOCTYPE html>
+<html>
+<head><title>Occupado — Forgot Password</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+body {{ background:#f5faf5; font-family:'DM Sans',sans-serif; min-height:100vh; display:flex; align-items:center; justify-content:center; }}
+.box {{ background:#ffffff; padding:48px; border-radius:20px; width:100%; max-width:400px; border:1px solid rgba(0,128,0,0.15); }}
+.logo {{ font-family:'Syne',sans-serif; font-size:28px; font-weight:800; color:#008000; margin-bottom:8px; }}
+.subtitle {{ font-size:13px; color:#4a6648; margin-bottom:28px; font-family:'DM Mono',monospace; }}
+label {{ font-size:12px; color:#4a6648; display:block; margin-bottom:6px; font-family:'DM Mono',monospace; font-weight:600; }}
+input {{ width:100%; padding:12px; background:#f5faf5; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; margin-bottom:16px; outline:none; }}
+input:focus {{ border-color:#008000; background:white; }}
+button {{ width:100%; padding:14px; background:#008000; color:white; border:none; border-radius:10px; font-weight:700; cursor:pointer; font-size:15px; font-family:'DM Sans',sans-serif; }}
+button:hover {{ background:#006600; }}
+.switch-link {{ text-align:center; margin-top:20px; font-size:13px; color:#4a6648; }}
+.switch-link a {{ color:#008000; font-weight:700; text-decoration:none; }}
+</style>
+</head>
+<body>
+<div class="box">
+    <div class="logo">Occupado</div>
+    <div class="subtitle">Password Reset</div>
+    {error_html}{success_html}
+    <form method="POST">
+        <label>Email address</label>
+        <input type="email" name="email" required placeholder="your@email.com">
+        <button type="submit">Send Reset Link →</button>
+    </form>
+    <div class="switch-link"><a href="/login">← Back to login</a></div>
+</div>
+</body>
+</html>"""
+
+
+@app.route("/reset-password/<token>", methods=["GET", "POST"])
+def reset_password(token):
+    from datetime import timezone
+    conn = get_db()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT username, expires_at FROM password_reset_tokens WHERE token=%s", (token,))
+    row = cur.fetchone()
+
+    def invalid_page(msg):
+        cur.close()
+        conn.close()
+        return f"""<!DOCTYPE html>
+<html>
+<head><title>Occupado — Reset Failed</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>* {{margin:0;padding:0;box-sizing:border-box;}} body {{background:#f5faf5;font-family:'DM Sans',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;}} .box {{background:#fff;padding:48px;border-radius:20px;max-width:400px;text-align:center;border:1px solid rgba(0,128,0,0.15);}}</style>
+</head>
+<body><div class="box">
+<div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:#008000;margin-bottom:16px;">Occupado</div>
+<div style="font-size:36px;margin-bottom:16px;">❌</div>
+<h2 style="margin-bottom:12px;color:#0a1a0a;">{msg}</h2>
+<a href="/forgot-password" style="color:#008000;font-weight:700;text-decoration:none;">Request a new link →</a>
+</div></body></html>"""
+
+    if not row:
+        return invalid_page("Invalid or expired link")
+
+    expires_at = row["expires_at"]
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) > expires_at:
+        cur.execute("DELETE FROM password_reset_tokens WHERE token=%s", (token,))
+        conn.commit()
+        return invalid_page("Reset link has expired")
+
+    username = row["username"]
+    error = ""
+
+    if request.method == "POST":
+        password = request.form.get("password", "").strip()
+        confirm  = request.form.get("confirm", "").strip()
+        if not password or not confirm:
+            error = "Both fields are required."
+        elif len(password) < 8:
+            error = "Password must be at least 8 characters."
+        elif password != confirm:
+            error = "Passwords do not match."
+        else:
+            hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+            cur.execute("UPDATE registered_users SET password=%s WHERE username=%s", (hashed, username))
+            cur.execute("DELETE FROM password_reset_tokens WHERE token=%s", (token,))
+            conn.commit()
+            cur.close()
+            conn.close()
+            session["verified_success"] = "Password reset successfully. Please sign in."
+            return redirect(url_for("login"))
+
+    cur.close()
+    conn.close()
+    error_html = f'<div style="background:#ffcdd2;padding:12px;margin-bottom:20px;color:#c62828;border-radius:8px;font-size:14px;">{error}</div>' if error else ""
+
+    return f"""<!DOCTYPE html>
+<html>
+<head><title>Occupado — Reset Password</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+body {{ background:#f5faf5; font-family:'DM Sans',sans-serif; min-height:100vh; display:flex; align-items:center; justify-content:center; }}
+.box {{ background:#ffffff; padding:48px; border-radius:20px; width:100%; max-width:400px; border:1px solid rgba(0,128,0,0.15); }}
+.logo {{ font-family:'Syne',sans-serif; font-size:28px; font-weight:800; color:#008000; margin-bottom:8px; }}
+.subtitle {{ font-size:13px; color:#4a6648; margin-bottom:28px; font-family:'DM Mono',monospace; }}
+label {{ font-size:12px; color:#4a6648; display:block; margin-bottom:6px; font-family:'DM Mono',monospace; font-weight:600; }}
+input {{ width:100%; padding:12px; background:#f5faf5; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; margin-bottom:16px; outline:none; }}
+input:focus {{ border-color:#008000; background:white; }}
+button {{ width:100%; padding:14px; background:#008000; color:white; border:none; border-radius:10px; font-weight:700; cursor:pointer; font-size:15px; font-family:'DM Sans',sans-serif; }}
+button:hover {{ background:#006600; }}
+.switch-link {{ text-align:center; margin-top:20px; font-size:13px; color:#4a6648; }}
+.switch-link a {{ color:#008000; font-weight:700; text-decoration:none; }}
+</style>
+</head>
+<body>
+<div class="box">
+    <div class="logo">Occupado</div>
+    <div class="subtitle">Set New Password</div>
+    {error_html}
+    <form method="POST">
+        <label>New Password</label>
+        <input type="password" name="password" required minlength="8" placeholder="Min. 8 characters">
+        <label>Confirm Password</label>
+        <input type="password" name="confirm" required placeholder="Repeat password">
+        <button type="submit">Reset Password →</button>
+    </form>
+    <div class="switch-link"><a href="/login">← Back to login</a></div>
+</div>
+</body>
+</html>"""
 
 
 @app.route("/register", methods=["GET", "POST"])
