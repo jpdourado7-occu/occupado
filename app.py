@@ -468,6 +468,18 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated
 
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("is_admin"):
+            return redirect(url_for("admin_login"))
+        return f(*args, **kwargs)
+    return decorated
+
+def is_valid_email(email):
+    """Basic email format validation."""
+    return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email))
+
 def build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=False, lang="en", first_login=False):
     high = sum(1 for s in scores if s >= 70)
     med  = sum(1 for s in scores if 40 <= s < 70)
@@ -1154,13 +1166,21 @@ def magic_link(token):
     
     hotel_username = token_data.get("hotel")
     csv_data = token_data.get("csv_data")
-    
-    if hotel_username not in HOTELS:
-        return redirect(url_for("login"))
-    
-    session["hotel"] = hotel_username
-    session["hotel_name"] = HOTELS[hotel_username]["name"]
-    session["alert_email"] = ""
+
+    # Check both HOTELS and REGISTERED_USERS
+    if hotel_username in HOTELS:
+        hotel_name = HOTELS[hotel_username]["name"]
+    else:
+        conn = get_db()
+        user = conn.execute("SELECT name FROM registered_users WHERE username=?", (hotel_username,)).fetchone()
+        conn.close()
+        if not user:
+            return redirect(url_for("login"))
+        hotel_name = user["name"]
+
+    session["hotel"]        = hotel_username
+    session["hotel_name"]   = hotel_name
+    session["alert_email"]  = ""
     session["uploaded_csv"] = csv_data
     
     delete_token(token)
@@ -1578,14 +1598,19 @@ select:focus {{ border-color:#008000; background:white; }}
 @login_required
 def send_guest_email():
     data = request.get_json()
-    guest_email = data.get("guest_email", "").strip()
-    guest_name = data.get("guest_name", "Guest")
-    subject = data.get("subject", "")
-    body = data.get("body", "")
-    
+    guest_email = sanitise(data.get("guest_email", "")).strip()
+    guest_name  = sanitise(data.get("guest_name", "Guest"))
+    subject     = sanitise(data.get("subject", ""), max_length=200)
+    body        = data.get("body", "").strip()
+
+    if not is_valid_email(guest_email):
+        return {"status": "error", "message": "Invalid email address"}, 400
+    if not subject or not body:
+        return {"status": "error", "message": "Subject and message are required"}, 400
+
     hotel_name = session.get("hotel_name", "Hotel")
     success = send_email_to_guest(guest_email, guest_name, hotel_name, subject, body)
-    
+
     if success:
         return {"status": "success", "message": f"Email sent to {guest_email}"}
     else:
@@ -2060,10 +2085,8 @@ button:hover {{ background:#006600; }}
 
 
 @app.route("/admin")
+@admin_required
 def admin_panel():
-    if not session.get("is_admin"):
-        return redirect(url_for("admin_login"))
-
     conn = get_db()
     users = conn.execute(
         "SELECT username, name, email, verified, signed_up FROM registered_users ORDER BY rowid DESC"
@@ -2080,9 +2103,16 @@ def admin_panel():
                        if u["verified"] else \
                        '<span style="background:#fff3e0;color:#e65100;border-radius:6px;padding:3px 10px;font-size:11px;font-family:DM Mono,monospace;font-weight:600;">Pending</span>'
         uname = u["username"]
-        verify_btn = "" if u["verified"] else \
-            f'<a href="/admin/verify-user/{uname}" style="font-size:12px;color:#008000;font-weight:600;text-decoration:none;margin-right:12px;" onclick="return confirm(\'Manually verify {uname}?\')">✓ Verify</a>'
-        delete_btn = f'<a href="/admin/delete-user/{uname}" style="font-size:12px;color:#c62828;font-weight:600;text-decoration:none;" onclick="return confirm(\'Delete {uname}? This cannot be undone.\')">✕ Delete</a>'
+        confirm_verify = "Manually verify " + uname + "?"
+        confirm_delete = "Delete " + uname + "? This cannot be undone."
+        verify_btn = "" if u["verified"] else (
+            '<form method="POST" action="/admin/verify-user/' + uname + '" style="display:inline;" onsubmit="return confirm('' + confirm_verify + '')">'
+            '<button type="submit" style="background:none;border:none;font-size:12px;color:#008000;font-weight:600;cursor:pointer;margin-right:12px;padding:0;">✓ Verify</button></form>'
+        )
+        delete_btn = (
+            '<form method="POST" action="/admin/delete-user/' + uname + '" style="display:inline;" onsubmit="return confirm('' + confirm_delete + '')">'
+            '<button type="submit" style="background:none;border:none;font-size:12px;color:#c62828;font-weight:600;cursor:pointer;padding:0;">✕ Delete</button></form>'
+        )
         signed_up  = u["signed_up"] or "—"
 
         rows_html += f"""<tr>
@@ -2174,10 +2204,10 @@ tr:hover td {{ background:rgba(0,128,0,0.02); }}
 </html>"""
 
 
-@app.route("/admin/delete-user/<username>")
+@app.route("/admin/delete-user/<username>", methods=["POST"])
+@admin_required
 def admin_delete_user(username):
-    if not session.get("is_admin"):
-        return redirect(url_for("admin_login"))
+    username = sanitise(username)
     conn = get_db()
     conn.execute("DELETE FROM registered_users WHERE username=?", (username,))
     conn.execute("DELETE FROM verification_tokens WHERE username=?", (username,))
@@ -2186,10 +2216,10 @@ def admin_delete_user(username):
     return redirect(url_for("admin_panel"))
 
 
-@app.route("/admin/verify-user/<username>")
+@app.route("/admin/verify-user/<username>", methods=["POST"])
+@admin_required
 def admin_verify_user(username):
-    if not session.get("is_admin"):
-        return redirect(url_for("admin_login"))
+    username = sanitise(username)
     conn = get_db()
     conn.execute("UPDATE registered_users SET verified=1 WHERE username=?", (username,))
     conn.execute("DELETE FROM verification_tokens WHERE username=?", (username,))
@@ -2198,10 +2228,9 @@ def admin_verify_user(username):
     return redirect(url_for("admin_panel"))
 
 
-@app.route("/admin/clear-test-data")
+@app.route("/admin/clear-test-data", methods=["POST"])
+@admin_required
 def admin_clear_test_data():
-    if not session.get("is_admin"):
-        return redirect(url_for("admin_login"))
     conn = get_db()
     conn.execute("DELETE FROM registered_users WHERE username IN ('jpdourado', 'admin')")
     conn.execute("DELETE FROM verification_tokens")
@@ -2211,6 +2240,7 @@ def admin_clear_test_data():
 
 
 @app.route("/admin/logout")
+@admin_required
 def admin_logout():
     session.pop("is_admin", None)
     return redirect(url_for("admin_login"))
