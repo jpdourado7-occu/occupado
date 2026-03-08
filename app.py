@@ -49,14 +49,19 @@ def init_db():
             username TEXT NOT NULL
         )
     """)
-    # Migrate: add signed_up column if it doesn't exist yet
-    try:
-        cur.execute("ALTER TABLE registered_users ADD COLUMN signed_up TEXT DEFAULT ''")
-    except:
-        conn.rollback()
     conn.commit()
     cur.close()
     conn.close()
+    # Migrate: add signed_up column in separate transaction
+    try:
+        conn2 = get_db()
+        cur2 = conn2.cursor()
+        cur2.execute("ALTER TABLE registered_users ADD COLUMN signed_up TEXT DEFAULT ''")
+        conn2.commit()
+        cur2.close()
+        conn2.close()
+    except:
+        pass
 
 init_db()
 
