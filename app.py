@@ -598,134 +598,163 @@ def build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=False, 
 <html>
 <head>
 <title>Occupado — {hotel_name}</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-body {{ background:#ffffff; color:#0a1a0a; font-family:'DM Sans',sans-serif; }}
-.topbar {{ background:#008000; padding:16px 40px; display:flex; align-items:center; justify-content:space-between; }}
-.topbar-logo {{ font-family:'Syne',sans-serif; font-size:22px; font-weight:800; color:#ffffff; }}
-.topbar-hotel {{ font-family:'DM Mono',monospace; font-size:12px; color:rgba(255,255,255,0.8); }}
-.topbar-right {{ display:flex; align-items:center; gap:10px; }}
-.lang-selector {{ padding:8px 16px; background:#008000; border:1px solid rgba(0,128,0,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; }}
-.lang-selector:hover {{ background:#006600; }}
-.logout {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; }}
-.logout:hover {{ background:rgba(255,255,255,0.25); }}
-.settings-btn {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; }}
-.settings-btn:hover {{ background:rgba(255,255,255,0.25); }}
-.clear-btn {{ padding:8px 18px; background:rgba(255,69,96,0.3); border:1px solid rgba(255,69,96,0.5); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; }}
-.clear-btn:hover {{ background:rgba(255,69,96,0.5); }}
-.content {{ padding:40px; }}
-.sub {{ color:#4a6648; font-family:'DM Mono',monospace; font-size:13px; margin-bottom:32px; }}
-.section-title {{ font-family:'Syne',sans-serif; font-size:20px; font-weight:700; margin-bottom:16px; margin-top:40px; color:#0a1a0a; }}
-.stats {{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:32px; }}
-.stat {{ background:#f5faf5; border:1px solid rgba(0,128,0,0.15); border-radius:12px; padding:20px; }}
-.stat-value {{ font-family:'Syne',sans-serif; font-size:42px; font-weight:800; line-height:1; }}
-.stat-label {{ font-family:'DM Mono',monospace; font-size:11px; color:#4a6648; margin-top:6px; }}
-.optimizer {{ display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:40px; }}
-.opt-main {{ background:rgba(0,128,0,0.04); border:1px solid rgba(0,128,0,0.2); border-radius:12px; padding:28px; }}
-.opt-value {{ font-family:'Syne',sans-serif; font-size:72px; font-weight:800; color:#008000; line-height:1; }}
-.opt-label {{ font-family:'DM Mono',monospace; font-size:12px; color:#4a6648; margin-top:6px; }}
-.opt-btn {{ margin-top:20px; width:100%; padding:12px; background:#008000; border:none; border-radius:8px; color:#ffffff; font-size:14px; font-weight:600; cursor:pointer; }}
-.opt-btn:hover {{ background:#006600; }}
-.opt-stats {{ background:#f5faf5; border:1px solid rgba(0,128,0,0.15); border-radius:12px; padding:24px; }}
-.opt-row {{ display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid rgba(0,128,0,0.08); font-size:13px; }}
-.opt-row:last-child {{ border-bottom:none; }}
-.opt-row-label {{ color:#4a6648; }}
-.opt-row-value {{ font-family:'DM Mono',monospace; font-weight:500; }}
-.bulk-action-zone {{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:40px; }}
-.bulk-action-card {{ background:#f5faf5; border:1px solid rgba(0,128,0,0.15); border-radius:12px; padding:20px; text-align:center; }}
-.bulk-action-icon {{ font-size:32px; margin-bottom:10px; }}
-.bulk-action-title {{ font-family:'Syne',sans-serif; font-size:14px; font-weight:700; margin-bottom:6px; }}
-.bulk-action-sub {{ font-size:12px; color:#4a6648; margin-bottom:14px; }}
-.bulk-action-btn {{ padding:10px 16px; background:#008000; color:#ffffff; border:none; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; width:100%; font-family:'DM Sans',sans-serif; }}
-.bulk-action-btn:hover {{ background:#006600; }}
-.bulk-action-btn.deposit-btn {{ background:#cc0000; }}
-.bulk-action-btn.deposit-btn:hover {{ background:#990000; }}
-.bulk-action-btn.reminder-btn {{ background:#cc6600; }}
-.bulk-action-btn.reminder-btn:hover {{ background:#994400; }}
-table {{ width:100%; border-collapse:collapse; background:#f5faf5; border-radius:16px; overflow:hidden; border:1px solid rgba(0,128,0,0.15); }}
-th {{ background:#008000; color:#ffffff; font-family:'DM Mono',monospace; font-size:11px; text-transform:uppercase; padding:14px 16px; text-align:left; }}
-td {{ padding:14px 16px; font-size:13px; border-bottom:1px solid rgba(0,128,0,0.06); color:#0a1a0a; }}
-.clickable-row {{ cursor:pointer; }}
-.clickable-row:hover td {{ background:rgba(0,128,0,0.04); }}
-.badge {{ padding:4px 12px; border-radius:20px; font-family:'DM Mono',monospace; font-size:11px; font-weight:500; }}
-.high {{ background:rgba(255,69,96,0.1); color:#cc0000; border:1px solid rgba(255,69,96,0.3); }}
-.med {{ background:rgba(255,179,64,0.1); color:#cc6600; border:1px solid rgba(255,179,64,0.3); }}
-.low {{ background:rgba(0,128,0,0.1); color:#008000; border:1px solid rgba(0,128,0,0.3); }}
-.btn {{ padding:6px 14px; border-radius:8px; font-size:12px; font-weight:500; cursor:pointer; border:1px solid; background:transparent; font-family:'DM Sans',sans-serif; }}
-.dep {{ color:#cc0000; border-color:rgba(255,69,96,0.3); }}
-.rem {{ color:#cc6600; border-color:rgba(255,179,64,0.3); }}
-.mon {{ color:#008000; border-color:rgba(0,128,0,0.3); }}
-.upload-zone {{ border:2px dashed rgba(0,128,0,0.3); border-radius:16px; padding:40px; text-align:center; background:#f5faf5; margin-bottom:32px; cursor:pointer; }}
-.upload-zone-title {{ font-family:'Syne',sans-serif; font-size:18px; font-weight:700; color:#008000; margin-bottom:8px; }}
-.upload-zone-sub {{ font-size:13px; color:#4a6648; margin-bottom:20px; }}
-.upload-btn {{ padding:12px 28px; background:#008000; color:#ffffff; border:none; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; }}
-.upload-banner {{ background:rgba(0,128,0,0.08); border:1px solid rgba(0,128,0,0.2); border-radius:10px; padding:14px 20px; font-size:13px; color:#008000; margin-bottom:24px; font-weight:500; }}
-.modal-overlay {{ display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center; }}
-.modal-overlay.show {{ display:flex; }}
-.modal {{ background:#ffffff; border-radius:20px; padding:40px; width:100%; max-width:560px; max-height:85vh; overflow-y:auto; position:relative; box-shadow:0 20px 60px rgba(0,0,0,0.2); }}
-.modal-close {{ position:absolute; top:16px; right:20px; font-size:22px; cursor:pointer; color:#4a6648; background:none; border:none; }}
-.modal-title {{ font-family:'Syne',sans-serif; font-size:22px; font-weight:800; margin-bottom:4px; }}
-.modal-sub {{ font-family:'DM Mono',monospace; font-size:12px; color:#4a6648; margin-bottom:24px; }}
-.score-display {{ font-family:'Syne',sans-serif; font-size:64px; font-weight:800; line-height:1; margin-bottom:8px; }}
-.score-bar-bg {{ height:10px; background:#f0f0f0; border-radius:5px; overflow:hidden; margin-bottom:12px; }}
-.score-bar-fill {{ height:100%; border-radius:5px; }}
-.score-verdict {{ font-size:14px; font-weight:600; padding:8px 16px; border-radius:8px; display:inline-block; margin-bottom:8px; }}
-.email-composer {{ display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1001; align-items:center; justify-content:center; }}
-.email-composer.show {{ display:flex; }}
-.email-box {{ background:#ffffff; border-radius:20px; padding:32px; width:100%; max-width:700px; max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.2); }}
-.email-title {{ font-family:'Syne',sans-serif; font-size:20px; font-weight:800; margin-bottom:4px; }}
-.email-label {{ font-family:'DM Mono',monospace; font-size:11px; color:#4a6648; text-transform:uppercase; display:block; margin-bottom:6px; font-weight:600; }}
-.email-input {{ width:100%; padding:12px 16px; background:#f5faf5; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; color:#0a1a0a; outline:none; margin-bottom:16px; }}
-.email-input:focus {{ border-color:#008000; background:#ffffff; }}
-.email-textarea {{ width:100%; padding:12px 16px; background:#f5faf5; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:13px; color:#0a1a0a; outline:none; resize:vertical; min-height:200px; margin-bottom:16px; }}
-.email-textarea:focus {{ border-color:#008000; background:#ffffff; }}
-.email-actions {{ display:flex; gap:12px; margin-top:24px; }}
-.email-send {{ flex:1; padding:14px; background:#008000; color:#ffffff; border:none; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; }}
-.email-send:hover {{ background:#006600; }}
-.email-cancel {{ flex:1; padding:14px; background:#f5faf5; color:#0a1a0a; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; }}
-.bulk-email-composer {{ display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1002; align-items:center; justify-content:center; }}
-.bulk-email-composer.show {{ display:flex; }}
-.bulk-email-box {{ background:#ffffff; border-radius:20px; padding:32px; width:100%; max-width:700px; max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.2); }}
-.bulk-email-title {{ font-family:'Syne',sans-serif; font-size:20px; font-weight:800; margin-bottom:4px; }}
-.bulk-email-subtitle {{ font-family:'DM Mono',monospace; font-size:12px; color:#4a6648; }}
-.bulk-email-actions {{ display:flex; gap:12px; margin-top:24px; }}
-.bulk-email-send {{ flex:1; padding:14px; background:#008000; color:#ffffff; border:none; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; }}
-.bulk-email-send:hover {{ background:#006600; }}
-.bulk-email-send.deposit {{ background:#cc0000; }}
-.bulk-email-send.deposit:hover {{ background:#990000; }}
-.bulk-email-send.reminder {{ background:#cc6600; }}
-.bulk-email-send.reminder:hover {{ background:#994400; }}
-.bulk-email-cancel {{ flex:1; padding:14px; background:#f5faf5; color:#0a1a0a; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; }}
-.bulk-booking-row {{ padding:8px; margin-bottom:4px; background:rgba(204, 0, 0, 0.08); border:2px solid rgba(204, 0, 0, 0.2); border-radius:6px; font-size:11px; display:flex; justify-content:space-between; align-items:center; transition:all 0.3s; cursor:pointer; user-select:none; }}
-.bulk-booking-row:hover {{ transform:translateX(4px); box-shadow:0 2px 8px rgba(204, 0, 0, 0.15); }}
-.toast {{ position:fixed; bottom:24px; right:24px; background:#008000; color:#ffffff; border-radius:12px; padding:16px 20px; font-size:13px; transform:translateY(80px); opacity:0; transition:all 0.35s; z-index:2000; }}
-.toast.show {{ transform:translateY(0); opacity:1; }}
+*,*::before,*::after{{margin:0;padding:0;box-sizing:border-box;}}
+body{{background:#080c14;color:#e2e8f0;font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}}
+a{{text-decoration:none;}}
+/* TOPBAR */
+.topbar{{height:62px;background:rgba(8,12,20,0.95);border-bottom:1px solid rgba(255,255,255,0.07);display:flex;align-items:center;padding:0 32px;position:sticky;top:0;z-index:100;backdrop-filter:blur(20px);}}
+.topbar-brand{{display:flex;align-items:center;gap:9px;}}
+.topbar-name{{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:#ffffff;letter-spacing:-0.3px;}}
+.topbar-hotel{{font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(255,255,255,0.3);margin-left:4px;}}
+.topbar-right{{display:flex;align-items:center;gap:8px;margin-left:auto;}}
+.lang-selector{{padding:7px 12px;background:transparent;border:1px solid rgba(255,255,255,0.07);border-radius:7px;color:rgba(255,255,255,0.5);font-size:12px;cursor:pointer;font-family:'Inter',sans-serif;outline:none;}}
+.lang-selector:hover{{border-color:rgba(255,255,255,0.14);color:rgba(255,255,255,0.8);}}
+.btn-nav{{padding:7px 16px;background:transparent;border:1px solid rgba(255,255,255,0.07);border-radius:7px;color:rgba(255,255,255,0.5);font-size:12px;font-weight:500;text-decoration:none;transition:all .2s;display:inline-flex;align-items:center;gap:5px;}}
+.btn-nav:hover{{border-color:rgba(255,255,255,0.14);color:rgba(255,255,255,0.8);}}
+.btn-nav-primary{{padding:7px 16px;background:#00d165;border:none;border-radius:7px;color:#080c14;font-size:12px;font-weight:700;text-decoration:none;transition:all .2s;cursor:pointer;font-family:'Inter',sans-serif;}}
+.btn-nav-primary:hover{{background:#04e270;}}
+.clear-btn{{padding:7px 14px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);border-radius:7px;color:#f87171;font-size:12px;font-weight:500;text-decoration:none;transition:all .2s;}}
+.clear-btn:hover{{background:rgba(239,68,68,0.18);}}
+/* WELCOME BANNER */
+.welcome-banner{{background:rgba(0,209,101,0.06);border-bottom:1px solid rgba(0,209,101,0.12);padding:11px 32px;display:flex;align-items:center;justify-content:space-between;font-size:13px;color:rgba(255,255,255,0.6);}}
+.welcome-banner strong{{color:#ffffff;}}
+.welcome-close{{background:none;border:none;color:rgba(255,255,255,0.3);font-size:18px;cursor:pointer;padding:0 4px;line-height:1;}}
+.welcome-close:hover{{color:rgba(255,255,255,0.7);}}
+/* CONTENT */
+.content{{padding:36px 32px;max-width:1200px;}}
+.page-sub{{font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(255,255,255,0.25);margin-bottom:28px;letter-spacing:0.5px;}}
+.section-title{{font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:#ffffff;letter-spacing:-0.4px;margin-bottom:14px;margin-top:36px;}}
+/* UPLOAD ZONE */
+.upload-zone{{border:1px dashed rgba(255,255,255,0.12);border-radius:14px;padding:36px;text-align:center;background:rgba(255,255,255,0.02);margin-bottom:28px;cursor:pointer;transition:all .2s;}}
+.upload-zone:hover{{border-color:rgba(0,209,101,0.3);background:rgba(0,209,101,0.03);}}
+.upload-zone-title{{font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:#ffffff;margin-bottom:6px;}}
+.upload-zone-sub{{font-size:13px;color:rgba(255,255,255,0.35);margin-bottom:18px;}}
+.upload-btn{{padding:10px 24px;background:#00d165;color:#080c14;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}}
+.upload-banner{{background:rgba(0,209,101,0.07);border:1px solid rgba(0,209,101,0.15);border-radius:9px;padding:12px 18px;font-size:13px;color:#6ee7b7;margin-bottom:20px;font-weight:500;}}
+/* STATS */
+.stats{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:28px;}}
+.stat{{background:#0d1120;border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:20px 22px;}}
+.stat-value{{font-family:'Syne',sans-serif;font-size:44px;font-weight:800;line-height:1;letter-spacing:-2px;}}
+.stat-label{{font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(255,255,255,0.3);margin-top:6px;text-transform:uppercase;letter-spacing:1px;}}
+/* OPTIMIZER */
+.optimizer{{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:36px;}}
+.opt-main{{background:#0d1120;border:1px solid rgba(0,209,101,0.15);border-radius:12px;padding:28px;}}
+.opt-value{{font-family:'Syne',sans-serif;font-size:72px;font-weight:800;color:#00d165;line-height:1;letter-spacing:-3px;}}
+.opt-label{{font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(255,255,255,0.3);margin-top:6px;text-transform:uppercase;letter-spacing:1px;}}
+.opt-btn{{margin-top:20px;width:100%;padding:11px;background:#00d165;border:none;border-radius:8px;color:#080c14;font-size:13px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;transition:all .2s;}}
+.opt-btn:hover{{background:#04e270;}}
+.opt-stats{{background:#0d1120;border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:22px;}}
+.opt-row{{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:13px;}}
+.opt-row:last-child{{border-bottom:none;}}
+.opt-row-label{{color:rgba(255,255,255,0.4);}}
+.opt-row-value{{font-family:'JetBrains Mono',monospace;font-weight:500;color:rgba(255,255,255,0.8);}}
+/* BULK ACTIONS */
+.bulk-action-zone{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:36px;}}
+.bulk-action-card{{background:#0d1120;border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:22px;transition:border-color .2s;}}
+.bulk-action-card:hover{{border-color:rgba(255,255,255,0.12);}}
+.bulk-action-icon{{font-size:26px;margin-bottom:10px;}}
+.bulk-action-title{{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:#ffffff;margin-bottom:5px;letter-spacing:-0.2px;}}
+.bulk-action-sub{{font-size:12px;color:rgba(255,255,255,0.35);margin-bottom:16px;line-height:1.5;}}
+.bulk-action-btn{{padding:9px 14px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:rgba(255,255,255,0.7);font-size:12px;font-weight:600;cursor:pointer;width:100%;font-family:'Inter',sans-serif;transition:all .2s;}}
+.bulk-action-btn:hover{{background:rgba(255,255,255,0.1);color:#ffffff;}}
+.bulk-action-btn.deposit-btn{{background:rgba(239,68,68,0.1);border-color:rgba(239,68,68,0.2);color:#f87171;}}
+.bulk-action-btn.deposit-btn:hover{{background:rgba(239,68,68,0.18);}}
+.bulk-action-btn.reminder-btn{{background:rgba(251,191,36,0.1);border-color:rgba(251,191,36,0.2);color:#fbbf24;}}
+.bulk-action-btn.reminder-btn:hover{{background:rgba(251,191,36,0.18);}}
+/* TABLE */
+table{{width:100%;border-collapse:collapse;background:#0d1120;border-radius:14px;overflow:hidden;border:1px solid rgba(255,255,255,0.07);}}
+th{{background:#141926;color:rgba(255,255,255,0.3);font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:1px;padding:13px 16px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.07);}}
+td{{padding:13px 16px;font-size:13px;border-bottom:1px solid rgba(255,255,255,0.04);color:rgba(255,255,255,0.75);}}
+.clickable-row{{cursor:pointer;}}
+.clickable-row:hover td{{background:rgba(255,255,255,0.025);}}
+td:first-child{{color:#ffffff;font-weight:600;}}
+.badge{{padding:3px 10px;border-radius:99px;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:500;border:1px solid;}}
+.high{{background:rgba(239,68,68,0.1);color:#f87171;border-color:rgba(239,68,68,0.2);}}
+.med{{background:rgba(251,191,36,0.1);color:#fbbf24;border-color:rgba(251,191,36,0.2);}}
+.low{{background:rgba(0,209,101,0.1);color:#00d165;border-color:rgba(0,209,101,0.18);}}
+.btn{{padding:6px 13px;border-radius:7px;font-size:11.5px;font-weight:500;cursor:pointer;border:1px solid;background:transparent;font-family:'Inter',sans-serif;transition:all .2s;}}
+.dep{{color:#f87171;border-color:rgba(239,68,68,0.25);}}
+.dep:hover{{background:rgba(239,68,68,0.1);}}
+.rem{{color:#fbbf24;border-color:rgba(251,191,36,0.25);}}
+.rem:hover{{background:rgba(251,191,36,0.08);}}
+.mon{{color:#00d165;border-color:rgba(0,209,101,0.22);}}
+.mon:hover{{background:rgba(0,209,101,0.07);}}
+/* MODAL */
+.modal-overlay{{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(4px);}}
+.modal-overlay.show{{display:flex;}}
+.modal{{background:#0d1120;border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:40px;width:100%;max-width:520px;max-height:85vh;overflow-y:auto;position:relative;box-shadow:0 32px 80px rgba(0,0,0,0.6);}}
+.modal-close{{position:absolute;top:16px;right:18px;font-size:20px;cursor:pointer;color:rgba(255,255,255,0.3);background:none;border:none;line-height:1;transition:color .2s;}}
+.modal-close:hover{{color:rgba(255,255,255,0.7);}}
+.modal-title{{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#ffffff;margin-bottom:3px;letter-spacing:-0.4px;}}
+.modal-sub{{font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(255,255,255,0.3);margin-bottom:22px;}}
+.score-display{{font-family:'Syne',sans-serif;font-size:60px;font-weight:800;line-height:1;margin-bottom:8px;letter-spacing:-3px;}}
+.score-bar-bg{{height:8px;background:rgba(255,255,255,0.07);border-radius:4px;overflow:hidden;margin-bottom:12px;}}
+.score-bar-fill{{height:100%;border-radius:4px;}}
+.score-verdict{{font-size:13px;font-weight:600;padding:7px 14px;border-radius:7px;display:inline-block;margin-bottom:8px;}}
+/* EMAIL COMPOSER */
+.email-composer{{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1001;align-items:center;justify-content:center;backdrop-filter:blur(4px);}}
+.email-composer.show{{display:flex;}}
+.email-box{{background:#0d1120;border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:36px;width:100%;max-width:680px;max-height:90vh;overflow-y:auto;box-shadow:0 32px 80px rgba(0,0,0,0.6);}}
+.email-title{{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#ffffff;margin-bottom:3px;letter-spacing:-0.4px;}}
+.email-label{{font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:7px;font-weight:500;}}
+.email-input{{width:100%;padding:11px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:9px;font-size:13.5px;color:#ffffff;outline:none;margin-bottom:14px;font-family:'Inter',sans-serif;transition:border-color .2s;}}
+.email-input:focus{{border-color:rgba(0,209,101,0.35);}}
+.email-input::placeholder{{color:rgba(255,255,255,0.2);}}
+.email-textarea{{width:100%;padding:11px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:9px;font-size:13px;color:#ffffff;outline:none;resize:vertical;min-height:180px;margin-bottom:14px;font-family:'Inter',sans-serif;line-height:1.6;transition:border-color .2s;}}
+.email-textarea:focus{{border-color:rgba(0,209,101,0.35);}}
+.email-textarea::placeholder{{color:rgba(255,255,255,0.2);}}
+.email-actions{{display:flex;gap:10px;margin-top:20px;}}
+.email-send{{flex:1;padding:12px;background:#00d165;color:#080c14;border:none;border-radius:9px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;transition:all .2s;}}
+.email-send:hover{{background:#04e270;}}
+.email-cancel{{flex:1;padding:12px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.6);border:1px solid rgba(255,255,255,0.08);border-radius:9px;font-size:13.5px;font-weight:500;cursor:pointer;font-family:'Inter',sans-serif;transition:all .2s;}}
+.email-cancel:hover{{background:rgba(255,255,255,0.08);color:#ffffff;}}
+.bulk-email-composer{{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1002;align-items:center;justify-content:center;backdrop-filter:blur(4px);}}
+.bulk-email-composer.show{{display:flex;}}
+.bulk-email-box{{background:#0d1120;border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:36px;width:100%;max-width:680px;max-height:90vh;overflow-y:auto;box-shadow:0 32px 80px rgba(0,0,0,0.6);}}
+.bulk-email-title{{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#ffffff;margin-bottom:3px;letter-spacing:-0.4px;}}
+.bulk-email-subtitle{{font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(255,255,255,0.3);}}
+.bulk-email-actions{{display:flex;gap:10px;margin-top:20px;}}
+.bulk-email-send{{flex:1;padding:12px;background:#00d165;color:#080c14;border:none;border-radius:9px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;transition:all .2s;}}
+.bulk-email-send:hover{{background:#04e270;}}
+.bulk-email-send.deposit{{background:rgba(239,68,68,0.15);color:#f87171;border:1px solid rgba(239,68,68,0.25);}}
+.bulk-email-send.deposit:hover{{background:rgba(239,68,68,0.25);}}
+.bulk-email-send.reminder{{background:rgba(251,191,36,0.12);color:#fbbf24;border:1px solid rgba(251,191,36,0.2);}}
+.bulk-email-send.reminder:hover{{background:rgba(251,191,36,0.2);}}
+.bulk-email-cancel{{flex:1;padding:12px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.6);border:1px solid rgba(255,255,255,0.08);border-radius:9px;font-size:13.5px;font-weight:500;cursor:pointer;font-family:'Inter',sans-serif;}}
+.bulk-booking-row{{padding:8px 10px;margin-bottom:4px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.15);border-radius:7px;font-size:11px;display:flex;justify-content:space-between;align-items:center;transition:all 0.2s;cursor:pointer;user-select:none;color:rgba(255,255,255,0.6);}}
+.bulk-booking-row:hover{{background:rgba(239,68,68,0.12);border-color:rgba(239,68,68,0.25);}}
+/* TOAST */
+.toast{{position:fixed;bottom:24px;right:24px;background:#0d1120;border:1px solid rgba(0,209,101,0.2);color:rgba(255,255,255,0.8);border-radius:10px;padding:14px 18px;font-size:13px;transform:translateY(70px);opacity:0;transition:all 0.3s;z-index:2000;box-shadow:0 16px 40px rgba(0,0,0,0.4);}}
+.toast.show{{transform:translateY(0);opacity:1;}}
 </style>
 </head>
 <body>
 <div class="topbar">
-    <div>
-        <div class="topbar-logo">{t("occupado", lang)}</div>
-        <div class="topbar-hotel">{hotel_name} · {t("ai_booking", lang)}</div>
-    </div>
-    <div class="topbar-right">
-        {clear_button}
-        <select class="lang-selector" onchange="changeLanguage(this.value)">
-            <option value="en" {"selected" if lang == "en" else ""}>🇬🇧 English</option>
-            <option value="nl" {"selected" if lang == "nl" else ""}>🇳🇱 Nederlands</option>
-            <option value="fr" {"selected" if lang == "fr" else ""}>🇫🇷 Français</option>
-        </select>
-        <a href="/settings" class="settings-btn">⚙️ {t("settings", lang)}</a>
-        <a href="/logout" class="logout">{t("sign_out", lang)}</a>
-    </div>
+  <div class="topbar-brand">
+    <svg width="28" height="28" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8.5" fill="#00d165"/><rect x="6.5" y="6.5" width="8" height="8" rx="2.5" fill="#080c14"/><rect x="17.5" y="6.5" width="8" height="8" rx="2.5" fill="#080c14" opacity=".35"/><rect x="6.5" y="17.5" width="8" height="8" rx="2.5" fill="#080c14" opacity=".35"/><rect x="17.5" y="17.5" width="8" height="8" rx="2.5" fill="#080c14"/></svg>
+    <span class="topbar-name">Occupado</span>
+    <span class="topbar-hotel">{hotel_name}</span>
+  </div>
+  <div class="topbar-right">
+    {clear_button}
+    <select class="lang-selector" onchange="changeLanguage(this.value)">
+      <option value="en" {"selected" if lang == "en" else ""}>EN</option>
+      <option value="nl" {"selected" if lang == "nl" else ""}>NL</option>
+      <option value="fr" {"selected" if lang == "fr" else ""}>FR</option>
+    </select>
+    <a href="/settings" class="btn-nav">{t("settings", lang)}</a>
+    <a href="/logout" class="btn-nav">{t("sign_out", lang)}</a>
+  </div>
 </div>
-{f'''<div id="welcome-banner" style="background:rgba(0,128,0,0.07);border-bottom:1px solid rgba(0,128,0,0.15);padding:12px 40px;display:flex;align-items:center;justify-content:space-between;">
-    <span style="font-size:14px;color:#2e5f2e;">👋 Welcome to Occupado, <strong>{hotel_name}</strong>. Upload your booking data to get your first AI risk scores.</span>
-    <button onclick="document.getElementById('welcome-banner').style.display='none'" style="background:none;border:none;color:#4a6648;font-size:18px;cursor:pointer;padding:0 4px;line-height:1;">×</button>
+{f'''<div id="welcome-banner" class="welcome-banner">
+    <span>Welcome, <strong>{hotel_name}</strong>. Upload your booking data to get your first risk scores.</span>
+    <button onclick="document.getElementById('welcome-banner').style.display='none'" class="welcome-close">×</button>
 </div>''' if first_login else ''}
 <div class="content">
-<div class="sub">{t("live_dashboard", lang)} · {len(sample)} {t("bookings_analysed", lang)}</div>
+<div class="page-sub">{t("live_dashboard", lang)} · {len(sample)} {t("bookings_analysed", lang)}</div>
 {upload_banner}
 <div class="section-title">{t("upload_data", lang)}</div>
 <form method="POST" action="/upload" enctype="multipart/form-data">
@@ -1300,43 +1329,62 @@ def login():
                 record_failed_attempt(ip)
                 error = "Invalid credentials"
 
-    error_html   = f'<div style="background:#ffcdd2;padding:12px;margin-bottom:20px;color:#c62828;border-radius:8px;font-size:14px;">{error}</div>' if error else ''
-    success_html = f'<div style="background:#e8f5e9;padding:12px;margin-bottom:20px;color:#2e7d32;border-radius:8px;font-size:14px;">{success}</div>' if success else ''
+    error_html   = f'<div class="err">{error}</div>' if error else ''
+    success_html = f'<div class="ok">{success}</div>' if success else ''
 
     return f"""<!DOCTYPE html>
 <html>
-<head><title>Occupado — Login</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
+<head><title>Occupado — Sign in</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-body {{ background:#f5faf5; font-family:'DM Sans',sans-serif; min-height:100vh; display:flex; align-items:center; justify-content:center; }}
-.box {{ background:#ffffff; padding:48px; border-radius:20px; width:100%; max-width:400px; border:1px solid rgba(0,128,0,0.15); }}
-.logo {{ font-family:'Syne',sans-serif; font-size:28px; font-weight:800; color:#008000; margin-bottom:8px; }}
-.subtitle {{ font-size:13px; color:#4a6648; margin-bottom:28px; font-family:'DM Mono',monospace; }}
-label {{ font-size:12px; color:#4a6648; display:block; margin-bottom:6px; font-family:'DM Mono',monospace; font-weight:600; }}
-input {{ width:100%; padding:12px; background:#f5faf5; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; margin-bottom:16px; outline:none; }}
-input:focus {{ border-color:#008000; background:white; }}
-button {{ width:100%; padding:14px; background:#008000; color:white; border:none; border-radius:10px; font-weight:700; cursor:pointer; font-size:15px; font-family:'DM Sans',sans-serif; }}
-button:hover {{ background:#006600; }}
-.switch-link {{ text-align:center; margin-top:20px; font-size:13px; color:#4a6648; }}
-.switch-link a {{ color:#008000; font-weight:700; text-decoration:none; }}
-.switch-link a:hover {{ text-decoration:underline; }}
+*,*::before,*::after{{margin:0;padding:0;box-sizing:border-box;}}
+html,body{{height:100%;}}
+body{{background:#080c14;font-family:'Inter',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;-webkit-font-smoothing:antialiased;position:relative;overflow:hidden;}}
+body::before{{content:'';position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.04) 1px,transparent 1px);background-size:64px 64px;mask-image:radial-gradient(ellipse 70% 70% at 50% 50%,black 0%,transparent 70%);pointer-events:none;}}
+body::after{{content:'';position:absolute;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,rgba(0,209,101,0.05) 0%,transparent 70%);top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;}}
+.card{{background:#0d1120;border:1px solid rgba(255,255,255,0.07);border-radius:20px;width:100%;max-width:400px;padding:48px;position:relative;z-index:1;box-shadow:0 32px 80px rgba(0,0,0,0.5);}}
+.brand{{display:flex;align-items:center;gap:10px;margin-bottom:32px;}}
+.brand-name{{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#ffffff;letter-spacing:-0.3px;}}
+.card-title{{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:#ffffff;letter-spacing:-0.8px;margin-bottom:6px;}}
+.card-sub{{font-size:13px;color:rgba(255,255,255,0.35);margin-bottom:28px;}}
+.err{{background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);color:#fca5a5;padding:12px 14px;border-radius:9px;font-size:13px;margin-bottom:20px;line-height:1.5;}}
+.ok{{background:rgba(0,209,101,0.1);border:1px solid rgba(0,209,101,0.2);color:#6ee7b7;padding:12px 14px;border-radius:9px;font-size:13px;margin-bottom:20px;line-height:1.5;}}
+label{{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:500;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:7px;}}
+input{{width:100%;padding:12px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:9px;font-size:14px;color:#ffffff;margin-bottom:16px;outline:none;font-family:'Inter',sans-serif;transition:border-color .2s,background .2s;}}
+input:focus{{border-color:rgba(0,209,101,0.4);background:rgba(255,255,255,0.06);}}
+input::placeholder{{color:rgba(255,255,255,0.2);}}
+.btn-submit{{width:100%;padding:13px;background:#00d165;color:#080c14;border:none;border-radius:9px;font-weight:700;cursor:pointer;font-size:14px;font-family:'Inter',sans-serif;letter-spacing:-0.1px;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:6px;margin-top:4px;}}
+.btn-submit:hover{{background:#04e270;box-shadow:0 0 0 3px rgba(0,209,101,0.18);}}
+.links{{margin-top:24px;text-align:center;display:flex;flex-direction:column;gap:10px;}}
+.links a{{font-size:13px;color:rgba(255,255,255,0.35);text-decoration:none;transition:color .2s;}}
+.links a span{{color:#00d165;font-weight:600;}}
+.links a:hover{{color:rgba(255,255,255,0.7);}}
+.divider{{height:1px;background:rgba(255,255,255,0.06);margin:20px 0;}}
 </style>
 </head>
 <body>
-<div class="box">
-    <div class="logo">Occupado</div>
-    <div class="subtitle">AI Booking Intelligence</div>
-    {error_html}{success_html}
-    <form method="POST">
-        <label>Username</label>
-        <input type="text" name="username" required autocomplete="username">
-        <label>Password</label>
-        <input type="password" name="password" required autocomplete="current-password">
-        <button type="submit">Sign In →</button>
-    </form>
-    <div class="switch-link">Don't have an account? <a href="/register">Register free →</a></div>
-    <div class="switch-link" style="margin-top:10px;"><a href="/forgot-password">Forgot password?</a></div>
+<div class="card">
+  <div class="brand">
+    <svg width="28" height="28" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8.5" fill="#00d165"/><rect x="6.5" y="6.5" width="8" height="8" rx="2.5" fill="#080c14"/><rect x="17.5" y="6.5" width="8" height="8" rx="2.5" fill="#080c14" opacity=".35"/><rect x="6.5" y="17.5" width="8" height="8" rx="2.5" fill="#080c14" opacity=".35"/><rect x="17.5" y="17.5" width="8" height="8" rx="2.5" fill="#080c14"/></svg>
+    <span class="brand-name">Occupado</span>
+  </div>
+  <div class="card-title">Welcome back</div>
+  <div class="card-sub">Sign in to your revenue dashboard</div>
+  {error_html}{success_html}
+  <form method="POST">
+    <label>Username</label>
+    <input type="text" name="username" required autocomplete="username" placeholder="your username">
+    <label>Password</label>
+    <input type="password" name="password" required autocomplete="current-password" placeholder="••••••••">
+    <button type="submit" class="btn-submit">Sign in <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7h8M8 4l3 3-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+  </form>
+  <div class="divider"></div>
+  <div class="links">
+    <a href="/register">No account yet? <span>Start free pilot</span></a>
+    <a href="/forgot-password">Forgot password?</a>
+  </div>
 </div>
 </body>
 </html>"""
@@ -2224,52 +2272,69 @@ def register():
                     conn2.close()
                     success = "Account created! (Email verification skipped — no SendGrid key detected.) You can now sign in."
 
-    error_html   = f'<div style="background:#ffcdd2;padding:12px;margin-bottom:20px;color:#c62828;border-radius:8px;font-size:14px;">{error}</div>' if error else ''
-    success_html = f'<div style="background:#e8f5e9;padding:12px;margin-bottom:20px;color:#2e7d32;border-radius:8px;font-size:14px;">{success}</div>' if success else ''
+    error_html   = f'<div class="err">{error}</div>' if error else ''
+    success_html = f'<div class="ok">{success}</div>' if success else ''
 
     return f"""<!DOCTYPE html>
 <html>
-<head><title>Occupado — Register</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
+<head><title>Occupado — Start free pilot</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-body {{ background:#f5faf5; font-family:'DM Sans',sans-serif; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }}
-.box {{ background:#ffffff; padding:48px; border-radius:20px; width:100%; max-width:440px; border:1px solid rgba(0,128,0,0.15); }}
-.logo {{ font-family:'Syne',sans-serif; font-size:28px; font-weight:800; color:#008000; margin-bottom:4px; }}
-.subtitle {{ font-size:13px; color:#4a6648; margin-bottom:28px; font-family:'DM Mono',monospace; }}
-label {{ font-size:12px; color:#4a6648; display:block; margin-bottom:6px; font-family:'DM Mono',monospace; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }}
-input {{ width:100%; padding:12px; background:#f5faf5; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; margin-bottom:16px; outline:none; font-family:'DM Sans',sans-serif; }}
-input:focus {{ border-color:#008000; background:white; }}
-button {{ width:100%; padding:14px; background:#008000; color:white; border:none; border-radius:10px; font-weight:700; cursor:pointer; font-size:15px; font-family:'DM Sans',sans-serif; }}
-button:hover {{ background:#006600; }}
-.switch-link {{ text-align:center; margin-top:20px; font-size:13px; color:#4a6648; }}
-.switch-link a {{ color:#008000; font-weight:700; text-decoration:none; }}
-.switch-link a:hover {{ text-decoration:underline; }}
-.badge {{ display:inline-block; background:rgba(0,128,0,0.08); border:1px solid rgba(0,128,0,0.2); border-radius:20px; padding:6px 14px; font-family:'DM Mono',monospace; font-size:11px; color:#008000; margin-bottom:24px; letter-spacing:0.5px; }}
+*,*::before,*::after{{margin:0;padding:0;box-sizing:border-box;}}
+html,body{{height:100%;}}
+body{{background:#080c14;font-family:'Inter',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;-webkit-font-smoothing:antialiased;position:relative;overflow-x:hidden;}}
+body::before{{content:'';position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.04) 1px,transparent 1px);background-size:64px 64px;mask-image:radial-gradient(ellipse 70% 70% at 50% 50%,black 0%,transparent 70%);pointer-events:none;}}
+.card{{background:#0d1120;border:1px solid rgba(255,255,255,0.07);border-radius:20px;width:100%;max-width:460px;padding:48px;position:relative;z-index:1;box-shadow:0 32px 80px rgba(0,0,0,0.5);}}
+.brand{{display:flex;align-items:center;gap:10px;margin-bottom:32px;}}
+.brand-name{{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#ffffff;letter-spacing:-0.3px;}}
+.pilot-badge{{display:inline-flex;align-items:center;gap:6px;background:rgba(0,209,101,0.09);border:1px solid rgba(0,209,101,0.15);border-radius:99px;padding:5px 12px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#00d165;letter-spacing:1px;margin-bottom:20px;}}
+.card-title{{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:#ffffff;letter-spacing:-0.8px;margin-bottom:6px;}}
+.card-sub{{font-size:13px;color:rgba(255,255,255,0.35);margin-bottom:28px;}}
+.err{{background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);color:#fca5a5;padding:12px 14px;border-radius:9px;font-size:13px;margin-bottom:20px;line-height:1.5;}}
+.ok{{background:rgba(0,209,101,0.1);border:1px solid rgba(0,209,101,0.2);color:#6ee7b7;padding:12px 14px;border-radius:9px;font-size:13px;margin-bottom:20px;line-height:1.5;}}
+.ok a{{color:#00d165;font-weight:600;text-decoration:none;}}
+label{{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:500;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:7px;}}
+input{{width:100%;padding:12px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:9px;font-size:14px;color:#ffffff;margin-bottom:16px;outline:none;font-family:'Inter',sans-serif;transition:border-color .2s,background .2s;}}
+input:focus{{border-color:rgba(0,209,101,0.4);background:rgba(255,255,255,0.06);}}
+input::placeholder{{color:rgba(255,255,255,0.2);}}
+.btn-submit{{width:100%;padding:13px;background:#00d165;color:#080c14;border:none;border-radius:9px;font-weight:700;cursor:pointer;font-size:14px;font-family:'Inter',sans-serif;letter-spacing:-0.1px;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:6px;margin-top:4px;}}
+.btn-submit:hover{{background:#04e270;box-shadow:0 0 0 3px rgba(0,209,101,0.18);}}
+.divider{{height:1px;background:rgba(255,255,255,0.06);margin:20px 0;}}
+.back-link{{text-align:center;font-size:13px;}}
+.back-link a{{color:rgba(255,255,255,0.35);text-decoration:none;transition:color .2s;}}
+.back-link a span{{color:#00d165;font-weight:600;}}
+.back-link a:hover{{color:rgba(255,255,255,0.7);}}
 </style>
 </head>
 <body>
-<div class="box">
-    <div class="logo">Occupado</div>
-    <div class="subtitle">AI Booking Intelligence</div>
-    <div class="badge">✦ Free 40-day pilot · No credit card</div>
-    {error_html}{success_html}
-    {'<div style="text-align:center;margin-top:12px;"><a href="/login" style="color:#008000;font-weight:700;text-decoration:none;">← Back to Sign In</a></div>' if success else f"""
-    <form method="POST">
-        <label>Hotel Name</label>
-        <input type="text" name="hotel_name" placeholder="e.g. Grand Hotel Lisbon" required>
-        <label>Email Address</label>
-        <input type="email" name="email" placeholder="you@hotel.com" required>
-        <label>Username</label>
-        <input type="text" name="username" placeholder="Choose a username" required>
-        <label>Password</label>
-        <input type="password" name="password" placeholder="Min. 6 characters" required>
-        <label>Confirm Password</label>
-        <input type="password" name="confirm" placeholder="Repeat password" required>
-        <button type="submit">Create Account →</button>
-    </form>
-    <div class="switch-link">Already have an account? <a href="/login">Sign in →</a></div>
-    """}
+<div class="card">
+  <div class="brand">
+    <svg width="28" height="28" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8.5" fill="#00d165"/><rect x="6.5" y="6.5" width="8" height="8" rx="2.5" fill="#080c14"/><rect x="17.5" y="6.5" width="8" height="8" rx="2.5" fill="#080c14" opacity=".35"/><rect x="6.5" y="17.5" width="8" height="8" rx="2.5" fill="#080c14" opacity=".35"/><rect x="17.5" y="17.5" width="8" height="8" rx="2.5" fill="#080c14"/></svg>
+    <span class="brand-name">Occupado</span>
+  </div>
+  <div class="pilot-badge">FREE 40-DAY PILOT · NO CREDIT CARD</div>
+  <div class="card-title">Create your account</div>
+  <div class="card-sub">Start predicting cancellations in minutes</div>
+  {error_html}{success_html}
+  {'<div class="divider"></div><div class="back-link"><a href="/login"><span>Back to Sign in</span></a></div>' if success else f"""
+  <form method="POST">
+    <label>Hotel Name</label>
+    <input type="text" name="hotel_name" placeholder="e.g. Van der Valk Mechelen" required>
+    <label>Email Address</label>
+    <input type="email" name="email" placeholder="revenue@yourhotel.com" required>
+    <label>Username</label>
+    <input type="text" name="username" placeholder="Choose a username" required>
+    <label>Password</label>
+    <input type="password" name="password" placeholder="Min. 8 characters" required>
+    <label>Confirm Password</label>
+    <input type="password" name="confirm" placeholder="Repeat password" required>
+    <button type="submit" class="btn-submit">Create account <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7h8M8 4l3 3-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+  </form>
+  <div class="divider"></div>
+  <div class="back-link"><a href="/login">Already have an account? <span>Sign in</span></a></div>
+  """}
 </div>
 </body>
 </html>"""
