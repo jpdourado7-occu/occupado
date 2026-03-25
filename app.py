@@ -27,7 +27,7 @@ def add_security_headers(response):
     # Content Security Policy
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com; "
         "img-src 'self' data:; "
@@ -509,15 +509,1052 @@ def send_email_to_guest(guest_email, guest_name, hotel_name, subject, message_bo
         return False
 
 HOTELS = {
-    "grandmeridian": {"password": "hotel123", "name": "Grand Meridian Hotel", "rooms": 200, "city": "Lisbon"},
-    "scandic":       {"password": "hotel456", "name": "Scandic Stockholm",    "rooms": 350, "city": "Stockholm"},
-    "demo":          {"password": "demo",      "name": "Demo Hotel",           "rooms": 100, "city": "Porto"},
+    "grandmeridian":          {"password": "hotel123",    "name": "Grand Meridian Hotel",         "rooms": 200, "city": "Lisbon"},
+    "scandic":                {"password": "hotel456",    "name": "Scandic Stockholm",             "rooms": 350, "city": "Stockholm"},
+    "demo":                   {"password": "demo",        "name": "Demo Hotel",                    "rooms": 100, "city": "Porto"},
+    "van der valk mechelen":  {"password": "Mechelen123", "name": "Van der Valk Hotel Mechelen",   "rooms": 150, "city": "Mechelen", "vdv": True},
 }
 
 with open("occupado_model.pkl", "rb") as f:
     model = pickle.load(f)
 
 df = pd.read_csv("hotel_bookings.csv")
+
+# ── VAN DER VALK MECHELEN — Pre-loaded data & enhanced dashboard ──────────────
+VDV_HOTEL_KEY = "van der valk mechelen"
+_VDV_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "VDV-Data")
+
+def _parse_vdv_guests():
+    """Parse RES_042 repeat reservations report for current/upcoming repeat guests."""
+    path = os.path.join(_VDV_DIR, "RES_042_RepeatReservationsReport (1).xlsx")
+    if not os.path.exists(path):
+        return []
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(path, read_only=True)
+        rows = list(wb.active.iter_rows(values_only=True))
+        wb.close()
+        today = datetime.now()
+        guests = []
+        i = 0
+        while i < len(rows):
+            row = rows[i]
+            col0 = str(row[0]).strip() if row[0] else ''
+            col1 = str(row[1]).strip() if len(row) > 1 and row[1] else ''
+            col4 = row[4] if len(row) > 4 else None
+            col5 = row[5] if len(row) > 5 else None
+            if ',' in col0 and col4 and '/' in str(col4):
+                try:
+                    arr = datetime.strptime(str(col4)[:10], '%d/%m/%Y')
+                except Exception:
+                    i += 1
+                    continue
+                adults = 1
+                if col5:
+                    try: adults = int(str(col5).split('/')[0])
+                    except: pass
+                dep = None
+                for j in range(i + 1, min(i + 7, len(rows))):
+                    r = rows[j]
+                    r4 = r[4] if len(r) > 4 else None
+                    if r4 and r[0] is None and '/' in str(r4):
+                        try:
+                            dep = datetime.strptime(str(r4)[:10], '%d/%m/%Y')
+                            break
+                        except: pass
+                # Collect guest notes
+                note_parts = []
+                _skip = {'Repeat Reservations Report', 'Van der Valk Hotel Mechelen'}
+                for j in range(i + 1, min(i + 22, len(rows))):
+                    r = rows[j]
+                    r6 = r[6] if len(r) > 6 else None
+                    if r6:
+                        n = str(r6).strip()
+                        if n and n not in _skip and 'MIGRATED' not in n and 'CORPORATE 2025' not in n and 'central ar' not in n.lower() and '\n' not in n:
+                            note_parts.append(n[:80])
+                note = '; '.join(note_parts[:2]) if note_parts else ''
+                nights = (dep - arr).days if dep else 1
+                if dep and dep.date() < today.date():
+                    status = 'Checked Out'
+                elif arr.date() == today.date():
+                    status = 'Arriving Today'
+                elif arr.date() < today.date():
+                    status = 'In House'
+                else:
+                    status = f'Arriving {arr.strftime("%d %b")}'
+                guests.append({
+                    'name': col0, 'membership': col1,
+                    'arrival': arr.strftime('%d/%m/%Y'),
+                    'departure': dep.strftime('%d/%m/%Y') if dep else '',
+                    'arr_date': arr, 'dep_date': dep,
+                    'adults': adults, 'nights': nights,
+                    'status': status, 'note': note,
+                })
+            i += 1
+        return guests
+    except Exception as e:
+        print(f"[VDV] Guest parse error: {e}")
+        return []
+
+
+def _parse_vdv_channel_stats():
+    """Parse RES_036 cancelled reservations for channel breakdown."""
+    path = os.path.join(_VDV_DIR, "RES_036_CancelledReservations (1).xlsx")
+    if not os.path.exists(path):
+        return {}
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(path, read_only=True)
+        rows = list(wb.active.iter_rows(values_only=True))
+        wb.close()
+        raw = {}
+        for row in rows:
+            if row[0] is None and len(row) > 3 and row[3]:
+                seg = str(row[3]).strip()
+                if seg and not seg.startswith('Subtotal') and not re.match(r'\d{2}/\d{2}/\d{4}', seg) and seg not in ('Market Segment', 'Company/Travel Agent'):
+                    raw[seg] = raw.get(seg, 0) + 1
+        return {
+            'Booking.com':       sum(raw.get(k, 0) for k in ('BARWEB', 'BAROTAGROSS', 'DEALSOTA')),
+            'Direct / Web':      sum(raw.get(k, 0) for k in ('DISCWEB', 'BARDIR', 'DISCDIR', 'DISCOTAGROSS')),
+            'Corporate':         sum(raw.get(k, 0) for k in ('CORPFIX', 'CORPDYN')),
+            'Packages / Groups': sum(raw.get(k, 0) for k in ('PACK', 'MTGBNS', 'BNSGRP')),
+            'Other':             sum(raw.get(k, 0) for k in ('DEALS', 'OTHER', 'COMP')),
+        }
+    except Exception as e:
+        print(f"[VDV] Channel stats error: {e}")
+        return {}
+
+
+def _score_vdv_guests(guests):
+    """Score VdV repeat guests using the trained model."""
+    if not guests:
+        return []
+    today = datetime.now()
+    feat_rows = []
+    for g in guests:
+        arr = g['arr_date']
+        dep = g['dep_date']
+        lead = max(0, (arr - today).days)
+        wkend = wkday = 0
+        if dep:
+            d = arr
+            while d < dep:
+                if d.weekday() >= 5: wkend += 1
+                else: wkday += 1
+                d += timedelta(days=1)
+        week_num = int(arr.isocalendar()[1])
+        adr = 149.0 if 'CORP' in g.get('membership', '') else (150.0 if g['nights'] >= 10 else 115.0)
+        prev_ok = 5 if 'VIP' in g.get('membership', '') else 3
+        feat_rows.append([lead, week_num, wkend, wkday, g['adults'],
+                          1, 0, prev_ok, 0, 0, adr, 1 if g.get('note') else 0])
+    feat_cols = ['lead_time','arrival_date_week_number','stays_in_weekend_nights',
+                 'stays_in_week_nights','adults','is_repeated_guest',
+                 'previous_cancellations','previous_bookings_not_canceled',
+                 'booking_changes','days_in_waiting_list','adr','total_of_special_requests']
+    df_feat = pd.DataFrame(feat_rows, columns=feat_cols)
+    return [float(s) for s in model.predict_proba(df_feat)[:, 1] * 100]
+
+
+# Load VdV data once at startup
+VDV_GUESTS_RAW    = []
+VDV_CHANNEL_STATS = {}
+try:
+    VDV_GUESTS_RAW    = _parse_vdv_guests()
+    VDV_CHANNEL_STATS = _parse_vdv_channel_stats()
+    print(f"[VDV] Loaded {len(VDV_GUESTS_RAW)} repeat guests, channels: {list(VDV_CHANNEL_STATS.keys())}")
+except Exception as _vdv_err:
+    print(f"[VDV] Startup warning: {_vdv_err}")
+
+
+def build_vdv_dashboard(hotel_name, lang="en", first_login=False):
+    """Enhanced dashboard for Van der Valk Hotel Mechelen with real data and charts."""
+    guests  = VDV_GUESTS_RAW
+    scores  = _score_vdv_guests(guests)
+    ch_data = VDV_CHANNEL_STATS
+
+    today_str = datetime.now().strftime('%A, %d %B %Y')
+    today     = datetime.now()
+
+    arriving_today  = [g for g in guests if g['status'] == 'Arriving Today']
+    in_house        = [g for g in guests if g['status'] == 'In House']
+    checked_out     = [g for g in guests if g['status'] == 'Checked Out']
+    departing_tmrw  = [g for g, s in zip(guests, scores)
+                       if g.get('dep_date') and (g['dep_date'] - today).days == 1]
+
+    # Risk counts
+    high_count = sum(1 for s in scores if s >= 70)
+    med_count  = sum(1 for s in scores if 40 <= s < 70)
+    low_count  = sum(1 for s in scores if s < 40)
+    avg_score  = (sum(scores) / len(scores)) if scores else 0
+
+    # Revenue context
+    avg_adr = 130.0
+    rev_arriving = len(arriving_today) * avg_adr * 1.5  # avg ~1.5 nights
+    rev_inhouse  = len(in_house) * avg_adr * 1.2
+
+    # Chart data — risk donut
+    risk_donut_js    = json.dumps([low_count, med_count, high_count])
+    risk_donut_pct_js = json.dumps([
+        round(low_count / len(scores) * 100) if scores else 0,
+        round(med_count / len(scores) * 100) if scores else 0,
+        round(high_count / len(scores) * 100) if scores else 0,
+    ])
+
+    # Chart data — channel cancellations
+    ch_labels = json.dumps(list(ch_data.keys()))
+    ch_values = json.dumps(list(ch_data.values()))
+    ch_pcts   = json.dumps([round(v / sum(ch_data.values()) * 100, 1) if ch_data else 0 for v in ch_data.values()])
+
+    # Chart data — guest risk scores bar
+    guest_names_js = json.dumps([g['name'].split(',')[0] for g in guests])
+    guest_scores_js = json.dumps([round(s, 1) for s in scores])
+    guest_colors_js = json.dumps([
+        '#dc2626' if s >= 70 else ('#f59e0b' if s >= 40 else '#00d165')
+        for s in scores
+    ])
+
+    # Build table rows
+    rows_html = ""
+    for i, (g, score) in enumerate(zip(guests, scores)):
+        if score >= 70:
+            badge  = f'<span class="badge high">HIGH {score:.1f}%</span>'
+            action = f'<button class="btn dep" onclick="event.stopPropagation();openVdvEmail({i},\'deposit\')">Request Deposit</button>'
+        elif score >= 40:
+            badge  = f'<span class="badge med">MEDIUM {score:.1f}%</span>'
+            action = f'<button class="btn rem" onclick="event.stopPropagation();openVdvEmail({i},\'reminder\')">Send Reminder</button>'
+        else:
+            badge  = f'<span class="badge low">LOW {score:.1f}%</span>'
+            action = f'<button class="btn mon" onclick="event.stopPropagation();openVdvEmail({i},\'contact\')">Contact Guest</button>'
+
+        # Status badge
+        if g['status'] == 'Arriving Today':
+            st_badge = '<span class="st-badge st-arriving">Arriving Today</span>'
+        elif g['status'] == 'In House':
+            st_badge = '<span class="st-badge st-inhouse">In House</span>'
+        elif g['status'] == 'Checked Out':
+            st_badge = '<span class="st-badge st-out">Checked Out</span>'
+        else:
+            st_badge = f'<span class="st-badge st-future">{g["status"]}</span>'
+
+        memb = g.get('membership', '')
+        memb_badge = f' <span class="memb-badge">{memb}</span>' if memb else ''
+        note_html  = f'<span class="guest-note" title="{g["note"]}">{g["note"][:38]}…</span>' if g.get('note') and len(g['note']) > 38 else (f'<span class="guest-note">{g.get("note","")}</span>' if g.get('note') else '—')
+
+        rows_html += f"""<tr class="clickable-row" onclick="showVdvDetail({i},{score:.1f})">
+            <td><span class="guest-name">{g['name']}</span>{memb_badge}</td>
+            <td>{st_badge}</td>
+            <td>{g['arrival']}</td>
+            <td>{g.get('departure','—')}</td>
+            <td>{g['nights']} night{'s' if g['nights']!=1 else ''}</td>
+            <td>{g['adults']}</td>
+            <td>{badge}</td>
+            <td class="note-cell">{note_html}</td>
+            <td>{action}</td>
+        </tr>"""
+
+    # Action plan cards
+    arriving_plan = ""
+    for g in arriving_today:
+        specific = g.get('note', '')
+        tip = specific if specific else 'Prepare welcome, confirm room assignment'
+        arriving_plan += f'<div class="plan-item"><div class="plan-guest">{g["name"]}</div><div class="plan-tip">{tip}</div></div>'
+    if not arriving_plan:
+        arriving_plan = '<div class="plan-empty">No arrivals today</div>'
+
+    inhouse_plan = ""
+    for g in in_house:
+        dep = g.get('dep_date')
+        days_left = (dep - today).days if dep else '?'
+        tip = f'{days_left} night{"s" if days_left != 1 else ""} remaining'
+        if g.get('note'):
+            tip = g['note'] + ' · ' + tip
+        inhouse_plan += f'<div class="plan-item"><div class="plan-guest">{g["name"]}</div><div class="plan-tip">{tip}</div></div>'
+    if not inhouse_plan:
+        inhouse_plan = '<div class="plan-empty">No guests currently in house</div>'
+
+    # Guests JSON for JS
+    guests_js = json.dumps([{
+        'name': g['name'], 'arrival': g['arrival'], 'departure': g.get('departure',''),
+        'nights': g['nights'], 'adults': g['adults'], 'membership': g.get('membership',''),
+        'status': g['status'], 'note': g.get('note',''), 'adr': 149.0 if 'CORP' in g.get('membership','') else 115.0
+    } for g in guests])
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Occupado — Van der Valk Hotel Mechelen</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+*,*::before,*::after{{margin:0;padding:0;box-sizing:border-box;}}
+body{{background:#f5f7fb;color:#0d1120;font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}}
+a{{text-decoration:none;}}
+/* TOPBAR */
+.topbar{{height:62px;background:#ffffff;border-bottom:1px solid #e4e8f0;display:flex;align-items:center;padding:0 32px;position:sticky;top:0;z-index:100;}}
+.topbar-brand{{display:flex;align-items:center;gap:6px;}}
+.topbar-name{{font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:#0d1120;letter-spacing:-0.4px;}}
+.topbar-name span{{color:#00d165;}}
+.topbar-hotel{{font-family:'JetBrains Mono',monospace;font-size:11px;color:#94a3b8;margin-left:8px;padding-left:12px;border-left:1px solid #e4e8f0;}}
+.topbar-right{{display:flex;align-items:center;gap:8px;margin-left:auto;}}
+.btn-nav{{padding:7px 16px;background:transparent;border:1px solid #e4e8f0;border-radius:7px;color:#64748b;font-size:12px;font-weight:500;text-decoration:none;transition:all .2s;}}
+.btn-nav:hover{{border-color:#cbd5e1;color:#0d1120;}}
+.lang-selector{{padding:7px 12px;background:transparent;border:1px solid #e4e8f0;border-radius:7px;color:#64748b;font-size:12px;cursor:pointer;font-family:'Inter',sans-serif;outline:none;}}
+/* HERO */
+.hero{{background:linear-gradient(135deg,#0d1120 0%,#0f2218 100%);padding:40px 32px 36px;margin-bottom:0;}}
+.hero-eyebrow{{font-family:'JetBrains Mono',monospace;font-size:11px;color:#00d165;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;}}
+.hero-title{{font-family:'Syne',sans-serif;font-size:32px;font-weight:800;color:#ffffff;letter-spacing:-0.8px;margin-bottom:6px;}}
+.hero-sub{{font-size:13px;color:#94a3b8;}}
+.hero-badges{{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;}}
+.hero-badge{{background:rgba(0,209,101,0.12);border:1px solid rgba(0,209,101,0.25);border-radius:6px;padding:5px 12px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#00d165;}}
+.hero-badge.warn{{background:rgba(245,158,11,0.12);border-color:rgba(245,158,11,0.25);color:#f59e0b;}}
+.hero-badge.info{{background:rgba(148,163,184,0.12);border-color:rgba(148,163,184,0.25);color:#94a3b8;}}
+/* CONTENT */
+.content{{padding:28px 32px;}}
+.section-title{{font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:#0d1120;letter-spacing:-0.3px;margin-bottom:14px;margin-top:32px;}}
+.section-sub{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;margin-top:-10px;margin-bottom:16px;text-transform:uppercase;letter-spacing:0.5px;}}
+/* KPI GRID */
+.kpi-grid{{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:12px;}}
+.kpi-card{{background:#ffffff;border:1px solid #e4e8f0;border-radius:12px;padding:18px 20px;}}
+.kpi-num{{font-family:'Syne',sans-serif;font-size:36px;font-weight:800;line-height:1;letter-spacing:-1.5px;}}
+.kpi-label{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;margin-top:5px;text-transform:uppercase;letter-spacing:0.8px;line-height:1.4;}}
+.kpi-trend{{font-size:11px;margin-top:4px;font-weight:500;}}
+.kpi-num.green{{color:#00d165;}}
+.kpi-num.red{{color:#dc2626;}}
+.kpi-num.orange{{color:#f59e0b;}}
+.kpi-num.blue{{color:#3b82f6;}}
+.kpi-num.neutral{{color:#0d1120;}}
+.kpi-card.highlight-green{{border-color:#bbf7d0;background:#f0fdf4;}}
+.kpi-card.highlight-red{{border-color:#fecaca;background:#fef2f2;}}
+/* CHARTS ROW */
+.charts-row{{display:grid;grid-template-columns:1fr 2fr 2fr;gap:14px;margin-bottom:28px;}}
+.chart-card{{background:#ffffff;border:1px solid #e4e8f0;border-radius:14px;padding:22px;}}
+.chart-title{{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:#0d1120;letter-spacing:-0.2px;margin-bottom:4px;}}
+.chart-sub{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;margin-bottom:14px;text-transform:uppercase;letter-spacing:0.5px;}}
+.donut-center{{text-align:center;margin-top:8px;}}
+.donut-big{{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:#00d165;}}
+.donut-label{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;}}
+/* TABLE */
+table{{width:100%;border-collapse:collapse;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e4e8f0;margin-bottom:28px;}}
+th{{background:#f8fafc;color:#94a3b8;font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1px;padding:12px 14px;text-align:left;border-bottom:1px solid #e4e8f0;white-space:nowrap;}}
+td{{padding:12px 14px;font-size:12.5px;border-bottom:1px solid #f1f5f9;color:#374151;vertical-align:middle;}}
+.clickable-row{{cursor:pointer;}}
+.clickable-row:hover td{{background:#f8fafc;}}
+.guest-name{{font-weight:600;color:#0d1120;font-size:13px;}}
+.memb-badge{{background:#eff6ff;color:#3b82f6;border:1px solid #bfdbfe;padding:2px 7px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;margin-left:4px;}}
+.badge{{padding:3px 9px;border-radius:99px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;border:1px solid;white-space:nowrap;}}
+.high{{background:#fef2f2;color:#dc2626;border-color:#fecaca;}}
+.med{{background:#fffbeb;color:#b45309;border-color:#fde68a;}}
+.low{{background:#f0fdf4;color:#16a34a;border-color:#bbf7d0;}}
+.btn{{padding:5px 12px;border-radius:6px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid;background:transparent;font-family:'Inter',sans-serif;transition:all .2s;white-space:nowrap;}}
+.dep{{color:#dc2626;border-color:#fecaca;}}.dep:hover{{background:#fef2f2;}}
+.rem{{color:#b45309;border-color:#fde68a;}}.rem:hover{{background:#fffbeb;}}
+.mon{{color:#16a34a;border-color:#bbf7d0;}}.mon:hover{{background:#f0fdf4;}}
+/* STATUS BADGES */
+.st-badge{{padding:3px 9px;border-radius:99px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;border:1px solid;white-space:nowrap;}}
+.st-arriving{{background:#fef3c7;color:#92400e;border-color:#fde68a;}}
+.st-inhouse{{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;}}
+.st-out{{background:#f8fafc;color:#94a3b8;border-color:#e4e8f0;}}
+.st-future{{background:#f0fdf4;color:#15803d;border-color:#bbf7d0;}}
+.note-cell{{max-width:200px;overflow:hidden;}}
+.guest-note{{font-size:11px;color:#64748b;font-style:italic;}}
+/* ACTION PLAN */
+.action-plan-grid{{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:28px;}}
+.plan-card{{background:#ffffff;border:1px solid #e4e8f0;border-radius:14px;padding:22px;}}
+.plan-card-header{{display:flex;align-items:center;gap:10px;margin-bottom:14px;}}
+.plan-icon{{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;}}
+.plan-icon.arriving{{background:#fef3c7;}}
+.plan-icon.inhouse{{background:#eff6ff;}}
+.plan-icon.intel{{background:#f0fdf4;}}
+.plan-icon.bulk{{background:#faf5ff;}}
+.plan-card-title{{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:#0d1120;}}
+.plan-card-sub{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;}}
+.plan-item{{background:#f8fafc;border:1px solid #e4e8f0;border-radius:8px;padding:10px 12px;margin-bottom:8px;}}
+.plan-item:last-child{{margin-bottom:0;}}
+.plan-guest{{font-weight:600;font-size:12px;color:#0d1120;margin-bottom:3px;}}
+.plan-tip{{font-size:11.5px;color:#64748b;line-height:1.4;}}
+.plan-empty{{font-family:'JetBrains Mono',monospace;font-size:11px;color:#94a3b8;padding:10px;}}
+.plan-action-btn{{margin-top:12px;width:100%;padding:9px;background:#ffffff;border:1px solid #e4e8f0;border-radius:8px;color:#0d1120;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;transition:all .2s;}}
+.plan-action-btn:hover{{background:#f1f5f9;}}
+.plan-action-btn.green-btn{{background:#00d165;border-color:#00d165;color:#080c14;}}
+.plan-action-btn.green-btn:hover{{background:#04e270;}}
+/* INTEL CARDS */
+.intel-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:8px;}}
+.intel-item{{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;}}
+.intel-item.warn{{background:#fffbeb;border-color:#fde68a;}}
+.intel-item.info{{background:#eff6ff;border-color:#bfdbfe;}}
+.intel-num{{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#15803d;line-height:1;}}
+.intel-num.warn{{color:#92400e;}}
+.intel-num.info{{color:#1d4ed8;}}
+.intel-label{{font-family:'JetBrains Mono',monospace;font-size:9px;color:#64748b;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;}}
+/* OPTIMIZER */
+.optimizer-card{{background:#ffffff;border:1px solid #e4e8f0;border-radius:14px;padding:24px;margin-bottom:28px;}}
+.optimizer-row{{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:18px;}}
+.opt-stat{{background:#f8fafc;border:1px solid #e4e8f0;border-radius:9px;padding:14px;}}
+.opt-stat-val{{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:#0d1120;line-height:1;}}
+.opt-stat-label{{font-family:'JetBrains Mono',monospace;font-size:9px;color:#94a3b8;margin-top:4px;text-transform:uppercase;}}
+/* BULK ACTIONS */
+.bulk-zone{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:28px;}}
+.bulk-card{{background:#f8fafc;border:1px solid #e4e8f0;border-radius:12px;padding:20px;transition:border-color .2s;}}
+.bulk-card:hover{{border-color:#cbd5e1;}}
+.bulk-icon{{font-size:24px;margin-bottom:8px;}}
+.bulk-card-title{{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:#0d1120;margin-bottom:4px;}}
+.bulk-card-sub{{font-size:12px;color:#64748b;margin-bottom:14px;line-height:1.4;}}
+.bulk-btn{{padding:9px 14px;background:#ffffff;border:1px solid #e4e8f0;border-radius:8px;color:#0d1120;font-size:12px;font-weight:600;cursor:pointer;width:100%;font-family:'Inter',sans-serif;transition:all .2s;}}
+.bulk-btn:hover{{background:#f1f5f9;}}
+.bulk-btn.green-btn{{background:#00d165;border-color:#00d165;color:#080c14;}}
+.bulk-btn.green-btn:hover{{background:#04e270;}}
+/* MODAL */
+.modal-overlay{{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(4px);}}
+.modal-overlay.show{{display:flex;}}
+.modal{{background:#ffffff;border:1px solid #e4e8f0;border-radius:20px;padding:36px;width:100%;max-width:520px;max-height:88vh;overflow-y:auto;position:relative;box-shadow:0 16px 48px rgba(0,0,0,0.1);}}
+.modal-close{{position:absolute;top:14px;right:16px;font-size:20px;cursor:pointer;color:#94a3b8;background:none;border:none;}}
+.modal-title{{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#0d1120;margin-bottom:2px;}}
+.modal-sub{{font-family:'JetBrains Mono',monospace;font-size:11px;color:#94a3b8;margin-bottom:18px;}}
+.score-display{{font-family:'Syne',sans-serif;font-size:56px;font-weight:800;line-height:1;margin-bottom:6px;}}
+.score-bar-bg{{height:8px;background:#f1f5f9;border-radius:4px;overflow:hidden;margin-bottom:10px;}}
+.score-bar-fill{{height:100%;border-radius:4px;}}
+.score-verdict{{font-size:12px;font-weight:600;padding:6px 12px;border-radius:6px;display:inline-block;margin-bottom:14px;}}
+.modal-section{{margin-bottom:14px;}}
+.modal-section-title{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;}}
+.modal-detail-row{{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:12.5px;}}
+.modal-detail-row:last-child{{border-bottom:none;}}
+.modal-detail-label{{color:#64748b;}}
+.modal-detail-val{{font-family:'JetBrains Mono',monospace;color:#0d1120;font-weight:500;}}
+.reason-item{{background:#f8fafc;border-radius:7px;padding:10px 12px;margin-bottom:6px;font-size:12px;color:#374151;line-height:1.5;border-left:3px solid #e4e8f0;}}
+.reason-item.pos{{border-left-color:#00d165;}}
+.reason-item.neg{{border-left-color:#f59e0b;}}
+/* EMAIL COMPOSER */
+.email-composer{{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1001;align-items:center;justify-content:center;backdrop-filter:blur(4px);}}
+.email-composer.show{{display:flex;}}
+.email-box{{background:#ffffff;border:1px solid #e4e8f0;border-radius:20px;padding:32px;width:100%;max-width:600px;max-height:90vh;overflow-y:auto;box-shadow:0 16px 48px rgba(0,0,0,0.1);}}
+.email-title{{font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:#0d1120;margin-bottom:2px;}}
+.email-label{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:6px;font-weight:500;}}
+.email-input{{width:100%;padding:10px 13px;background:#f8fafc;border:1px solid #e4e8f0;border-radius:8px;font-size:13px;color:#0d1120;outline:none;margin-bottom:12px;font-family:'Inter',sans-serif;}}
+.email-input:focus{{border-color:#00d165;background:#fff;}}
+.email-textarea{{width:100%;padding:10px 13px;background:#f8fafc;border:1px solid #e4e8f0;border-radius:8px;font-size:12.5px;color:#0d1120;outline:none;resize:vertical;min-height:160px;margin-bottom:12px;font-family:'Inter',sans-serif;line-height:1.6;}}
+.email-textarea:focus{{border-color:#00d165;background:#fff;}}
+.email-actions{{display:flex;gap:10px;margin-top:16px;}}
+.email-send{{flex:1;padding:11px;background:#00d165;color:#080c14;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}}
+.email-send:hover{{background:#04e270;}}
+.email-cancel{{flex:1;padding:11px;background:#f8fafc;color:#64748b;border:1px solid #e4e8f0;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;}}
+/* TOAST */
+.toast{{position:fixed;bottom:24px;right:24px;background:#0d1120;color:#fff;border-radius:10px;padding:13px 17px;font-size:12.5px;transform:translateY(60px);opacity:0;transition:all 0.3s;z-index:2000;box-shadow:0 8px 24px rgba(0,0,0,0.15);}}
+.toast.show{{transform:translateY(0);opacity:1;}}
+/* WELCOME BANNER */
+.welcome-banner{{background:#f0fdf4;border-bottom:1px solid #bbf7d0;padding:11px 32px;display:flex;align-items:center;justify-content:space-between;font-size:13px;color:#166534;}}
+.welcome-close{{background:none;border:none;color:#94a3b8;font-size:18px;cursor:pointer;}}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="topbar-brand">
+    <span class="topbar-name">Occup<span>ado</span></span>
+    <span class="topbar-hotel">{hotel_name}</span>
+  </div>
+  <div class="topbar-right">
+    <select class="lang-selector" onchange="window.location.href='/dashboard?lang='+this.value">
+      <option value="en" {"selected" if lang=="en" else ""}>EN</option>
+      <option value="nl" {"selected" if lang=="nl" else ""}>NL</option>
+      <option value="fr" {"selected" if lang=="fr" else ""}>FR</option>
+    </select>
+    <a href="/settings" class="btn-nav">Settings</a>
+    <a href="/logout" class="btn-nav">Sign Out</a>
+  </div>
+</div>
+
+{f'''<div id="welcome-banner" class="welcome-banner">
+  <span>Welcome back, <strong>{hotel_name}</strong>. Your live intelligence dashboard is ready.</span>
+  <button onclick="document.getElementById('welcome-banner').style.display='none'" class="welcome-close">×</button>
+</div>''' if first_login else ''}
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-eyebrow">Live Intelligence Dashboard</div>
+  <div class="hero-title">Van der Valk Hotel Mechelen</div>
+  <div class="hero-sub">{today_str} · {len(guests)} repeat guests tracked · Powered by Occupado AI</div>
+  <div class="hero-badges">
+    <span class="hero-badge">✓ Model accuracy 80.3%</span>
+    <span class="hero-badge">✓ {len(arriving_today)} arriving today</span>
+    <span class="hero-badge">✓ {len(in_house)} in house</span>
+    <span class="hero-badge {'warn' if high_count > 0 else ''}">{'⚠ ' + str(high_count) + ' high risk' if high_count > 0 else '✓ 0 high risk today'}</span>
+    <span class="hero-badge info">VDV Shiji · Data current</span>
+  </div>
+</div>
+
+<div class="content">
+
+<!-- KPI ROW 1: Today's operations -->
+<div class="section-title" style="margin-top:0">Today at a Glance</div>
+<div class="kpi-grid">
+  <div class="kpi-card highlight-green">
+    <div class="kpi-num green">{len(arriving_today)}</div>
+    <div class="kpi-label">Arriving Today</div>
+    <div class="kpi-trend" style="color:#16a34a">↑ Ready for check-in</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-num blue">{len(in_house)}</div>
+    <div class="kpi-label">Currently In House</div>
+    <div class="kpi-trend" style="color:#3b82f6">Repeat guests</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-num neutral">{len(departing_tmrw)}</div>
+    <div class="kpi-label">Departing Tomorrow</div>
+    <div class="kpi-trend" style="color:#64748b">Send departure reminders</div>
+  </div>
+  <div class="kpi-card {'highlight-red' if high_count > 0 else ''}">
+    <div class="kpi-num {'red' if high_count > 0 else 'green'}">{high_count}</div>
+    <div class="kpi-label">High Risk Bookings</div>
+    <div class="kpi-trend" style="color:{'#dc2626' if high_count > 0 else '#16a34a'}">{'Action required' if high_count > 0 else '✓ All clear'}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-num orange">{med_count}</div>
+    <div class="kpi-label">Medium Risk</div>
+    <div class="kpi-trend" style="color:#b45309">Monitor closely</div>
+  </div>
+  <div class="kpi-card highlight-green">
+    <div class="kpi-num green">{low_count}</div>
+    <div class="kpi-label">Low Risk</div>
+    <div class="kpi-trend" style="color:#16a34a">Avg score {avg_score:.1f}%</div>
+  </div>
+</div>
+
+<!-- KPI ROW 2: Historical intelligence -->
+<div class="kpi-grid" style="margin-top:12px;margin-bottom:28px;">
+  <div class="kpi-card">
+    <div class="kpi-num neutral" style="font-size:28px;">15.2%</div>
+    <div class="kpi-label">Historical Cancellation Rate</div>
+    <div class="kpi-trend" style="color:#64748b">Based on 1,638 events</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-num neutral" style="font-size:28px;">4.7%</div>
+    <div class="kpi-label">Historical No-show Rate</div>
+    <div class="kpi-trend" style="color:#64748b">300 no-shows tracked</div>
+  </div>
+  <div class="kpi-card highlight-green">
+    <div class="kpi-num green" style="font-size:28px;">80.3%</div>
+    <div class="kpi-label">AI Model Accuracy</div>
+    <div class="kpi-trend" style="color:#16a34a">Kaggle + Shiji data</div>
+  </div>
+  <div class="kpi-card highlight-green">
+    <div class="kpi-num green" style="font-size:28px;">€0</div>
+    <div class="kpi-label">Revenue at Risk Today</div>
+    <div class="kpi-trend" style="color:#16a34a">All guests confirmed</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-num neutral" style="font-size:28px;">€{int(rev_arriving):,}</div>
+    <div class="kpi-label">Expected Revenue — Arrivals</div>
+    <div class="kpi-trend" style="color:#64748b">{len(arriving_today)} guests × avg rate</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-num neutral" style="font-size:28px;">€{int(rev_inhouse):,}</div>
+    <div class="kpi-label">Active Revenue — In House</div>
+    <div class="kpi-trend" style="color:#64748b">{len(in_house)} guests × avg rate</div>
+  </div>
+</div>
+
+<!-- CHARTS ROW -->
+<div class="section-title">Analytics</div>
+<div class="charts-row">
+
+  <!-- Donut: Risk distribution -->
+  <div class="chart-card">
+    <div class="chart-title">Booking Risk</div>
+    <div class="chart-sub">Current guests distribution</div>
+    <canvas id="riskDonut" height="180"></canvas>
+    <div class="donut-center">
+      <div class="donut-big">{round(low_count/len(scores)*100) if scores else 0}%</div>
+      <div class="donut-label">Low Risk</div>
+    </div>
+  </div>
+
+  <!-- Bar: Cancellation by channel -->
+  <div class="chart-card">
+    <div class="chart-title">Cancellations by Channel</div>
+    <div class="chart-sub">Historical — {sum(ch_data.values()):,} total cancellations</div>
+    <canvas id="channelChart" height="180"></canvas>
+  </div>
+
+  <!-- Bar: Guest risk scores -->
+  <div class="chart-card">
+    <div class="chart-title">Guest Cancellation Scores</div>
+    <div class="chart-sub">AI prediction per guest — lower is better</div>
+    <canvas id="scoreChart" height="180"></canvas>
+  </div>
+
+</div>
+
+<!-- OVERBOOKING OPTIMIZER -->
+<div class="section-title">Overbooking Optimizer</div>
+<div class="optimizer-card">
+  <div class="optimizer-row">
+    <div class="opt-stat" style="background:#f0fdf4;border-color:#bbf7d0;">
+      <div class="opt-stat-val" style="color:#00d165">+{max(0, round(len(guests)*0.05))}</div>
+      <div class="opt-stat-label">Safe rooms to oversell</div>
+    </div>
+    <div class="opt-stat">
+      <div class="opt-stat-val">{len(guests)}</div>
+      <div class="opt-stat-label">Bookings analysed</div>
+    </div>
+    <div class="opt-stat">
+      <div class="opt-stat-val" style="color:#dc2626">0</div>
+      <div class="opt-stat-label">Predicted no-shows</div>
+    </div>
+    <div class="opt-stat">
+      <div class="opt-stat-val">€130</div>
+      <div class="opt-stat-label">Avg room rate</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center;background:#f8fafc;border:1px solid #e4e8f0;border-radius:9px;padding:14px 18px;">
+    <div style="flex:1;font-size:13px;color:#374151;line-height:1.5;">
+      <strong style="color:#0d1120;">Tonight's outlook:</strong> All {len(guests)} tracked repeat guests are confirmed.
+      Historical no-show rate of 4.7% suggests <strong>{round(len(guests)*0.047,1)}</strong> potential gaps.
+      Consider moderate overbooking for non-repeat segments.
+    </div>
+    <button onclick="showToast('Recommendation noted — coordinate with front desk')" style="padding:10px 20px;background:#00d165;border:none;border-radius:8px;color:#080c14;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:Inter,sans-serif;">Apply Recommendation</button>
+  </div>
+</div>
+
+<!-- GUEST TABLE -->
+<div class="section-title">Repeat Guests — Click any row for AI analysis</div>
+<div class="section-sub">Sorted by status: Arriving Today → In House → Checked Out</div>
+<table>
+<thead>
+  <tr>
+    <th>Guest</th><th>Status</th><th>Arrival</th><th>Departure</th>
+    <th>Nights</th><th>Adults</th><th>Risk Score</th><th>Guest Notes</th><th>Action</th>
+  </tr>
+</thead>
+<tbody>{rows_html}</tbody>
+</table>
+
+<!-- ACTION PLAN -->
+<div class="section-title">Interactive Action Plan</div>
+<div class="section-sub">Contextual tips and contact options per guest segment</div>
+
+<div class="action-plan-grid">
+
+  <!-- Arriving Today -->
+  <div class="plan-card">
+    <div class="plan-card-header">
+      <div class="plan-icon arriving">🛬</div>
+      <div>
+        <div class="plan-card-title">Today's Arrivals ({len(arriving_today)})</div>
+        <div class="plan-card-sub">Expected today · Pre-arrival actions</div>
+      </div>
+    </div>
+    {arriving_plan}
+    <button class="plan-action-btn green-btn" onclick="openBulkTemplate('welcome')" style="margin-top:14px;">
+      Send Welcome Email to All →
+    </button>
+  </div>
+
+  <!-- In House -->
+  <div class="plan-card">
+    <div class="plan-card-header">
+      <div class="plan-icon inhouse">🏨</div>
+      <div>
+        <div class="plan-card-title">In-House Guests ({len(in_house)})</div>
+        <div class="plan-card-sub">Currently staying · Experience & upsell</div>
+      </div>
+    </div>
+    {inhouse_plan}
+    <button class="plan-action-btn" onclick="openBulkTemplate('departure')" style="margin-top:14px;">
+      Send Departure Reminder to All →
+    </button>
+  </div>
+
+  <!-- Revenue Intelligence -->
+  <div class="plan-card">
+    <div class="plan-card-header">
+      <div class="plan-icon intel">📊</div>
+      <div>
+        <div class="plan-card-title">Revenue Intelligence</div>
+        <div class="plan-card-sub">Historical insights from Shiji data</div>
+      </div>
+    </div>
+    <div class="intel-grid">
+      <div class="intel-item warn">
+        <div class="intel-num warn">31.6%</div>
+        <div class="intel-label">Booking.com cancellations</div>
+      </div>
+      <div class="intel-item warn">
+        <div class="intel-num warn">24.2%</div>
+        <div class="intel-label">Corporate cancellations</div>
+      </div>
+      <div class="intel-item info">
+        <div class="intel-num info">14.7%</div>
+        <div class="intel-label">Direct / Web cancellations</div>
+      </div>
+    </div>
+    <div style="margin-top:10px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px;font-size:12px;color:#92400e;line-height:1.5;">
+      <strong>💡 Insight:</strong> Booking.com is your #1 cancellation source (518 cancellations tracked).
+      Consider requiring prepayment on OTA bookings with high lead times.
+    </div>
+  </div>
+
+  <!-- Tips & Best Practices -->
+  <div class="plan-card">
+    <div class="plan-card-header">
+      <div class="plan-icon bulk">💡</div>
+      <div>
+        <div class="plan-card-title">Tips & Best Practices</div>
+        <div class="plan-card-sub">AI-powered recommendations for VdV Mechelen</div>
+      </div>
+    </div>
+    <div class="plan-item">
+      <div class="plan-guest">Repeat Guest Program</div>
+      <div class="plan-tip">Your repeat guests (like those tracked here) have significantly lower cancellation rates. Prioritise VIP recognition on check-in to reinforce loyalty.</div>
+    </div>
+    <div class="plan-item">
+      <div class="plan-guest">Corporate Rate Management</div>
+      <div class="plan-tip">Corporate guests (Alheembouw, CORP accounts) have fixed rates. Verify current-period rates are loaded correctly in Shiji before check-in.</div>
+    </div>
+    <div class="plan-item">
+      <div class="plan-guest">No-show Protection</div>
+      <div class="plan-tip">With a 4.7% historical no-show rate, consider implementing credit card guarantees for all bookings with lead time &gt; 30 days.</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- BULK ACTIONS -->
+<div class="section-title">Take Action</div>
+<div class="bulk-zone">
+  <div class="bulk-card">
+    <div class="bulk-icon">👋</div>
+    <div class="bulk-card-title">Welcome Arriving Guests</div>
+    <div class="bulk-card-sub">Send personalised welcome emails to today's {len(arriving_today)} arriving guests</div>
+    <button class="bulk-btn green-btn" onclick="openBulkTemplate('welcome')">Send Welcome Email →</button>
+  </div>
+  <div class="bulk-card">
+    <div class="bulk-icon">🛎</div>
+    <div class="bulk-card-title">Departure Reminders</div>
+    <div class="bulk-card-sub">Remind tomorrow's departures of checkout time and offer late checkout</div>
+    <button class="bulk-btn" onclick="openBulkTemplate('departure')">Send Departure Reminder →</button>
+  </div>
+  <div class="bulk-card">
+    <div class="bulk-icon">⬆️</div>
+    <div class="bulk-card-title">Upsell In-House Guests</div>
+    <div class="bulk-card-sub">Offer restaurant, parking, or room upgrade to the {len(in_house)} guests currently staying</div>
+    <button class="bulk-btn" onclick="openBulkTemplate('upsell')">Send Upsell Offer →</button>
+  </div>
+</div>
+
+</div><!-- /content -->
+
+
+<!-- DETAIL MODAL -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeDetailModal()">✕</button>
+    <div class="modal-title" id="dm-title">Guest Analysis</div>
+    <div class="modal-sub" id="dm-sub">AI Cancellation Risk</div>
+    <div class="score-display" id="dm-score">0%</div>
+    <div class="score-bar-bg"><div class="score-bar-fill" id="dm-bar" style="width:0%"></div></div>
+    <div class="score-verdict" id="dm-verdict"></div>
+    <div class="modal-section">
+      <div class="modal-section-title">Booking Details</div>
+      <div id="dm-details"></div>
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-title">AI Risk Factors</div>
+      <div id="dm-reasons"></div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px;">
+      <button id="dm-contact-btn" style="flex:1;padding:12px;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif;background:#00d165;color:#080c14;" onclick="openContactFromModal()">Contact Guest →</button>
+      <button style="flex:1;padding:12px;background:#f8fafc;color:#64748b;border:1px solid #e4e8f0;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;" onclick="closeDetailModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- EMAIL COMPOSER -->
+<div class="email-composer" id="emailComposer">
+  <div class="email-box">
+    <div style="margin-bottom:20px;">
+      <div class="email-title" id="ec-title">Contact Guest</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#94a3b8;margin-top:3px;" id="ec-sub"></div>
+    </div>
+    <label class="email-label">Guest Email Address</label>
+    <input type="email" id="ec-email" class="email-input" placeholder="guest@example.com">
+    <label class="email-label">Guest Name</label>
+    <input type="text" id="ec-name" class="email-input" placeholder="Guest Name">
+    <label class="email-label">Subject</label>
+    <input type="text" id="ec-subject" class="email-input" placeholder="Your upcoming stay at Van der Valk Hotel Mechelen">
+    <label class="email-label">Message</label>
+    <textarea id="ec-body" class="email-textarea" placeholder="Dear Guest..."></textarea>
+    <div class="email-actions">
+      <button class="email-send" onclick="sendGuestEmail()">📧 Send Email</button>
+      <button class="email-cancel" onclick="closeEmailComposer()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- BULK EMAIL COMPOSER -->
+<div class="email-composer" id="bulkComposer">
+  <div class="email-box">
+    <div style="margin-bottom:20px;">
+      <div class="email-title" id="bc-title">Send to Group</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#94a3b8;margin-top:3px;" id="bc-sub"></div>
+    </div>
+    <label class="email-label">Subject</label>
+    <input type="text" id="bc-subject" class="email-input">
+    <label class="email-label">Message (sent to all guests in this group)</label>
+    <textarea id="bc-body" class="email-textarea"></textarea>
+    <div class="email-actions">
+      <button class="email-send" onclick="sendBulkEmail()">📧 Send to All</button>
+      <button class="email-cancel" onclick="closeBulkComposer()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const guests = {guests_js};
+const scores = {guest_scores_js};
+let currentGuestIdx = -1;
+
+// ── CHARTS ────────────────────────────────────────────────────────────────────
+(function initCharts() {{
+  // Donut — risk distribution
+  new Chart(document.getElementById('riskDonut'), {{
+    type: 'doughnut',
+    data: {{
+      labels: ['Low Risk','Medium Risk','High Risk'],
+      datasets: [{{ data: {risk_donut_js}, backgroundColor: ['#00d165','#f59e0b','#dc2626'], borderWidth: 0, hoverOffset: 4 }}]
+    }},
+    options: {{
+      cutout: '72%', plugins: {{ legend: {{ position: 'bottom', labels: {{ font: {{ family: 'JetBrains Mono', size: 10 }}, boxWidth: 10, padding: 12 }} }}, tooltip: {{ callbacks: {{ label: ctx => ` ${{ctx.label}}: ${{ctx.parsed}} bookings` }} }} }},
+      animation: {{ animateRotate: true, duration: 900 }}
+    }}
+  }});
+
+  // Channel cancellations bar
+  new Chart(document.getElementById('channelChart'), {{
+    type: 'bar',
+    data: {{
+      labels: {ch_labels},
+      datasets: [{{
+        label: 'Cancellations',
+        data: {ch_values},
+        backgroundColor: ['#dc2626','#f59e0b','#3b82f6','#8b5cf6','#94a3b8'],
+        borderRadius: 5, borderWidth: 0
+      }}]
+    }},
+    options: {{
+      indexAxis: 'y',
+      plugins: {{ legend: {{ display: false }}, tooltip: {{ callbacks: {{ label: ctx => ` ${{ctx.parsed.x}} cancellations (${{({ch_pcts})[ctx.dataIndex]}}%)` }} }} }},
+      scales: {{ x: {{ grid: {{ color: '#f1f5f9' }}, ticks: {{ font: {{ family: 'JetBrains Mono', size: 10 }} }} }}, y: {{ grid: {{ display: false }}, ticks: {{ font: {{ family: 'JetBrains Mono', size: 10 }} }} }} }},
+      animation: {{ duration: 900 }}
+    }}
+  }});
+
+  // Guest risk scores bar
+  new Chart(document.getElementById('scoreChart'), {{
+    type: 'bar',
+    data: {{
+      labels: {guest_names_js},
+      datasets: [{{
+        label: 'Risk Score %',
+        data: scores,
+        backgroundColor: {guest_colors_js},
+        borderRadius: 5, borderWidth: 0
+      }}]
+    }},
+    options: {{
+      plugins: {{ legend: {{ display: false }}, tooltip: {{ callbacks: {{ label: ctx => ` ${{ctx.parsed.y.toFixed(1)}}% cancellation risk` }} }} }},
+      scales: {{ x: {{ grid: {{ display: false }}, ticks: {{ font: {{ family: 'JetBrains Mono', size: 9 }}, maxRotation: 45 }} }}, y: {{ min:0, max:100, grid: {{ color:'#f1f5f9' }}, ticks: {{ font: {{ family:'JetBrains Mono',size:10 }}, callback: v => v+'%' }} }} }},
+      animation: {{ duration: 900 }}
+    }}
+  }});
+}})();
+
+// ── DETAIL MODAL ──────────────────────────────────────────────────────────────
+function showVdvDetail(idx, score) {{
+  const g = guests[idx];
+  currentGuestIdx = idx;
+  document.getElementById('dm-title').textContent = g.name;
+  document.getElementById('dm-sub').textContent = g.arrival + ' → ' + g.departure + ' · ' + g.status;
+  document.getElementById('dm-score').textContent = score.toFixed(1) + '%';
+
+  const bar   = document.getElementById('dm-bar');
+  const verd  = document.getElementById('dm-verdict');
+  const scoreEl = document.getElementById('dm-score');
+  bar.style.width = score + '%';
+
+  if (score >= 70) {{
+    bar.style.background = '#dc2626'; scoreEl.style.color = '#dc2626';
+    verd.textContent = 'HIGH RISK'; verd.style.background = '#fef2f2'; verd.style.color = '#dc2626';
+  }} else if (score >= 40) {{
+    bar.style.background = '#f59e0b'; scoreEl.style.color = '#f59e0b';
+    verd.textContent = 'MEDIUM RISK'; verd.style.background = '#fffbeb'; verd.style.color = '#b45309';
+  }} else {{
+    bar.style.background = '#00d165'; scoreEl.style.color = '#00d165';
+    verd.textContent = 'LOW RISK'; verd.style.background = '#f0fdf4'; verd.style.color = '#16a34a';
+  }}
+
+  document.getElementById('dm-details').innerHTML = `
+    <div class="modal-detail-row"><span class="modal-detail-label">Nights</span><span class="modal-detail-val">${{g.nights}}</span></div>
+    <div class="modal-detail-row"><span class="modal-detail-label">Adults</span><span class="modal-detail-val">${{g.adults}}</span></div>
+    <div class="modal-detail-row"><span class="modal-detail-label">Membership</span><span class="modal-detail-val">${{g.membership || 'Standard'}}</span></div>
+    <div class="modal-detail-row"><span class="modal-detail-label">Avg Room Rate</span><span class="modal-detail-val">€${{g.adr}}/night</span></div>
+    ${{g.note ? '<div class="modal-detail-row"><span class="modal-detail-label">Notes</span><span class="modal-detail-val" style="font-size:11px;max-width:220px;text-align:right;">' + g.note + '</span></div>' : ''}}
+  `;
+
+  const reasons = [];
+  if (score < 15) {{
+    reasons.push({{pos:true, text:'Repeat guest — historically reliable, lower no-show probability'}});
+    reasons.push({{pos:true, text:'Low lead time — very close to check-in, commitment is high'}});
+    if (g.membership) reasons.push({{pos:true, text:'Corporate/loyalty membership — adds accountability'}});
+  }} else if (score < 40) {{
+    reasons.push({{pos:true, text:'Returning guest with positive booking history'}});
+    reasons.push({{pos:false, text:'Extended stay or higher lead time increases marginal risk'}});
+  }} else {{
+    reasons.push({{pos:false, text:'Risk factors present — consider proactive contact'}});
+  }}
+
+  document.getElementById('dm-reasons').innerHTML = reasons.map(r =>
+    `<div class="reason-item ${{r.pos?'pos':'neg'}}">${{r.pos?'✓':'⚠'}} ${{r.text}}</div>`
+  ).join('');
+
+  document.getElementById('detailModal').classList.add('show');
+}}
+
+function closeDetailModal() {{
+  document.getElementById('detailModal').classList.remove('show');
+  currentGuestIdx = -1;
+}}
+
+function openContactFromModal() {{
+  closeDetailModal();
+  if (currentGuestIdx >= 0) setTimeout(() => openVdvEmail(currentGuestIdx, 'contact'), 100);
+}}
+
+// ── EMAIL COMPOSER ────────────────────────────────────────────────────────────
+function openVdvEmail(idx, type) {{
+  const g = guests[idx];
+  currentGuestIdx = idx;
+  const firstName = g.name.split(',').length > 1 ? g.name.split(',')[1].split(',')[0].trim().split(' ')[1] || g.name.split(',')[1].trim() : g.name;
+
+  const templates = {{
+    contact: {{
+      subject: 'Your upcoming stay at Van der Valk Hotel Mechelen',
+      body: `Dear ${{firstName}},\n\nWe are looking forward to welcoming you to Van der Valk Hotel Mechelen.\n\nPlease do not hesitate to contact us if you have any special requests or questions regarding your stay from ${{g.arrival}} to ${{g.departure}}.\n\nWarm regards,\nVan der Valk Hotel Mechelen`
+    }},
+    welcome: {{
+      subject: 'Welcome to Van der Valk Hotel Mechelen',
+      body: `Dear ${{firstName}},\n\nWelcome! We are delighted to have you with us today.\n\nYour room is being prepared and we look forward to ensuring you have a wonderful stay. Should you need anything during your time with us, please do not hesitate to contact the front desk.\n\nWarm regards,\nVan der Valk Hotel Mechelen`
+    }},
+    departure: {{
+      subject: 'Thank you for staying — departure reminder',
+      body: `Dear ${{firstName}},\n\nWe hope you are enjoying your stay at Van der Valk Hotel Mechelen.\n\nThis is a friendly reminder that your check-out is scheduled for ${{g.departure}}. Checkout time is 12:00. If you wish to arrange a late checkout, please contact the front desk.\n\nWe hope to welcome you back soon!\n\nWarm regards,\nVan der Valk Hotel Mechelen`
+    }},
+    reminder: {{
+      subject: 'Reminder: Your upcoming reservation',
+      body: `Dear ${{firstName}},\n\nThis is a friendly reminder of your upcoming reservation from ${{g.arrival}} to ${{g.departure}} at Van der Valk Hotel Mechelen.\n\nPlease confirm your booking or contact us if there are any changes to your plans.\n\nWarm regards,\nVan der Valk Hotel Mechelen`
+    }},
+    deposit: {{
+      subject: 'Reservation guarantee — deposit request',
+      body: `Dear ${{firstName}},\n\nThank you for your reservation from ${{g.arrival}} to ${{g.departure}} at Van der Valk Hotel Mechelen.\n\nTo secure your booking, we kindly request a deposit. Please contact us at your earliest convenience to complete this.\n\nWarm regards,\nVan der Valk Hotel Mechelen`
+    }},
+    upsell: {{
+      subject: 'Make the most of your stay — exclusive offers',
+      body: `Dear ${{firstName}},\n\nWe hope you are enjoying your time at Van der Valk Hotel Mechelen!\n\nAs our valued guest, we would like to offer you:\n• Restaurant dinner reservation (10% loyalty discount)\n• Covered parking upgrade\n• Late checkout until 14:00 (subject to availability)\n\nPlease contact the front desk or reply to this email to arrange any of the above.\n\nWarm regards,\nVan der Valk Hotel Mechelen`
+    }}
+  }};
+
+  const tpl = templates[type] || templates.contact;
+  document.getElementById('ec-title').textContent = 'Email to ' + g.name;
+  document.getElementById('ec-sub').textContent   = g.status + ' · ' + g.arrival + ' – ' + g.departure;
+  document.getElementById('ec-name').value    = g.name;
+  document.getElementById('ec-email').value   = '';
+  document.getElementById('ec-subject').value = tpl.subject;
+  document.getElementById('ec-body').value    = tpl.body;
+  document.getElementById('emailComposer').classList.add('show');
+}}
+
+function closeEmailComposer() {{
+  document.getElementById('emailComposer').classList.remove('show');
+}}
+
+function sendGuestEmail() {{
+  const email   = document.getElementById('ec-email').value.trim();
+  const subject = document.getElementById('ec-subject').value.trim();
+  const body    = document.getElementById('ec-body').value.trim();
+  if (!email || !subject || !body) {{ showToast('Please fill in all fields', 'error'); return; }}
+  fetch('/send-guest-email', {{
+    method: 'POST', headers: {{'Content-Type':'application/json'}},
+    body: JSON.stringify({{guest_email: email, subject, body}})
+  }}).then(r => r.json()).then(d => {{
+    closeEmailComposer();
+    showToast(d.status === 'success' ? '✓ Email sent' : 'Error: ' + d.message, d.status === 'success' ? 'success' : 'error');
+  }}).catch(() => showToast('Error sending email', 'error'));
+}}
+
+// ── BULK COMPOSER ─────────────────────────────────────────────────────────────
+function openBulkTemplate(type) {{
+  const templates = {{
+    welcome: {{
+      title: 'Welcome Email — Today\'s Arrivals',
+      subject: 'Welcome to Van der Valk Hotel Mechelen',
+      body: 'Dear Valued Guest,\n\nWelcome! We are so glad to have you with us today.\n\nYour room is being prepared and our team is ready to ensure a wonderful experience. For any requests, please contact the front desk.\n\nWarm regards,\nVan der Valk Hotel Mechelen'
+    }},
+    departure: {{
+      title: 'Departure Reminder — Tomorrow\'s Checkouts',
+      subject: 'Departure reminder — checkout tomorrow',
+      body: 'Dear Valued Guest,\n\nThis is a friendly reminder that your checkout is scheduled for tomorrow. Standard checkout is at 12:00.\n\nWe hope you have enjoyed your stay and look forward to welcoming you back!\n\nWarm regards,\nVan der Valk Hotel Mechelen'
+    }},
+    upsell: {{
+      title: 'Upsell Offer — In-House Guests',
+      subject: 'Exclusive offers for your stay',
+      body: 'Dear Valued Guest,\n\nWe hope you are enjoying your time with us!\n\nAs a valued guest, we are pleased to offer you exclusive in-stay experiences:\n• Restaurant reservation with priority seating\n• Parking upgrade\n• Late checkout (subject to availability)\n\nContact the front desk to arrange any of these.\n\nWarm regards,\nVan der Valk Hotel Mechelen'
+    }}
+  }};
+  const tpl = templates[type] || templates.welcome;
+  document.getElementById('bc-title').textContent   = tpl.title;
+  document.getElementById('bc-sub').textContent     = 'Template — fill in guest details before sending';
+  document.getElementById('bc-subject').value = tpl.subject;
+  document.getElementById('bc-body').value    = tpl.body;
+  document.getElementById('bulkComposer').classList.add('show');
+}}
+
+function closeBulkComposer() {{
+  document.getElementById('bulkComposer').classList.remove('show');
+}}
+
+function sendBulkEmail() {{
+  const subject = document.getElementById('bc-subject').value.trim();
+  const body    = document.getElementById('bc-body').value.trim();
+  if (!subject || !body) {{ showToast('Please fill in all fields', 'error'); return; }}
+  fetch('/send-bulk-email', {{
+    method: 'POST', headers: {{'Content-Type':'application/json'}},
+    body: JSON.stringify({{count: guests.length, subject, body}})
+  }}).then(r => r.json()).then(d => {{
+    closeBulkComposer();
+    showToast(d.status === 'success' ? '✓ Emails sent' : 'Error', d.status === 'success' ? 'success' : 'error');
+  }}).catch(() => showToast('Error', 'error'));
+}}
+
+// ── UTILS ─────────────────────────────────────────────────────────────────────
+function showToast(msg, type) {{
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = type === 'error' ? '#dc2626' : '#0d1120';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3200);
+}}
+
+document.getElementById('detailModal').addEventListener('click', e => {{ if (e.target === document.getElementById('detailModal')) closeDetailModal(); }});
+document.getElementById('emailComposer').addEventListener('click', e => {{ if (e.target === document.getElementById('emailComposer')) closeEmailComposer(); }});
+document.getElementById('bulkComposer').addEventListener('click', e => {{ if (e.target === document.getElementById('bulkComposer')) closeBulkComposer(); }});
+</script>
+</body>
+</html>"""
 
 features = [
     "lead_time", "arrival_date_week_number", "stays_in_weekend_nights",
@@ -1408,13 +2445,19 @@ def logout():
 @app.route("/dashboard")
 @login_required
 def dashboard():
+    hotel_username = session.get("hotel", "")
     hotel_name = session.get("hotel_name", "Your Hotel")
     lang = request.args.get("lang", session.get("language", "en"))
-    
+
     if lang not in TRANSLATIONS:
         lang = "en"
-    
     session["language"] = lang
+
+    # ── Van der Valk Mechelen gets a dedicated enriched dashboard ──
+    if hotel_username == VDV_HOTEL_KEY:
+        first_login = session.pop("first_login", False)
+        return build_vdv_dashboard(hotel_name, lang=lang, first_login=first_login)
+
     uploaded_data = session.get("uploaded_csv")
     
     if uploaded_data:
