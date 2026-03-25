@@ -667,12 +667,601 @@ except Exception as _vdv_err:
 
 
 def build_vdv_dashboard(hotel_name, lang="en", first_login=False):
-    """Enhanced dashboard for Van der Valk Hotel Mechelen with real data and charts."""
-    guests  = VDV_GUESTS_RAW
+    """VdV Mechelen dashboard — historical overview + current guests."""
+    guests = VDV_GUESTS_RAW
     scores  = _score_vdv_guests(guests)
     ch_data = VDV_CHANNEL_STATS
+    today   = datetime.now()
+    today_str = today.strftime('%d %b %Y')
 
-    today_str = datetime.now().strftime('%A, %d %B %Y')
+    # ── Historical numbers (real Shiji data) ───────────────────────────────
+    MONTHS       = ['Oct 2025','Nov 2025','Dec 2025','Jan 2026','Feb 2026','Mar 2026']
+    CX_MONTHLY   = [167, 315, 335, 255, 296, 269]   # cancellations per month
+    NS_MONTHLY   = [33,  59,  65,  60,  46,  37]    # no-shows per month
+    LOST_MONTHLY = [c+n for c,n in zip(CX_MONTHLY, NS_MONTHLY)]
+
+    total_cx     = sum(CX_MONTHLY)   # 1637
+    total_ns     = sum(NS_MONTHLY)   # 300
+    total_lost   = total_cx + total_ns   # 1937
+    avg_adr      = 130.0
+    avg_nights   = 1.8
+    rev_lost     = int(total_lost * avg_adr * avg_nights)        # €452 k
+    # Recoverable: 30% of cancellations + 25% of no-shows
+    recoverable  = int(total_cx * 0.30 * avg_adr * avg_nights
+                       + total_ns * 0.25 * avg_adr)              # ~€122 k
+
+    # ── Channel percentages ────────────────────────────────────────────────
+    ch_total = sum(ch_data.values()) or 1
+    ch_pcts  = {k: round(v/ch_total*100,1) for k,v in ch_data.items()}
+
+    # ── Current guests ─────────────────────────────────────────────────────
+    arriving   = [g for g in guests if g['status']=='Arriving Today']
+    in_house   = [g for g in guests if g['status']=='In House']
+    high_count = sum(1 for s in scores if s>=70)
+    med_count  = sum(1 for s in scores if 40<=s<70)
+    low_count  = sum(1 for s in scores if s<40)
+
+    # ── Guest table rows ───────────────────────────────────────────────────
+    def st_badge(s):
+        if s=='Arriving Today': return '<span class="stb stb-a">Arriving Today</span>'
+        if s=='In House':       return '<span class="stb stb-h">In House</span>'
+        if s=='Checked Out':    return '<span class="stb stb-o">Checked Out</span>'
+        return f'<span class="stb stb-f">{s}</span>'
+
+    rows_html = ''
+    for i,(g,sc) in enumerate(zip(guests,scores)):
+        if sc>=70:
+            bdg = f'<span class="badge high">{sc:.1f}%</span>'
+            act = f'<button class="abtn dep" onclick="event.stopPropagation();openEmail({i},\'deposit\')">Deposit</button>'
+        elif sc>=40:
+            bdg = f'<span class="badge med">{sc:.1f}%</span>'
+            act = f'<button class="abtn rem" onclick="event.stopPropagation();openEmail({i},\'reminder\')">Reminder</button>'
+        else:
+            bdg = f'<span class="badge low">{sc:.1f}%</span>'
+            act = f'<button class="abtn mon" onclick="event.stopPropagation();openEmail({i},\'contact\')">Contact</button>'
+        mb  = f' <span class="mb">{g["membership"]}</span>' if g.get('membership') else ''
+        _note = g.get('note','')
+        nt  = (f'<span class="nt" title="{_note}">{_note[:36]}{"..." if len(_note)>36 else ""}</span>' if _note else '&mdash;')
+        rows_html += f'''<tr class="cr" onclick="openDetail({i},{sc:.1f})">
+          <td><span class="gn">{g['name']}</span>{mb}</td>
+          <td>{st_badge(g['status'])}</td>
+          <td>{g['arrival']}</td><td>{g['nights']}n</td>
+          <td>{bdg}</td><td class="ntd">{nt}</td><td>{act}</td>
+        </tr>'''
+
+    # ── Action plan items ──────────────────────────────────────────────────
+    arriving_items = ''.join(
+        f'<div class="pi"><b>{g["name"].split(",")[0]}</b> &mdash; {g.get("note") or "Prepare welcome"}</div>'
+        for g in arriving
+    ) or '<div class="pi empty">No arrivals today</div>'
+
+    inhouse_items = ''.join(
+        f'<div class="pi"><b>{g["name"].split(",")[0]}</b> &mdash; dep {g["departure"]}'
+        + (f' · {g["note"][:50]}' if g.get('note') else '') + '</div>'
+        for g in in_house
+    ) or '<div class="pi empty">None in house</div>'
+
+    # ── JS data ────────────────────────────────────────────────────────────
+    guests_js     = json.dumps([{
+        'name':g['name'],'arrival':g['arrival'],'departure':g.get('departure',''),
+        'nights':g['nights'],'adults':g['adults'],'membership':g.get('membership',''),
+        'status':g['status'],'note':g.get('note',''),'adr':149.0 if 'CORP' in g.get('membership','') else 115.0
+    } for g in guests])
+    scores_js     = json.dumps([round(s,1) for s in scores])
+    months_js     = json.dumps(MONTHS)
+    cx_js         = json.dumps(CX_MONTHLY)
+    ns_js         = json.dumps(NS_MONTHLY)
+    lost_js       = json.dumps(LOST_MONTHLY)
+    ch_labels_js  = json.dumps(list(ch_data.keys()))
+    ch_vals_js    = json.dumps(list(ch_data.values()))
+    ch_pcts_js    = json.dumps([ch_pcts[k] for k in ch_data])
+    gnames_js     = json.dumps([g['name'].split(',')[0] for g in guests])
+    gcols_js      = json.dumps(['#dc2626' if s>=70 else ('#f59e0b' if s>=40 else '#22c55e') for s in scores])
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Occupado — Van der Valk Mechelen</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+*,*::before,*::after{{margin:0;padding:0;box-sizing:border-box;}}
+body{{background:#f4f6f9;color:#0d1120;font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}}
+a{{text-decoration:none;color:inherit;}}
+
+/* TOPBAR */
+.topbar{{height:58px;background:#fff;border-bottom:1px solid #e4e8f0;display:flex;align-items:center;padding:0 28px;position:sticky;top:0;z-index:100;gap:12px;}}
+.tb-brand{{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:#0d1120;letter-spacing:-.3px;}}
+.tb-brand span{{color:#00d165;}}
+.tb-hotel{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;padding-left:12px;border-left:1px solid #e4e8f0;}}
+.tb-right{{margin-left:auto;display:flex;gap:8px;align-items:center;}}
+.tb-btn{{padding:6px 14px;border:1px solid #e4e8f0;border-radius:6px;font-size:12px;color:#64748b;background:transparent;cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s;}}
+.tb-btn:hover{{border-color:#cbd5e1;color:#0d1120;}}
+.lang-sel{{padding:6px 10px;border:1px solid #e4e8f0;border-radius:6px;font-size:12px;color:#64748b;background:transparent;cursor:pointer;font-family:'Inter',sans-serif;outline:none;}}
+
+/* LAYOUT */
+.page{{max-width:1200px;margin:0 auto;padding:28px 28px 60px;}}
+.row{{display:grid;gap:14px;margin-bottom:14px;}}
+.row-3{{grid-template-columns:repeat(3,1fr);}}
+.row-2{{grid-template-columns:1fr 1fr;}}
+.row-2l{{grid-template-columns:2fr 1fr;}}
+.row-hero{{grid-template-columns:1fr 1fr 1fr;}}
+
+/* SECTION HEADER */
+.sh{{display:flex;align-items:baseline;gap:10px;margin:28px 0 14px;}}
+.sh-title{{font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:#0d1120;}}
+.sh-sub{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;}}
+
+/* HERO METRICS */
+.hero-card{{background:#0d1120;border-radius:14px;padding:28px 24px;color:#fff;position:relative;overflow:hidden;}}
+.hero-card::after{{content:'';position:absolute;right:-20px;top:-20px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.03);}}
+.hc-label{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;}}
+.hc-num{{font-family:'Syne',sans-serif;font-size:48px;font-weight:800;line-height:1;letter-spacing:-2px;}}
+.hc-num.red{{color:#f87171;}}
+.hc-num.green{{color:#00d165;}}
+.hc-num.amber{{color:#fbbf24;}}
+.hc-sub{{font-size:12px;color:#64748b;margin-top:8px;line-height:1.4;}}
+.hc-tag{{display:inline-block;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:3px 8px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;margin-top:10px;}}
+
+/* STANDARD CARDS */
+.card{{background:#fff;border:1px solid #e4e8f0;border-radius:12px;padding:22px;}}
+.card-title{{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:#0d1120;margin-bottom:3px;}}
+.card-sub{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;margin-bottom:16px;text-transform:uppercase;letter-spacing:.5px;}}
+
+/* STAT ROWS */
+.stat-row{{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid #f1f5f9;font-size:12.5px;}}
+.stat-row:last-child{{border-bottom:none;}}
+.sr-label{{color:#64748b;}}
+.sr-val{{font-family:'JetBrains Mono',monospace;font-weight:500;color:#0d1120;}}
+
+/* TODAY STRIP */
+.today-strip{{background:#fff;border:1px solid #e4e8f0;border-radius:12px;padding:16px 20px;display:grid;grid-template-columns:repeat(5,1fr);gap:0;margin-bottom:14px;}}
+.ts-item{{text-align:center;padding:8px 0;border-right:1px solid #f1f5f9;}}
+.ts-item:last-child{{border-right:none;}}
+.ts-num{{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:#0d1120;line-height:1;}}
+.ts-num.g{{color:#00d165;}}
+.ts-num.r{{color:#dc2626;}}
+.ts-num.a{{color:#f59e0b;}}
+.ts-label{{font-family:'JetBrains Mono',monospace;font-size:9px;color:#94a3b8;margin-top:4px;text-transform:uppercase;letter-spacing:.5px;}}
+
+/* TABLE */
+.tbl{{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e4e8f0;}}
+.tbl th{{background:#f8fafc;color:#94a3b8;font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1px;padding:10px 12px;text-align:left;border-bottom:1px solid #e4e8f0;white-space:nowrap;}}
+.tbl td{{padding:10px 12px;font-size:12px;border-bottom:1px solid #f8fafc;color:#374151;vertical-align:middle;}}
+.cr{{cursor:pointer;transition:background .1s;}}
+.cr:hover td{{background:#f8fafc;}}
+.gn{{font-weight:600;color:#0d1120;font-size:12.5px;}}
+.mb{{background:#eff6ff;color:#3b82f6;border:1px solid #bfdbfe;padding:1px 6px;border-radius:3px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;margin-left:4px;}}
+.badge{{padding:2px 8px;border-radius:99px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;border:1px solid;white-space:nowrap;}}
+.high{{background:#fef2f2;color:#dc2626;border-color:#fecaca;}}
+.med{{background:#fffbeb;color:#b45309;border-color:#fde68a;}}
+.low{{background:#f0fdf4;color:#16a34a;border-color:#bbf7d0;}}
+.abtn{{padding:4px 10px;border-radius:5px;font-size:10.5px;font-weight:500;cursor:pointer;border:1px solid;background:transparent;font-family:'Inter',sans-serif;transition:all .15s;white-space:nowrap;}}
+.dep{{color:#dc2626;border-color:#fecaca;}}.dep:hover{{background:#fef2f2;}}
+.rem{{color:#b45309;border-color:#fde68a;}}.rem:hover{{background:#fffbeb;}}
+.mon{{color:#16a34a;border-color:#bbf7d0;}}.mon:hover{{background:#f0fdf4;}}
+.stb{{padding:2px 8px;border-radius:99px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;border:1px solid;white-space:nowrap;}}
+.stb-a{{background:#fef3c7;color:#92400e;border-color:#fde68a;}}
+.stb-h{{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;}}
+.stb-o{{background:#f8fafc;color:#94a3b8;border-color:#e4e8f0;}}
+.stb-f{{background:#f0fdf4;color:#15803d;border-color:#bbf7d0;}}
+.ntd{{max-width:180px;}}
+.nt{{font-size:11px;color:#94a3b8;font-style:italic;}}
+
+/* SAVINGS CARD */
+.savings-card{{background:linear-gradient(135deg,#052e16,#0f2218);border-radius:12px;padding:24px;color:#fff;}}
+.sv-row{{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07);}}
+.sv-row:last-child{{border-bottom:none;}}
+.sv-label{{font-size:12.5px;color:#94a3b8;}}
+.sv-val{{font-family:'JetBrains Mono',monospace;font-weight:600;color:#fff;}}
+.sv-val.g{{color:#00d165;}}
+.sv-val.r{{color:#f87171;}}
+.slider-row{{margin-top:16px;}}
+.slider-label{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;margin-bottom:6px;display:flex;justify-content:space-between;}}
+input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
+.slider-result{{margin-top:10px;font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:#00d165;}}
+.slider-sub{{font-size:11px;color:#64748b;margin-top:2px;}}
+
+/* ACTION PLAN */
+.ap-grid{{display:grid;grid-template-columns:1fr 1fr;gap:14px;}}
+.ap-card{{background:#fff;border:1px solid #e4e8f0;border-radius:12px;padding:20px;}}
+.ap-head{{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:#0d1120;margin-bottom:12px;display:flex;align-items:center;gap:8px;}}
+.pi{{background:#f8fafc;border-radius:7px;padding:8px 11px;margin-bottom:6px;font-size:12px;line-height:1.5;color:#374151;}}
+.pi b{{color:#0d1120;}}
+.pi.empty{{color:#94a3b8;font-style:italic;}}
+.ap-btn{{margin-top:12px;width:100%;padding:9px;background:#00d165;border:none;border-radius:7px;color:#080c14;font-size:12px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s;}}
+.ap-btn:hover{{background:#04e270;}}
+.ap-btn.ghost{{background:#fff;border:1px solid #e4e8f0;color:#0d1120;}}
+.ap-btn.ghost:hover{{background:#f8fafc;}}
+
+/* INSIGHT PILL */
+.insight-row{{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}}
+.ip{{background:#fff;border:1px solid #e4e8f0;border-radius:99px;padding:5px 13px;font-size:11.5px;color:#374151;cursor:pointer;transition:all .15s;white-space:nowrap;}}
+.ip:hover,.ip.active{{background:#0d1120;color:#fff;border-color:#0d1120;}}
+
+/* MODAL */
+.mo{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(3px);}}
+.mo.show{{display:flex;}}
+.mb-inner{{background:#fff;border-radius:16px;padding:32px;width:100%;max-width:480px;max-height:88vh;overflow-y:auto;position:relative;box-shadow:0 16px 48px rgba(0,0,0,.12);}}
+.mc{{position:absolute;top:12px;right:14px;font-size:18px;cursor:pointer;color:#94a3b8;background:none;border:none;}}
+.mt{{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#0d1120;margin-bottom:2px;}}
+.ms{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;margin-bottom:16px;}}
+.sd{{font-family:'Syne',sans-serif;font-size:52px;font-weight:800;line-height:1;margin-bottom:6px;}}
+.sb-bg{{height:7px;background:#f1f5f9;border-radius:4px;overflow:hidden;margin-bottom:10px;}}
+.sb-fill{{height:100%;border-radius:4px;}}
+.sv-tag{{font-size:11.5px;font-weight:600;padding:5px 12px;border-radius:6px;display:inline-block;margin-bottom:14px;}}
+.dr{{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:12px;}}
+.dr:last-child{{border-bottom:none;}}
+.dl{{color:#64748b;}}
+.dv{{font-family:'JetBrains Mono',monospace;color:#0d1120;font-weight:500;}}
+.ri{{background:#f8fafc;border-radius:6px;padding:8px 11px;margin-bottom:5px;font-size:11.5px;color:#374151;border-left:3px solid #e4e8f0;}}
+.ri.pos{{border-left-color:#00d165;}}
+.ri.neg{{border-left-color:#f59e0b;}}
+
+/* EMAIL COMPOSER */
+.ec{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1001;align-items:center;justify-content:center;backdrop-filter:blur(3px);}}
+.ec.show{{display:flex;}}
+.eb{{background:#fff;border-radius:16px;padding:28px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto;box-shadow:0 16px 48px rgba(0,0,0,.12);}}
+.el{{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:5px;font-weight:500;}}
+.ei{{width:100%;padding:9px 12px;background:#f8fafc;border:1px solid #e4e8f0;border-radius:7px;font-size:13px;color:#0d1120;outline:none;margin-bottom:10px;font-family:'Inter',sans-serif;}}
+.ei:focus{{border-color:#00d165;background:#fff;}}
+.eta{{width:100%;padding:9px 12px;background:#f8fafc;border:1px solid #e4e8f0;border-radius:7px;font-size:12.5px;color:#0d1120;outline:none;resize:vertical;min-height:140px;margin-bottom:10px;font-family:'Inter',sans-serif;line-height:1.6;}}
+.eta:focus{{border-color:#00d165;background:#fff;}}
+.ea{{display:flex;gap:8px;margin-top:14px;}}
+.es{{flex:1;padding:10px;background:#00d165;color:#080c14;border:none;border-radius:7px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}}
+.es:hover{{background:#04e270;}}
+.ecc{{flex:1;padding:10px;background:#f8fafc;color:#64748b;border:1px solid #e4e8f0;border-radius:7px;font-size:12.5px;font-weight:500;cursor:pointer;}}
+
+/* TOAST */
+.toast{{position:fixed;bottom:22px;right:22px;background:#0d1120;color:#fff;border-radius:9px;padding:12px 16px;font-size:12.5px;transform:translateY(50px);opacity:0;transition:all .25s;z-index:2000;}}
+.toast.show{{transform:translateY(0);opacity:1;}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="tb-brand">Occup<span>ado</span></span>
+  <span class="tb-hotel">{hotel_name}</span>
+  <div class="tb-right">
+    <select class="lang-sel" onchange="location.href='/dashboard?lang='+this.value">
+      <option value="en" {"selected" if lang=="en" else ""}>EN</option>
+      <option value="nl" {"selected" if lang=="nl" else ""}>NL</option>
+      <option value="fr" {"selected" if lang=="fr" else ""}>FR</option>
+    </select>
+    <a href="/settings" class="tb-btn">Settings</a>
+    <a href="/logout" class="tb-btn">Sign Out</a>
+  </div>
+</div>
+
+<div class="page">
+
+<!-- HERO METRICS ─────────────────────────────────────────────────────── -->
+<div class="sh"><span class="sh-title">6-Month Overview</span><span class="sh-sub">Oct 2025 – {today_str} · Shiji data</span></div>
+<div class="row row-hero">
+  <div class="hero-card">
+    <div class="hc-label">Missed Stays</div>
+    <div class="hc-num red">{total_lost:,}</div>
+    <div class="hc-sub">{total_cx:,} cancellations + {total_ns} no-shows</div>
+    <span class="hc-tag">avg {total_lost//6}/month</span>
+  </div>
+  <div class="hero-card">
+    <div class="hc-label">Revenue Lost</div>
+    <div class="hc-num amber">€{rev_lost//1000}k</div>
+    <div class="hc-sub">Based on €{int(avg_adr)} ADR · {avg_nights} avg nights</div>
+    <span class="hc-tag">€{rev_lost//6//1000}k/month avg</span>
+  </div>
+  <div class="hero-card">
+    <div class="hc-label">Recoverable with AI</div>
+    <div class="hc-num green">€{recoverable//1000}k</div>
+    <div class="hc-sub">30% of cancellations preventable with early action</div>
+    <span class="hc-tag">↑ adjust below</span>
+  </div>
+</div>
+
+<!-- CHARTS ───────────────────────────────────────────────────────────── -->
+<div class="sh"><span class="sh-title">Trends</span><span class="sh-sub">Monthly breakdown — click bars or points to filter</span></div>
+<div class="row row-2">
+  <div class="card">
+    <div class="card-title">Cancellations & No-shows</div>
+    <div class="card-sub">Per month — stacked</div>
+    <canvas id="trendChart" height="160"></canvas>
+  </div>
+  <div class="card">
+    <div class="card-title">Cancellation Sources</div>
+    <div class="card-sub">{total_cx:,} total · share by channel</div>
+    <canvas id="channelChart" height="160"></canvas>
+  </div>
+</div>
+
+<!-- SAVINGS CALCULATOR ────────────────────────────────────────────────── -->
+<div class="sh"><span class="sh-title">Savings Calculator</span><span class="sh-sub">Slide to adjust intervention rate</span></div>
+<div class="row row-2l">
+  <div class="savings-card">
+    <div class="sv-row"><span class="sv-label">Cancellations tracked</span><span class="sv-val">{total_cx:,}</span></div>
+    <div class="sv-row"><span class="sv-label">No-shows tracked</span><span class="sv-val">{total_ns}</span></div>
+    <div class="sv-row"><span class="sv-label">Revenue lost (6 months)</span><span class="sv-val r">€{rev_lost:,}</span></div>
+    <div class="slider-row">
+      <div class="slider-label"><span>Intervention success rate</span><span id="rate-pct">30%</span></div>
+      <input type="range" id="rate-slider" min="5" max="60" value="30" oninput="updateSavings(this.value)">
+      <div class="slider-result" id="savings-num">€{recoverable:,}</div>
+      <div class="slider-sub" id="savings-sub">estimated recoverable over 6 months</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">Key Insights</div>
+    <div class="card-sub">From your Shiji data</div>
+    <div class="stat-row"><span class="sr-label">Peak month</span><span class="sr-val">Dec 2025 (335 cx)</span></div>
+    <div class="stat-row"><span class="sr-label">Best month</span><span class="sr-val">Oct 2025 (167 cx)</span></div>
+    <div class="stat-row"><span class="sr-label">Top channel risk</span><span class="sr-val">Booking.com — {ch_pcts.get('Booking.com',0)}%</span></div>
+    <div class="stat-row"><span class="sr-label">No-show rate</span><span class="sr-val">{round(total_ns/total_lost*100,1)}% of total</span></div>
+    <div class="stat-row"><span class="sr-label">Model accuracy</span><span class="sr-val" style="color:#00d165">80.3%</span></div>
+  </div>
+</div>
+
+<!-- TODAY ────────────────────────────────────────────────────────────── -->
+<div class="sh"><span class="sh-title">Today</span><span class="sh-sub">{today_str}</span></div>
+<div class="today-strip">
+  <div class="ts-item"><div class="ts-num {'g' if len(arriving)>0 else ''}">{len(arriving)}</div><div class="ts-label">Arriving</div></div>
+  <div class="ts-item"><div class="ts-num">{len(in_house)}</div><div class="ts-label">In House</div></div>
+  <div class="ts-item"><div class="ts-num {'r' if high_count>0 else 'g'}">{high_count}</div><div class="ts-label">High Risk</div></div>
+  <div class="ts-item"><div class="ts-num a">{med_count}</div><div class="ts-label">Medium Risk</div></div>
+  <div class="ts-item"><div class="ts-num g">{low_count}</div><div class="ts-label">Low Risk</div></div>
+</div>
+
+<!-- GUEST TABLE ──────────────────────────────────────────────────────── -->
+<div class="sh"><span class="sh-title">Repeat Guests</span><span class="sh-sub">Click row for AI analysis</span></div>
+<table class="tbl">
+<thead><tr>
+  <th>Guest</th><th>Status</th><th>Arrival</th><th>Nights</th><th>Risk</th><th>Notes</th><th>Action</th>
+</tr></thead>
+<tbody>{rows_html}</tbody>
+</table>
+
+<!-- ACTION PLAN ──────────────────────────────────────────────────────── -->
+<div class="sh"><span class="sh-title">Action Plan</span><span class="sh-sub">Today</span></div>
+<div class="ap-grid">
+  <div class="ap-card">
+    <div class="ap-head">🛬 Arrivals today ({len(arriving)})</div>
+    {arriving_items}
+    <button class="ap-btn" onclick="openBulk('welcome')">Send welcome email →</button>
+  </div>
+  <div class="ap-card">
+    <div class="ap-head">🏨 In house ({len(in_house)})</div>
+    {inhouse_items}
+    <button class="ap-btn ghost" onclick="openBulk('departure')">Send departure reminder →</button>
+  </div>
+</div>
+
+</div><!-- /page -->
+
+<!-- DETAIL MODAL -->
+<div class="mo" id="detailMo">
+  <div class="mb-inner">
+    <button class="mc" onclick="closeMo()">✕</button>
+    <div class="mt" id="mo-name"></div>
+    <div class="ms" id="mo-sub"></div>
+    <div class="sd" id="mo-score"></div>
+    <div class="sb-bg"><div class="sb-fill" id="mo-bar" style="width:0%"></div></div>
+    <div class="sv-tag" id="mo-verd"></div>
+    <div style="margin-top:14px;" id="mo-details"></div>
+    <div style="margin-top:12px;font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Risk Factors</div>
+    <div id="mo-reasons"></div>
+    <div style="display:flex;gap:8px;margin-top:18px;">
+      <button style="flex:1;padding:10px;background:#00d165;border:none;border-radius:7px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif;color:#080c14;" onclick="contactFromMo()">Contact Guest →</button>
+      <button style="flex:1;padding:10px;background:#f8fafc;border:1px solid #e4e8f0;border-radius:7px;font-size:12.5px;font-weight:500;cursor:pointer;" onclick="closeMo()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- EMAIL COMPOSER -->
+<div class="ec" id="ecMo">
+  <div class="eb">
+    <div style="margin-bottom:16px;">
+      <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:#0d1120;" id="ec-title">Email Guest</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;margin-top:2px;" id="ec-sub"></div>
+    </div>
+    <label class="el">To (email)</label><input type="email" id="ec-email" class="ei" placeholder="guest@example.com">
+    <label class="el">Name</label><input type="text" id="ec-name" class="ei" placeholder="Guest name">
+    <label class="el">Subject</label><input type="text" id="ec-subject" class="ei">
+    <label class="el">Message</label><textarea id="ec-body" class="eta"></textarea>
+    <div class="ea">
+      <button class="es" onclick="sendEmail()">Send →</button>
+      <button class="ecc" onclick="closeEc()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const guests = {guests_js};
+const scores = {scores_js};
+let activeGuest = -1;
+
+// ── CHARTS ────────────────────────────────────────────────────────────────────
+const months   = {months_js};
+const cxData   = {cx_js};
+const nsData   = {ns_js};
+const lostData = {lost_js};
+
+const trendChart = new Chart(document.getElementById('trendChart'), {{
+  type: 'bar',
+  data: {{
+    labels: months,
+    datasets: [
+      {{ label: 'Cancellations', data: cxData, backgroundColor: '#f87171', borderRadius: 4, borderWidth: 0, stack: 'a' }},
+      {{ label: 'No-shows',      data: nsData, backgroundColor: '#fbbf24', borderRadius: 4, borderWidth: 0, stack: 'a' }}
+    ]
+  }},
+  options: {{
+    plugins: {{
+      legend: {{ position:'bottom', labels:{{ font:{{family:'JetBrains Mono',size:10}},boxWidth:10,padding:12 }} }},
+      tooltip: {{ callbacks: {{ afterBody: ctx => [`Total: ${{cxData[ctx[0].dataIndex]+nsData[ctx[0].dataIndex]}}`] }} }}
+    }},
+    scales: {{
+      x: {{ grid:{{display:false}}, ticks:{{font:{{family:'JetBrains Mono',size:10}}}} }},
+      y: {{ grid:{{color:'#f1f5f9'}}, ticks:{{font:{{family:'JetBrains Mono',size:10}},stepSize:50}} }}
+    }},
+    onClick: (e,el) => {{ if(el.length) filterByMonth(el[0].index); }},
+    animation: {{ duration:700 }}
+  }}
+}});
+
+const channelChart = new Chart(document.getElementById('channelChart'), {{
+  type: 'bar',
+  data: {{
+    labels: {ch_labels_js},
+    datasets: [{{ label:'Cancellations', data:{ch_vals_js}, backgroundColor:['#f87171','#fb923c','#60a5fa','#a78bfa','#94a3b8'], borderRadius:5, borderWidth:0 }}]
+  }},
+  options: {{
+    indexAxis: 'y',
+    plugins: {{
+      legend:{{display:false}},
+      tooltip:{{ callbacks:{{ label: ctx => ` ${{ctx.parsed.x}} (${{({ch_pcts_js})[ctx.dataIndex]}}%)` }} }}
+    }},
+    scales: {{
+      x: {{ grid:{{color:'#f1f5f9'}}, ticks:{{font:{{family:'JetBrains Mono',size:10}}}} }},
+      y: {{ grid:{{display:false}}, ticks:{{font:{{family:'JetBrains Mono',size:10}}}} }}
+    }},
+    animation: {{ duration:700 }}
+  }}
+}});
+
+let filteredMonth = null;
+function filterByMonth(idx) {{
+  if (filteredMonth === idx) {{
+    filteredMonth = null;
+    channelChart.data.datasets[0].data = {ch_vals_js};
+    channelChart.options.plugins.title = {{ display:false }};
+  }} else {{
+    filteredMonth = idx;
+    // Show relative weight for selected month (proportional to share)
+    const monthTotal = lostData[idx];
+    const overall = lostData.reduce((a,b)=>a+b,0);
+    const ratio = monthTotal/overall;
+    const adjusted = {ch_vals_js}.map(v => Math.round(v*ratio));
+    channelChart.data.datasets[0].data = adjusted;
+    channelChart.options.plugins.title = {{ display:true, text: months[idx]+' estimate', font:{{family:'JetBrains Mono',size:10}}, color:'#94a3b8' }};
+  }}
+  channelChart.update();
+}}
+
+// ── SAVINGS CALCULATOR ────────────────────────────────────────────────────────
+const totalCx = {total_cx};
+const totalNs = {total_ns};
+const avgAdr  = {avg_adr};
+const avgNights = {avg_nights};
+
+function updateSavings(val) {{
+  const pct = parseInt(val);
+  document.getElementById('rate-pct').textContent = pct + '%';
+  const saved = Math.round(totalCx * (pct/100) * avgAdr * avgNights
+                           + totalNs * (pct/100) * 0.5 * avgAdr);
+  document.getElementById('savings-num').textContent = '€' + saved.toLocaleString();
+  document.getElementById('savings-sub').textContent =
+    Math.round(totalCx*(pct/100)) + ' cancellations prevented · ' +
+    Math.round(totalNs*(pct/100)*0.5) + ' no-shows charged';
+}}
+
+// ── DETAIL MODAL ──────────────────────────────────────────────────────────────
+function openDetail(idx, score) {{
+  const g = guests[idx]; activeGuest = idx;
+  document.getElementById('mo-name').textContent = g.name;
+  document.getElementById('mo-sub').textContent  = g.status + ' · ' + g.arrival + (g.departure?' – '+g.departure:'');
+  document.getElementById('mo-score').textContent = score.toFixed(1)+'%';
+  const bar = document.getElementById('mo-bar');
+  const sd  = document.getElementById('mo-score');
+  const vd  = document.getElementById('mo-verd');
+  bar.style.width = score+'%';
+  if (score>=70) {{
+    bar.style.background='#dc2626'; sd.style.color='#dc2626';
+    vd.textContent='HIGH RISK'; vd.style.background='#fef2f2'; vd.style.color='#dc2626';
+  }} else if (score>=40) {{
+    bar.style.background='#f59e0b'; sd.style.color='#f59e0b';
+    vd.textContent='MEDIUM RISK'; vd.style.background='#fffbeb'; vd.style.color='#b45309';
+  }} else {{
+    bar.style.background='#00d165'; sd.style.color='#00d165';
+    vd.textContent='LOW RISK'; vd.style.background='#f0fdf4'; vd.style.color='#16a34a';
+  }}
+  document.getElementById('mo-details').innerHTML = `
+    <div class="dr"><span class="dl">Nights</span><span class="dv">${{g.nights}}</span></div>
+    <div class="dr"><span class="dl">Adults</span><span class="dv">${{g.adults}}</span></div>
+    <div class="dr"><span class="dl">Membership</span><span class="dv">${{g.membership||'—'}}</span></div>
+    <div class="dr"><span class="dl">Rate</span><span class="dv">€${{g.adr}}/night</span></div>
+    ${{g.note?`<div class="dr"><span class="dl">Notes</span><span class="dv" style="max-width:200px;text-align:right;font-size:11px">${{g.note}}</span></div>`:''}}
+  `;
+  const reasons = score<15
+    ? [{{p:1,t:'Repeat guest — strong booking commitment'}},{{p:1,t:'Low lead time — very close to check-in'}},{{p:!!g.membership,t:g.membership?'Loyalty / corporate membership':'Standard booking — no loyalty flag'}}]
+    : score<40
+    ? [{{p:1,t:'Returning guest with positive history'}},{{p:0,t:'Slightly higher score — monitor recommended'}}]
+    : [{{p:0,t:'Risk factors detected — proactive contact advised'}}];
+  document.getElementById('mo-reasons').innerHTML = reasons.map(r =>
+    `<div class="ri ${{r.p?'pos':'neg'}}">${{r.p?'✓':'⚠'}} ${{r.t}}</div>`).join('');
+  document.getElementById('detailMo').classList.add('show');
+}}
+function closeMo() {{ document.getElementById('detailMo').classList.remove('show'); activeGuest=-1; }}
+function contactFromMo() {{ closeMo(); if(activeGuest>=0) setTimeout(()=>openEmail(activeGuest,'contact'),80); }}
+
+// ── EMAIL ─────────────────────────────────────────────────────────────────────
+const TMPLS = {{
+  contact:  {{subj:'Your upcoming stay at Van der Valk Hotel Mechelen', body:(n,arr,dep)=>`Dear ${{n}},\n\nWe look forward to welcoming you from ${{arr}} to ${{dep}}.\nPlease reach out if you have any requests.\n\nWarm regards,\nVan der Valk Hotel Mechelen`}},
+  welcome:  {{subj:'Welcome to Van der Valk Hotel Mechelen', body:(n)=>`Dear ${{n}},\n\nWelcome! Your room is ready and our team is at your service.\n\nWarm regards,\nVan der Valk Hotel Mechelen`}},
+  reminder: {{subj:'Your upcoming reservation', body:(n,arr,dep)=>`Dear ${{n}},\n\nThis is a reminder of your reservation from ${{arr}} to ${{dep}}.\nPlease confirm or contact us if your plans have changed.\n\nWarm regards,\nVan der Valk Hotel Mechelen`}},
+  departure:{{subj:'Departure reminder — checkout tomorrow', body:(n,_,dep)=>`Dear ${{n}},\n\nCheckout is ${{dep}} at 12:00. Late checkout available on request.\nThank you for staying — we hope to see you again soon.\n\nWarm regards,\nVan der Valk Hotel Mechelen`}},
+  deposit:  {{subj:'Reservation guarantee required', body:(n,arr,dep)=>`Dear ${{n}},\n\nTo secure your reservation from ${{arr}} to ${{dep}}, a deposit is required.\nPlease contact us at your earliest convenience.\n\nWarm regards,\nVan der Valk Hotel Mechelen`}},
+  upsell:   {{subj:'Exclusive offers for your stay', body:(n)=>`Dear ${{n}},\n\nWe hope you are enjoying your time with us!\nToday's offers: restaurant priority, parking upgrade, late checkout.\n\nWarm regards,\nVan der Valk Hotel Mechelen`}}
+}};
+
+function openEmail(idx, type) {{
+  const g  = guests[idx]; activeGuest=idx;
+  const fn = g.name.split(',').slice(1).join(',').trim().split(' ').filter(Boolean)[0] || g.name.split(',')[0];
+  const t  = TMPLS[type]||TMPLS.contact;
+  document.getElementById('ec-title').textContent = 'Email — '+g.name;
+  document.getElementById('ec-sub').textContent   = g.status+' · '+g.arrival+(g.departure?' – '+g.departure:'');
+  document.getElementById('ec-name').value    = g.name;
+  document.getElementById('ec-email').value   = '';
+  document.getElementById('ec-subject').value = t.subj;
+  document.getElementById('ec-body').value    = t.body(fn, g.arrival, g.departure);
+  document.getElementById('ecMo').classList.add('show');
+}}
+
+function openBulk(type) {{
+  const t = TMPLS[type]||TMPLS.welcome;
+  document.getElementById('ec-title').textContent = 'Bulk — '+type;
+  document.getElementById('ec-sub').textContent   = 'Fill in guest details per send';
+  document.getElementById('ec-name').value    = '';
+  document.getElementById('ec-email').value   = '';
+  document.getElementById('ec-subject').value = t.subj;
+  document.getElementById('ec-body').value    = t.body('[Guest Name]','[Arrival]','[Departure]');
+  document.getElementById('ecMo').classList.add('show');
+}}
+
+function closeEc() {{ document.getElementById('ecMo').classList.remove('show'); }}
+
+function sendEmail() {{
+  const email=document.getElementById('ec-email').value.trim();
+  const subj =document.getElementById('ec-subject').value.trim();
+  const body =document.getElementById('ec-body').value.trim();
+  if(!email||!subj||!body){{ toast('Fill in all fields','e'); return; }}
+  fetch('/send-guest-email',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{guest_email:email,subject:subj,body}})}})
+    .then(r=>r.json()).then(d=>{{ closeEc(); toast(d.status==='success'?'✓ Sent':'Error: '+d.message, d.status==='success'?'s':'e'); }})
+    .catch(()=>toast('Error','e'));
+}}
+
+// ── UTILS ─────────────────────────────────────────────────────────────────────
+function toast(msg,type){{
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.style.background=type==='e'?'#dc2626':'#0d1120';
+  el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),3000);
+}}
+document.getElementById('detailMo').onclick = e=>{{ if(e.target===document.getElementById('detailMo')) closeMo(); }};
+document.getElementById('ecMo').onclick     = e=>{{ if(e.target===document.getElementById('ecMo')) closeEc(); }};
+</script>
+</body>
+</html>"""
     today     = datetime.now()
 
     arriving_today  = [g for g in guests if g['status'] == 'Arriving Today']
