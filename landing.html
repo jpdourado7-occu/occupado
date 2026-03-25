@@ -75,9 +75,7 @@ body {
   background-clip: text;
 }
 .grad-green {
-  background: linear-gradient(135deg, var(--green) 0%, #00b858 100%);
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--green);
 }
 
 /* ─────────────────── NAV ─────────────────── */
@@ -149,11 +147,12 @@ nav {
 
 /* ─────────────────── HERO ─────────────────── */
 .hero {
-  background: var(--dark);
+  background: var(--white);
   min-height: 100vh;
   display: flex; align-items: center;
   padding: 120px 0 80px;
   position: relative; overflow: hidden;
+  border-bottom: 1px solid var(--border-l);
 }
 
 /* subtle grid overlay */
@@ -161,8 +160,8 @@ nav {
   content: '';
   position: absolute; inset: 0;
   background-image:
-    linear-gradient(var(--border-d) 1px, transparent 1px),
-    linear-gradient(90deg, var(--border-d) 1px, transparent 1px);
+    linear-gradient(rgba(0,0,0,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,0,0,0.04) 1px, transparent 1px);
   background-size: 64px 64px;
   mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 0%, transparent 70%);
   pointer-events: none;
@@ -174,7 +173,7 @@ nav {
   position: absolute;
   width: 600px; height: 600px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(0,209,101,0.06) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(0,209,101,0.05) 0%, transparent 70%);
   top: -100px; left: 50%; transform: translateX(-50%);
   pointer-events: none;
 }
@@ -188,9 +187,9 @@ nav {
 .hero-status {
   display: inline-flex; align-items: center; gap: 8px;
   background: var(--green-dim);
-  border: 1px solid rgba(0,209,101,0.15);
+  border: 1px solid rgba(0,209,101,0.2);
   border-radius: 999px; padding: 6px 14px 6px 8px;
-  font-size: 11.5px; color: rgba(255,255,255,0.7);
+  font-size: 11.5px; color: var(--text-2);
   font-weight: 500; margin-bottom: 28px;
   letter-spacing: -0.1px;
 }
@@ -209,13 +208,13 @@ nav {
   font-family: 'Syne', sans-serif;
   font-size: clamp(40px, 5.2vw, 68px);
   font-weight: 800; letter-spacing: -2.5px; line-height: 1.03;
-  color: var(--white); margin-bottom: 24px;
+  color: var(--text); margin-bottom: 24px;
 }
-.hero h1 .dim { color: rgba(255,255,255,0.35); }
+.hero h1 .dim { color: rgba(13,17,32,0.3); }
 
 .hero-sub {
   font-size: 16.5px; line-height: 1.75;
-  color: rgba(255,255,255,0.45);
+  color: var(--muted);
   margin-bottom: 44px; max-width: 430px;
 }
 
@@ -237,19 +236,19 @@ nav {
 .btn-hero-ghost {
   padding: 14px 28px; border-radius: 10px;
   font-size: 14.5px; font-weight: 500;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid var(--border-d);
-  color: rgba(255,255,255,0.7); text-decoration: none;
+  background: transparent;
+  border: 1px solid var(--border-l);
+  color: var(--text-2); text-decoration: none;
   transition: all .25s; letter-spacing: -0.2px;
 }
 .btn-hero-ghost:hover {
-  background: rgba(255,255,255,0.08);
-  border-color: var(--border-d2); color: var(--white);
+  background: var(--off);
+  border-color: #cbd5e1; color: var(--text);
 }
 
 .hero-footnote {
   margin-top: 22px;
-  font-size: 11.5px; color: rgba(255,255,255,0.22);
+  font-size: 11.5px; color: #94a3b8;
   letter-spacing: 0.2px;
   display: flex; align-items: center; gap: 16px;
 }
@@ -831,7 +830,7 @@ footer {
 <nav>
   <div class="nav-inner">
     <a href="/" class="nav-logo">
-      <span class="logo-wordmark">Occupado</span>
+      <span class="logo-wordmark">Occup<span style="color:var(--green)">ado</span></span>
     </a>
     <ul class="nav-links">
       <li><a href="#features">Features</a></li>
@@ -1309,7 +1308,7 @@ footer {
   <div class="container">
     <div class="footer-inner">
       <a href="/" class="footer-logo">
-        <span class="footer-wordmark">Occupado</span>
+        <span class="footer-wordmark">Occup<span style="color:var(--green)">ado</span></span>
       </a>
       <div class="footer-links">
         <a href="/login">Sign in</a>

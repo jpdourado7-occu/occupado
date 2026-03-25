@@ -642,7 +642,7 @@ a{{text-decoration:none;}}
 .welcome-close{{background:none;border:none;color:#94a3b8;font-size:18px;cursor:pointer;padding:0 4px;line-height:1;}}
 .welcome-close:hover{{color:#0d1120;}}
 /* CONTENT */
-.content{{padding:36px 32px;max-width:1200px;}}
+.content{{padding:36px 32px;}}
 .page-sub{{font-family:'JetBrains Mono',monospace;font-size:11px;color:#94a3b8;margin-bottom:28px;letter-spacing:0.5px;}}
 .section-title{{font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:#0d1120;letter-spacing:-0.4px;margin-bottom:14px;margin-top:36px;}}
 /* UPLOAD ZONE */
