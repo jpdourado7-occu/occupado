@@ -51,7 +51,19 @@ os.makedirs(TOKEN_DIR, exist_ok=True)
 def get_db():
     DATABASE_URL = os.environ.get("DATABASE_URL", "")
     if not DATABASE_URL:
-        raise RuntimeError("DATABASE_URL environment variable is not set. Add a PostgreSQL plugin in Railway and link it to this service.")
+        # Railway sometimes exposes individual PG* vars instead of a single URL
+        pghost = os.environ.get("PGHOST", "")
+        pgport = os.environ.get("PGPORT", "5432")
+        pgdb   = os.environ.get("PGDATABASE", "")
+        pguser = os.environ.get("PGUSER", "")
+        pgpass = os.environ.get("PGPASSWORD", "")
+        if pghost and pgdb and pguser:
+            DATABASE_URL = f"postgresql://{pguser}:{pgpass}@{pghost}:{pgport}/{pgdb}"
+        else:
+            raise RuntimeError(
+                "No database connection found. "
+                "Set DATABASE_URL (or PGHOST/PGDATABASE/PGUSER/PGPASSWORD) in Railway Variables."
+            )
     conn = psycopg2.connect(DATABASE_URL)
     return conn
 
