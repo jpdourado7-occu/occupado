@@ -655,13 +655,120 @@ def _score_vdv_guests(guests):
     return [float(s) for s in model.predict_proba(df_feat)[:, 1] * 100]
 
 
+def _parse_vdv_future_bookings():
+    """Parse RES_004 EnteredOnAndBy for all future bookings with lead times & channels."""
+    path = os.path.join(_VDV_DIR, "RES_004_EnteredOnAndBy (1).xlsx")
+    if not os.path.exists(path):
+        return []
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(path, read_only=True)
+        rows = list(wb.active.iter_rows(values_only=True))
+        wb.close()
+        today = datetime.now().date()
+        bookings = []
+        i = 0
+        while i < len(rows):
+            r = rows[i]
+            c0 = str(r[0]).strip() if r[0] else ''
+            c3 = str(r[3]).strip() if len(r) > 3 and r[3] else ''
+            if (',' in c0 and c3.startswith('MEC-') and not c3.startswith('MEC-F')
+                    and len(r) > 8 and r[8]):
+                arr_str = str(r[8])[:10]
+                try:
+                    arr = datetime.strptime(arr_str, '%d/%m/%Y').date()
+                except Exception:
+                    i += 1
+                    continue
+                if arr < today:
+                    i += 1
+                    continue
+                nights = int(r[9]) if r[9] and str(r[9]).isdigit() else 1
+                adults_str = str(r[12]).split('/')[0].strip() if r[12] else '1'
+                try:   adults = int(adults_str)
+                except: adults = 1
+                channel = str(r[25]).strip() if len(r) > 25 and r[25] else 'OTHER'
+                rate_str = str(r[16]).strip() if len(r) > 16 and r[16] else ''
+                try:
+                    total_rate = float(rate_str.replace(',', '.'))
+                    adr = total_rate / max(1, nights)
+                except Exception:
+                    adr = 130.0
+                created = str(r[28])[:10] if len(r) > 28 and r[28] else ''
+                lead = 0
+                if created:
+                    try:
+                        cdate = datetime.strptime(created, '%d/%m/%Y').date()
+                        lead = max(0, (arr - cdate).days)
+                    except Exception:
+                        pass
+                gtd = 'NONE'
+                for j in range(i + 1, min(i + 5, len(rows))):
+                    rj = rows[j]
+                    if len(rj) > 12 and rj[12]:
+                        gtd = str(rj[12]).strip()
+                        break
+                wkend = wkday = 0
+                d = datetime.combine(arr, datetime.min.time())
+                for _ in range(nights):
+                    if d.weekday() >= 5: wkend += 1
+                    else: wkday += 1
+                    d += timedelta(days=1)
+                week_num = int(datetime.combine(arr, datetime.min.time()).isocalendar()[1])
+                ch_map = {
+                    'BARWEB': 'Booking.com', 'BAROTAGROSS': 'Booking.com',
+                    'DEALSOTA': 'Booking.com', 'DISCOTAGROSS': 'Booking.com',
+                    'DISCWEB': 'Direct/Web', 'BARDIR': 'Direct/Web', 'DISCDIR': 'Direct/Web',
+                    'CORPFIX': 'Corporate', 'CORPDYN': 'Corporate',
+                    'PACK': 'Package', 'MTGBNS': 'Package', 'BNSGRP': 'Package',
+                    'DEALS': 'Other',
+                }
+                ch_label = ch_map.get(channel, 'Other')
+                bookings.append({
+                    'name': c0, 'arrival': arr.strftime('%d/%m/%Y'),
+                    'arr_date': arr, 'nights': nights, 'adults': adults,
+                    'channel': ch_label, 'channel_raw': channel,
+                    'lead': lead, 'gtd': gtd, 'adr': round(adr, 2),
+                    'wkend': wkend, 'wkday': wkday, 'week_num': week_num,
+                })
+            i += 1
+        return bookings
+    except Exception as e:
+        print(f"[VDV] Future bookings parse error: {e}")
+        return []
+
+
+def _score_vdv_future(bookings):
+    """Score VdV future bookings using the trained model."""
+    if not bookings:
+        return []
+    feat_cols = ['lead_time','arrival_date_week_number','stays_in_weekend_nights',
+                 'stays_in_week_nights','adults','is_repeated_guest',
+                 'previous_cancellations','previous_bookings_not_canceled',
+                 'booking_changes','days_in_waiting_list','adr','total_of_special_requests']
+    rows_feat = []
+    for b in bookings:
+        is_corp = 1 if b['channel'] == 'Corporate' else 0
+        rows_feat.append([b['lead'], b['week_num'], b['wkend'], b['wkday'],
+                          b['adults'], is_corp, 0, 0, 0, 0, b['adr'], 0])
+    df = pd.DataFrame(rows_feat, columns=feat_cols)
+    return [float(s) for s in model.predict_proba(df)[:, 1] * 100]
+
+
 # Load VdV data once at startup
-VDV_GUESTS_RAW    = []
-VDV_CHANNEL_STATS = {}
+VDV_GUESTS_RAW      = []
+VDV_CHANNEL_STATS   = {}
+VDV_FUTURE_BOOKINGS = []
+VDV_FUTURE_SCORES   = []
 try:
-    VDV_GUESTS_RAW    = _parse_vdv_guests()
-    VDV_CHANNEL_STATS = _parse_vdv_channel_stats()
-    print(f"[VDV] Loaded {len(VDV_GUESTS_RAW)} repeat guests, channels: {list(VDV_CHANNEL_STATS.keys())}")
+    VDV_GUESTS_RAW      = _parse_vdv_guests()
+    VDV_CHANNEL_STATS   = _parse_vdv_channel_stats()
+    VDV_FUTURE_BOOKINGS = _parse_vdv_future_bookings()
+    if VDV_FUTURE_BOOKINGS:
+        VDV_FUTURE_SCORES = _score_vdv_future(VDV_FUTURE_BOOKINGS)
+    print(f"[VDV] Loaded {len(VDV_GUESTS_RAW)} repeat guests, "
+          f"{len(VDV_FUTURE_BOOKINGS)} future bookings, "
+          f"channels: {list(VDV_CHANNEL_STATS.keys())}")
 except Exception as _vdv_err:
     print(f"[VDV] Startup warning: {_vdv_err}")
 
@@ -676,19 +783,96 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False):
 
     # ── Historical numbers (real Shiji data) ───────────────────────────────
     MONTHS       = ['Oct 2025','Nov 2025','Dec 2025','Jan 2026','Feb 2026','Mar 2026']
-    CX_MONTHLY   = [167, 315, 335, 255, 296, 269]   # cancellations per month
-    NS_MONTHLY   = [33,  59,  65,  60,  46,  37]    # no-shows per month
+    CX_MONTHLY   = [167, 315, 335, 255, 296, 318]   # cancellations per month
+    NS_MONTHLY   = [43,  61,  75,  64,  58,  38]    # no-shows per month (verified from RES_037)
     LOST_MONTHLY = [c+n for c,n in zip(CX_MONTHLY, NS_MONTHLY)]
 
-    total_cx     = sum(CX_MONTHLY)   # 1637
-    total_ns     = sum(NS_MONTHLY)   # 300
-    total_lost   = total_cx + total_ns   # 1937
+    total_cx     = sum(CX_MONTHLY)   # 1686
+    total_ns     = sum(NS_MONTHLY)   # 339
+    total_lost   = total_cx + total_ns   # 2025
     avg_adr      = 130.0
     avg_nights   = 1.8
-    rev_lost     = int(total_lost * avg_adr * avg_nights)        # €452 k
+    rev_lost     = int(total_lost * avg_adr * avg_nights)
     # Recoverable: 30% of cancellations + 25% of no-shows
     recoverable  = int(total_cx * 0.30 * avg_adr * avg_nights
-                       + total_ns * 0.25 * avg_adr)              # ~€122 k
+                       + total_ns * 0.25 * avg_adr)
+
+    # ── Future bookings risk (from RES_004 + model scoring) ────────────────
+    fut_bookings = VDV_FUTURE_BOOKINGS
+    fut_scores   = VDV_FUTURE_SCORES
+    # Fallback pre-computed constants when files not loaded
+    if not fut_bookings:
+        fut_total     = 2795
+        fut_high      = 735
+        fut_med       = 1484
+        fut_low       = 576
+        fut_no_gtd    = 1149
+        fut_table_html = ''
+        fut_by_channel = {'Booking.com': 780, 'Direct/Web': 424, 'Corporate': 416,
+                          'Package': 192, 'Other': 190}
+        fut_month_labels = ['Mar 2026','Apr 2026','May 2026','Jun 2026',
+                            'Jul 2026','Aug 2026','Sep 2026']
+        fut_month_high   = [190, 267, 141, 68, 65, 36, 26]
+        fut_month_med    = [148, 544, 297, 140, 136, 74, 58]
+    else:
+        fut_total = len(fut_bookings)
+        fut_high  = sum(1 for s in fut_scores if s >= 70)
+        fut_med   = sum(1 for s in fut_scores if 40 <= s < 70)
+        fut_low   = sum(1 for s in fut_scores if s < 40)
+        fut_no_gtd = sum(1 for b in fut_bookings if b['gtd'] == 'NONE')
+        # Top 20 at-risk bookings table
+        indexed = sorted(enumerate(fut_scores), key=lambda x: -x[1])[:20]
+        fut_table_html = ''
+        for rank, (idx, sc) in enumerate(indexed):
+            b = fut_bookings[idx]
+            ch = b['channel']
+            gtd = b['gtd']
+            if sc >= 70:
+                bdg = f'<span class="badge high">{sc:.0f}%</span>'
+                act = '<span class="abtn dep">Deposit</span>'
+            elif sc >= 40:
+                bdg = f'<span class="badge med">{sc:.0f}%</span>'
+                act = '<span class="abtn rem">Reminder</span>'
+            else:
+                bdg = f'<span class="badge low">{sc:.0f}%</span>'
+                act = '<span class="abtn mon">Monitor</span>'
+            gtd_badge = ('<span class="gtd-none">No GTD</span>' if gtd == 'NONE'
+                         else f'<span class="gtd-ok">{gtd}</span>')
+            fut_table_html += (
+                f'<tr><td>{rank+1}</td>'
+                f'<td class="gn">{b["name"]}</td>'
+                f'<td>{b["arrival"]}</td>'
+                f'<td>{b["nights"]}n</td>'
+                f'<td>{b["lead"]}d</td>'
+                f'<td>{ch}</td>'
+                f'<td>{gtd_badge}</td>'
+                f'<td>{bdg}</td>'
+                f'<td>{act}</td></tr>'
+            )
+        # Channel risk breakdown
+        from collections import defaultdict
+        ch_risk = defaultdict(lambda: {'high': 0, 'total': 0})
+        for b, sc in zip(fut_bookings, fut_scores):
+            ch_risk[b['channel']]['total'] += 1
+            if sc >= 70: ch_risk[b['channel']]['high'] += 1
+        fut_by_channel = {k: v['total'] for k, v in sorted(ch_risk.items(), key=lambda x: -x[1]['total'])}
+        # Monthly risk
+        from collections import Counter
+        mo_high  = Counter()
+        mo_med   = Counter()
+        mo_total = Counter()
+        for b, sc in zip(fut_bookings, fut_scores):
+            mo_lbl = f"{b['arr_date'].strftime('%b')} {b['arr_date'].year}"
+            mo_total[mo_lbl] += 1
+            if sc >= 70: mo_high[mo_lbl] += 1
+            elif sc >= 40: mo_med[mo_lbl] += 1
+        # Sort months
+        from datetime import datetime as _dt
+        mo_sorted = sorted(mo_total.keys(),
+                           key=lambda s: _dt.strptime(s, '%b %Y'))[:7]
+        fut_month_labels = mo_sorted
+        fut_month_high   = [mo_high.get(m, 0)  for m in mo_sorted]
+        fut_month_med    = [mo_med.get(m, 0)   for m in mo_sorted]
 
     # ── Channel percentages ────────────────────────────────────────────────
     ch_total = sum(ch_data.values()) or 1
@@ -742,21 +926,26 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False):
     ) or '<div class="pi empty">None in house</div>'
 
     # ── JS data ────────────────────────────────────────────────────────────
-    guests_js     = json.dumps([{
+    guests_js       = json.dumps([{
         'name':g['name'],'arrival':g['arrival'],'departure':g.get('departure',''),
         'nights':g['nights'],'adults':g['adults'],'membership':g.get('membership',''),
         'status':g['status'],'note':g.get('note',''),'adr':149.0 if 'CORP' in g.get('membership','') else 115.0
     } for g in guests])
-    scores_js     = json.dumps([round(s,1) for s in scores])
-    months_js     = json.dumps(MONTHS)
-    cx_js         = json.dumps(CX_MONTHLY)
-    ns_js         = json.dumps(NS_MONTHLY)
-    lost_js       = json.dumps(LOST_MONTHLY)
-    ch_labels_js  = json.dumps(list(ch_data.keys()))
-    ch_vals_js    = json.dumps(list(ch_data.values()))
-    ch_pcts_js    = json.dumps([ch_pcts[k] for k in ch_data])
-    gnames_js     = json.dumps([g['name'].split(',')[0] for g in guests])
-    gcols_js      = json.dumps(['#dc2626' if s>=70 else ('#f59e0b' if s>=40 else '#22c55e') for s in scores])
+    scores_js       = json.dumps([round(s,1) for s in scores])
+    months_js       = json.dumps(MONTHS)
+    cx_js           = json.dumps(CX_MONTHLY)
+    ns_js           = json.dumps(NS_MONTHLY)
+    lost_js         = json.dumps(LOST_MONTHLY)
+    ch_labels_js    = json.dumps(list(ch_data.keys()))
+    ch_vals_js      = json.dumps(list(ch_data.values()))
+    ch_pcts_js      = json.dumps([ch_pcts[k] for k in ch_data])
+    gnames_js       = json.dumps([g['name'].split(',')[0] for g in guests])
+    gcols_js        = json.dumps(['#dc2626' if s>=70 else ('#f59e0b' if s>=40 else '#22c55e') for s in scores])
+    fut_mlabels_js  = json.dumps(fut_month_labels)
+    fut_mhigh_js    = json.dumps(fut_month_high)
+    fut_mmed_js     = json.dumps(fut_month_med)
+    fut_ch_labels_js = json.dumps(list(fut_by_channel.keys()))
+    fut_ch_vals_js   = json.dumps(list(fut_by_channel.values()))
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -876,6 +1065,22 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
 .ap-btn:hover{{background:#04e270;}}
 .ap-btn.ghost{{background:#fff;border:1px solid #e4e8f0;color:#0d1120;}}
 .ap-btn.ghost:hover{{background:#f8fafc;}}
+
+/* GTD BADGES */
+.gtd-none{{background:#fef2f2;color:#dc2626;border:1px solid #fecaca;padding:1px 7px;border-radius:99px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;white-space:nowrap;}}
+.gtd-ok{{background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;padding:1px 7px;border-radius:99px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;white-space:nowrap;}}
+
+/* ALERT CARD */
+.alert-card{{background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:18px 20px;display:flex;align-items:center;gap:14px;}}
+.alert-icon{{font-size:24px;flex-shrink:0;}}
+.alert-body{{flex:1;}}
+.alert-title{{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:#9a3412;margin-bottom:2px;}}
+.alert-sub{{font-size:11.5px;color:#c2410c;}}
+
+/* FUTURE RISK STRIP */
+.fstrip{{background:#fff;border:1px solid #e4e8f0;border-radius:12px;padding:16px 20px;display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-bottom:14px;}}
+.fstrip .ts-item{{border-right:1px solid #f1f5f9;}}
+.fstrip .ts-item:last-child{{border-right:none;}}
 
 /* INSIGHT PILL */
 .insight-row{{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}}
@@ -1011,8 +1216,50 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
   <div class="ts-item"><div class="ts-num g">{low_count}</div><div class="ts-label">Low Risk</div></div>
 </div>
 
+<!-- FUTURE BOOKINGS RISK ─────────────────────────────────────────────── -->
+<div class="sh"><span class="sh-title">Upcoming Bookings — Risk Forecast</span><span class="sh-sub">Apr – Dec 2026 · {fut_total:,} reservations scored</span></div>
+
+<div class="alert-card" style="margin-bottom:14px;">
+  <div class="alert-icon">&#9888;</div>
+  <div class="alert-body">
+    <div class="alert-title">{fut_no_gtd:,} bookings have no deposit or guarantee (GTD: NONE)</div>
+    <div class="alert-sub">These reservations carry no financial commitment — highest no-show risk. Contact before arrival or request payment guarantee.</div>
+  </div>
+  <div style="font-family:'Syne',sans-serif;font-size:32px;font-weight:800;color:#ea580c;flex-shrink:0;">{round(fut_no_gtd/max(1,fut_total)*100)}%</div>
+</div>
+
+<div class="fstrip">
+  <div class="ts-item"><div class="ts-num">{fut_total:,}</div><div class="ts-label">Total Upcoming</div></div>
+  <div class="ts-item"><div class="ts-num r">{fut_high:,}</div><div class="ts-label">High Risk &ge;70%</div></div>
+  <div class="ts-item"><div class="ts-num a">{fut_med:,}</div><div class="ts-label">Medium Risk 40–70%</div></div>
+  <div class="ts-item"><div class="ts-num g">{fut_low:,}</div><div class="ts-label">Low Risk &lt;40%</div></div>
+</div>
+
+<div class="row row-2">
+  <div class="card">
+    <div class="card-title">Risk by Month</div>
+    <div class="card-sub">High &amp; medium risk bookings per arrival month</div>
+    <canvas id="futMonthChart" height="160"></canvas>
+  </div>
+  <div class="card">
+    <div class="card-title">Risk by Channel</div>
+    <div class="card-sub">Total upcoming bookings by source</div>
+    <canvas id="futChannelChart" height="160"></canvas>
+  </div>
+</div>
+
+{"" if not fut_table_html else f'''
+<div class="sh"><span class="sh-title">Top 20 Highest-Risk Future Bookings</span><span class="sh-sub">Act now to prevent cancellation</span></div>
+<table class="tbl">
+<thead><tr>
+  <th>#</th><th>Guest</th><th>Arrival</th><th>Nights</th><th>Lead</th><th>Channel</th><th>GTD</th><th>Risk</th><th>Action</th>
+</tr></thead>
+<tbody>{fut_table_html}</tbody>
+</table>
+'''}
+
 <!-- GUEST TABLE ──────────────────────────────────────────────────────── -->
-<div class="sh"><span class="sh-title">Repeat Guests</span><span class="sh-sub">Click row for AI analysis</span></div>
+<div class="sh"><span class="sh-title">Repeat Guests This Week</span><span class="sh-sub">Click row for AI analysis</span></div>
 <table class="tbl">
 <thead><tr>
   <th>Guest</th><th>Status</th><th>Arrival</th><th>Nights</th><th>Risk</th><th>Notes</th><th>Action</th>
@@ -1148,6 +1395,42 @@ function filterByMonth(idx) {{
   }}
   channelChart.update();
 }}
+
+// ── FUTURE RISK CHARTS ────────────────────────────────────────────────────────
+new Chart(document.getElementById('futMonthChart'), {{
+  type: 'bar',
+  data: {{
+    labels: {fut_mlabels_js},
+    datasets: [
+      {{ label: 'High Risk', data: {fut_mhigh_js}, backgroundColor: '#f87171', borderRadius: 4, borderWidth: 0, stack: 'a' }},
+      {{ label: 'Medium Risk', data: {fut_mmed_js}, backgroundColor: '#fbbf24', borderRadius: 4, borderWidth: 0, stack: 'a' }}
+    ]
+  }},
+  options: {{
+    plugins: {{ legend: {{ position:'bottom', labels:{{ font:{{family:'JetBrains Mono',size:10}},boxWidth:10,padding:10 }} }} }},
+    scales: {{
+      x: {{ grid:{{display:false}}, ticks:{{font:{{family:'JetBrains Mono',size:9}}}} }},
+      y: {{ grid:{{color:'#f1f5f9'}}, ticks:{{font:{{family:'JetBrains Mono',size:10}}}} }}
+    }},
+    animation: {{ duration:700 }}
+  }}
+}});
+
+new Chart(document.getElementById('futChannelChart'), {{
+  type: 'doughnut',
+  data: {{
+    labels: {fut_ch_labels_js},
+    datasets: [{{ data: {fut_ch_vals_js}, backgroundColor:['#f87171','#60a5fa','#a78bfa','#34d399','#94a3b8'], borderWidth:0, hoverOffset:6 }}]
+  }},
+  options: {{
+    plugins: {{
+      legend: {{ position:'right', labels:{{ font:{{family:'JetBrains Mono',size:10}},boxWidth:10,padding:8 }} }},
+      tooltip: {{ callbacks: {{ label: ctx => ` ${{ctx.label}}: ${{ctx.parsed}} bookings` }} }}
+    }},
+    cutout: '62%',
+    animation: {{ duration:700 }}
+  }}
+}});
 
 // ── SAVINGS CALCULATOR ────────────────────────────────────────────────────────
 const totalCx = {total_cx};
