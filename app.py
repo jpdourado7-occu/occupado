@@ -50,6 +50,8 @@ os.makedirs(TOKEN_DIR, exist_ok=True)
 
 def get_db():
     DATABASE_URL = os.environ.get("DATABASE_URL", "")
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL environment variable is not set. Add a PostgreSQL plugin in Railway and link it to this service.")
     conn = psycopg2.connect(DATABASE_URL)
     return conn
 
@@ -104,7 +106,12 @@ def init_db():
     except:
         pass
 
-init_db()
+try:
+    init_db()
+except Exception as _db_err:
+    import sys
+    print(f"[occupado] WARNING: Database init failed — {_db_err}", file=sys.stderr)
+    print("[occupado] Set DATABASE_URL in Railway -> Variables to fix this.", file=sys.stderr)
 
 # ── Rate limiting: track failed login attempts ──
 # { ip: { "count": int, "locked_until": datetime | None } }
