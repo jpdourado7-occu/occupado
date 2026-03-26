@@ -2455,6 +2455,92 @@ def is_valid_email(email):
     """Basic email format validation."""
     return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email))
 
+def build_empty_state(hotel_name, lang="en"):
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+<title>Occupado — {hotel_name}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{{margin:0;padding:0;box-sizing:border-box;}}
+body{{background:#ffffff;color:#0d1120;font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}}
+a{{text-decoration:none;}}
+.topbar{{height:62px;background:#ffffff;border-bottom:1px solid #e4e8f0;display:flex;align-items:center;padding:0 32px;}}
+.topbar-name{{font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:#0d1120;letter-spacing:-0.4px;}}
+.topbar-name span{{color:#00d165;}}
+.topbar-hotel{{font-family:'JetBrains Mono',monospace;font-size:11px;color:#94a3b8;margin-left:12px;padding-left:12px;border-left:1px solid #e4e8f0;}}
+.topbar-right{{margin-left:auto;display:flex;gap:8px;}}
+.btn-nav{{padding:7px 16px;background:transparent;border:1px solid #e4e8f0;border-radius:7px;color:#64748b;font-size:12px;font-weight:500;text-decoration:none;}}
+.btn-nav:hover{{border-color:#cbd5e1;color:#0d1120;}}
+.page{{max-width:600px;margin:0 auto;padding:80px 24px 40px;text-align:center;}}
+.welcome-tag{{display:inline-flex;align-items:center;gap:6px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:99px;padding:5px 14px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#16a34a;margin-bottom:24px;}}
+.welcome-dot{{width:6px;height:6px;background:#00d165;border-radius:50%;}}
+h1{{font-family:'Syne',sans-serif;font-size:40px;font-weight:800;color:#0d1120;letter-spacing:-1.5px;line-height:1.1;margin-bottom:14px;}}
+h1 span{{color:#00d165;}}
+.sub{{font-size:16px;color:#64748b;line-height:1.6;margin-bottom:48px;}}
+.features{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:48px;text-align:left;}}
+.feat{{background:#f8fafc;border:1px solid #e4e8f0;border-radius:12px;padding:20px;}}
+.feat-icon{{font-size:22px;margin-bottom:10px;}}
+.feat-title{{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:#0d1120;margin-bottom:4px;letter-spacing:-0.2px;}}
+.feat-sub{{font-size:12px;color:#64748b;line-height:1.5;}}
+.upload-card{{background:#f8fafc;border:2px dashed #cbd5e1;border-radius:16px;padding:40px;margin-bottom:20px;cursor:pointer;transition:all .2s;}}
+.upload-card:hover{{border-color:#00d165;background:#f0fdf4;}}
+.upload-icon{{font-size:36px;margin-bottom:12px;}}
+.upload-title{{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#0d1120;margin-bottom:6px;letter-spacing:-0.4px;}}
+.upload-sub{{font-size:13px;color:#64748b;margin-bottom:24px;}}
+.upload-btn{{display:inline-block;padding:13px 32px;background:#00d165;color:#080c14;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}}
+.upload-btn:hover{{background:#04e270;}}
+.demo-link{{font-size:13px;color:#94a3b8;}}
+.demo-link a{{color:#64748b;text-decoration:underline;text-underline-offset:3px;}}
+.demo-link a:hover{{color:#0d1120;}}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="topbar-name">Occup<span>ado</span></span>
+  <span class="topbar-hotel">{hotel_name}</span>
+  <div class="topbar-right">
+    <a href="/settings" class="btn-nav">Settings</a>
+    <a href="/logout" class="btn-nav">Sign out</a>
+  </div>
+</div>
+<div class="page">
+  <div class="welcome-tag"><span class="welcome-dot"></span>Account ready</div>
+  <h1>Welcome to<br><span>Occupado</span></h1>
+  <p class="sub">Upload your booking data and get AI-powered cancellation risk scores, revenue forecasts, and action plans — in seconds.</p>
+  <div class="features">
+    <div class="feat">
+      <div class="feat-icon">🎯</div>
+      <div class="feat-title">Risk Scores</div>
+      <div class="feat-sub">Every booking scored 0–100% cancellation probability</div>
+    </div>
+    <div class="feat">
+      <div class="feat-icon">💶</div>
+      <div class="feat-title">Revenue at Risk</div>
+      <div class="feat-sub">See exactly how much revenue is exposed each week</div>
+    </div>
+    <div class="feat">
+      <div class="feat-icon">📧</div>
+      <div class="feat-title">Take Action</div>
+      <div class="feat-sub">Send deposit requests and reminders in one click</div>
+    </div>
+  </div>
+  <form method="POST" action="/upload" enctype="multipart/form-data">
+    <div class="upload-card" onclick="document.getElementById('csv-onboard').click()">
+      <div class="upload-icon">📂</div>
+      <div class="upload-title">Upload your booking export</div>
+      <div class="upload-sub">CSV file from your PMS — Opera, Protel, Mews, or any system</div>
+      <input type="file" id="csv-onboard" name="csv_file" accept=".csv" style="display:none" onchange="this.form.submit()">
+      <button type="button" class="upload-btn" onclick="event.stopPropagation();document.getElementById('csv-onboard').click()">Choose file</button>
+    </div>
+  </form>
+  <p class="demo-link">Not ready yet? <a href="/dashboard?skip_onboard=1">Preview with demo data</a></p>
+</div>
+</body>
+</html>"""
+
+
 def build_dashboard(hotel_name, sample, scores, tonight_scores, tonight_sample=None, uploaded=False, lang="en", first_login=False):
     high = sum(1 for s in scores if s >= 70)
     med  = sum(1 for s in scores if 40 <= s < 70)
@@ -3523,7 +3609,13 @@ def dashboard():
         return build_vdv_dashboard(hotel_name, lang=lang, first_login=first_login)
 
     uploaded_data = session.get("uploaded_csv")
-    
+    first_login = session.pop("first_login", False)
+    skip_onboard = request.args.get("skip_onboard")
+
+    # Show onboarding screen for first-time logins with no data yet
+    if first_login and not uploaded_data and not skip_onboard:
+        return build_empty_state(hotel_name, lang=lang)
+
     if uploaded_data:
         sample = pd.DataFrame(uploaded_data)
         for feat in features:
@@ -3540,7 +3632,6 @@ def dashboard():
     scores = model.predict_proba(sample)[:, 1] * 100
     tonight_scores = model.predict_proba(tonight_sample)[:, 1] * 100
 
-    first_login = session.pop("first_login", False)
     return build_dashboard(hotel_name, sample, scores, tonight_scores, tonight_sample=tonight_sample, uploaded=uploaded, lang=lang, first_login=first_login)
 
 @app.route("/clear")
