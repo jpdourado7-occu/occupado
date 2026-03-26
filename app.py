@@ -902,6 +902,19 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False):
         mice_seg.get('BNSGRP', 0),  mice_seg.get('MTGBNS', 0)
     ])
 
+    # Risk score per corporate client (rule-based)
+    SEG_RISK = {'BNSGRP': 2, 'CORPDYN': 1, 'MTGBNS': 1, 'CORPFIX': 0}
+    for c in mice_clients:
+        risk_pts = SEG_RISK.get(c.get('seg_code', ''), 0)
+        avg_n = c['nights'] / c['bookings'] if c['bookings'] else 1
+        if avg_n < 1.5: risk_pts += 1          # very short stays = higher no-show
+        if c['bookings'] <= 2: risk_pts += 1   # new/infrequent account
+        if avg_n >= 3: risk_pts -= 1           # long stays = committed
+        if c['bookings'] >= 20: risk_pts -= 1  # proven repeat account
+        if risk_pts >= 3:   c['risk'] = 'HIGH'
+        elif risk_pts >= 2: c['risk'] = 'MEDIUM'
+        else:               c['risk'] = 'LOW'
+
     # ── Historical numbers (real Shiji data) ───────────────────────────────
     MONTHS       = ['Oct 2025','Nov 2025','Dec 2025','Jan 2026','Feb 2026','Mar 2026']
     CX_MONTHLY   = [167, 315, 335, 255, 296, 318]   # cancellations per month
@@ -1458,7 +1471,7 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
   <div>
     <div class="mice-chart-title">Top Corporate Accounts</div>
     <table class="mice-tbl">
-      <thead><tr><th>#</th><th>Company</th><th>Segment</th><th>Bookings</th><th>Nights</th><th>Avg Stay</th></tr></thead>
+      <thead><tr><th>#</th><th>Company</th><th>Segment</th><th>Bookings</th><th>Nights</th><th>Avg Stay</th><th>Risk</th></tr></thead>
       <tbody>
         {"".join(
           f'<tr>'
@@ -1468,9 +1481,12 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
           f'<td style="font-family:monospace">{c["bookings"]}</td>'
           f'<td style="font-family:monospace">{c["nights"]}</td>'
           f'<td style="font-family:monospace">{round(c["nights"]/c["bookings"],1) if c["bookings"] else 0}n</td>'
+          f'<td><span class="seg-pill '
+          f'{"seg-bnsgrp" if c.get("risk")=="HIGH" else "seg-mtgbns" if c.get("risk")=="MEDIUM" else "seg-corpdyn"}">'
+          f'{c.get("risk","—")}</span></td>'
           f'</tr>'
           for i, c in enumerate(mice_clients)
-        ) if mice_clients else "<tr><td colspan='6' style='color:#94a3b8;text-align:center;padding:20px'>No data — local VDV-Data files required</td></tr>"}
+        ) if mice_clients else "<tr><td colspan='7' style='color:#94a3b8;text-align:center;padding:20px'>No data — local VDV-Data files required</td></tr>"}
       </tbody>
     </table>
   </div>
@@ -1699,12 +1715,39 @@ function openDetail(idx, score) {{
     <div class="dr"><span class="dl">Rate</span><span class="dv">€${{g.adr}}/night</span></div>
     ${{g.note?`<div class="dr"><span class="dl">Notes</span><span class="dv" style="max-width:200px;text-align:right;font-size:11px">${{g.note}}</span></div>`:''}}
   `;
-  const reasons = score<15
-    ? [{{p:1,t:'Repeat guest — strong booking commitment'}},{{p:1,t:'Low lead time — very close to check-in'}},{{p:!!g.membership,t:g.membership?'Loyalty / corporate membership':'Standard booking — no loyalty flag'}}]
-    : score<40
-    ? [{{p:1,t:'Returning guest with positive history'}},{{p:0,t:'Slightly higher score — monitor recommended'}}]
-    : [{{p:0,t:'Risk factors detected — proactive contact advised'}}];
-  document.getElementById('mo-reasons').innerHTML = reasons.map(r =>
+  const reasons = [];
+  // Lead time from arrival date
+  const arrParts = g.arrival.split('/');
+  const arrDate  = arrParts.length===3 ? new Date(arrParts[2], arrParts[1]-1, arrParts[0]) : null;
+  const leadDays = arrDate ? Math.round((arrDate - new Date()) / 86400000) : null;
+  if (leadDays !== null) {{
+    if (leadDays > 90)       reasons.push({{p:0, t:`Booked ${{leadDays}} days in advance — very long lead time, high cancellation risk`}});
+    else if (leadDays > 30)  reasons.push({{p:0, t:`Lead time ${{leadDays}} days — moderate cancellation window remains`}});
+    else if (leadDays >= 0)  reasons.push({{p:1, t:`Arriving in ${{leadDays <= 1 ? 'tomorrow or today' : leadDays+' days'}} — close to check-in, lower risk`}});
+  }}
+  // Loyalty / membership
+  if (g.membership && g.membership !== '—' && g.membership !== '') {{
+    reasons.push({{p:1, t:`Loyalty member (${{g.membership}}) — committed guests, lower no-show rate`}});
+  }} else {{
+    reasons.push({{p:0, t:`No loyalty membership — first-time or uncommitted profile`}});
+  }}
+  // Stay length
+  if (g.nights >= 4)      reasons.push({{p:1, t:`${{g.nights}}-night stay — longer stays are rarely cancelled last-minute`}});
+  else if (g.nights === 1) reasons.push({{p:0, t:`1-night stay — short stays have the highest no-show rate`}});
+  // Booking value
+  const total = Math.round(g.adr * g.nights);
+  if (total > 500)        reasons.push({{p:0, t:`High-value booking (€${{total}} total) — deposit or guarantee strongly recommended`}});
+  else if (total > 200)   reasons.push({{p:0, t:`Booking value €${{total}} — consider deposit request if no guarantee on file`}});
+  // Status context
+  if (g.status === 'In House')    reasons.push({{p:1, t:`Guest is currently in house — no cancellation risk`}});
+  if (g.status === 'Checked Out') reasons.push({{p:1, t:`Stay completed — historical record only`}});
+  // Profile note
+  if (g.note && g.note.length > 0) reasons.push({{p:1, t:`Profile note: "${{g.note.substring(0,70)}}"`}});
+  // Score summary
+  if (score >= 70)      reasons.push({{p:0, t:`AI confidence: high risk — multiple signals combined. Act now.`}});
+  else if (score >= 40) reasons.push({{p:0, t:`AI confidence: moderate risk — monitor and send reminder closer to arrival`}});
+  else                  reasons.push({{p:1, t:`AI confidence: low risk — booking profile looks stable`}});
+  document.getElementById('mo-reasons').innerHTML = reasons.slice(0,5).map(r =>
     `<div class="ri ${{r.p?'pos':'neg'}}">${{r.p?'✓':'⚠'}} ${{r.t}}</div>`).join('');
   document.getElementById('detailMo').classList.add('show');
 }}
