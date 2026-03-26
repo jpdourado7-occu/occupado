@@ -755,19 +755,121 @@ def _score_vdv_future(bookings):
     return [float(s) for s in model.predict_proba(df)[:, 1] * 100]
 
 
+def _parse_mice_data():
+    """Parse RES_001 for MICE/corporate bookings and RES_033 for active group blocks."""
+    path_res001 = os.path.join(_VDV_DIR, "RES_001_ArrivalDetailed (1).xlsx")
+    path_res033 = os.path.join(_VDV_DIR, "RES_033_BillingInstructions.xlsx")
+    MICE_SEGS = {'BNSGRP', 'CORPFIX', 'CORPDYN', 'MTGBNS'}
+    SEG_LABELS = {
+        'BNSGRP':  'Business Group',
+        'CORPFIX': 'Corporate Fixed',
+        'CORPDYN': 'Corporate Dynamic',
+        'MTGBNS':  'Meeting Business',
+    }
+    result = {
+        'total': 0,
+        'total_nights': 0,
+        'by_segment': {k: 0 for k in MICE_SEGS},
+        'top_clients': [],
+        'groups': [],
+    }
+    # --- Parse RES_001 for bookings ---
+    if os.path.exists(path_res001):
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(path_res001, read_only=True)
+            rows = list(wb.active.iter_rows(values_only=True))
+            wb.close()
+            companies = {}
+            for i in range(13, len(rows)):
+                row = rows[i]
+                if not row or len(row) < 18: continue
+                market = str(row[17]).strip() if row[17] else ''
+                if market not in MICE_SEGS: continue
+                company = str(row[13]).strip() if row[13] else ''
+                nights_raw = str(row[7]).strip() if row[7] else '0'
+                room_type  = str(row[10]).strip() if row[10] else ''
+                # Arrival date from col 4
+                arr_raw = str(row[4]).strip() if row[4] else ''
+                arr_date = arr_raw[:10] if arr_raw else ''
+                try:
+                    nights = int(nights_raw) if nights_raw.isdigit() else 1
+                except:
+                    nights = 1
+                if company and company not in ('nan', 'Group', 'Company', 'Travel Agent', ''):
+                    if company not in companies:
+                        companies[company] = {'segment': SEG_LABELS.get(market, market),
+                                              'seg_code': market, 'bookings': 0,
+                                              'nights': 0, 'last_arrival': arr_date}
+                    companies[company]['bookings'] += 1
+                    companies[company]['nights']   += nights
+                    if arr_date and arr_date > companies[company]['last_arrival']:
+                        companies[company]['last_arrival'] = arr_date
+                result['by_segment'][market] = result['by_segment'].get(market, 0) + 1
+                result['total']        += 1
+                result['total_nights'] += nights
+            result['top_clients'] = sorted(
+                [{'company': co, **data} for co, data in companies.items()],
+                key=lambda x: -x['bookings']
+            )[:12]
+        except Exception as e:
+            print(f"[VDV] MICE parse error (RES_001): {e}")
+    # --- Parse RES_033 for group blocks ---
+    if os.path.exists(path_res033):
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(path_res033, read_only=True)
+            rows = list(wb.active.iter_rows(values_only=True))
+            wb.close()
+            groups = {}
+            for row in rows:
+                if not row or row[0] is None: continue
+                room = str(row[0]).strip()
+                if not room or room in ('Room #', 'Res. Status', 'Totals', 'IH', 'CX'): continue
+                try: int(room)  # must be a room number
+                except: continue
+                arr_raw  = str(row[7]).strip() if row[7] else ''
+                dep_raw  = str(row[8]).strip() if row[8] else ''
+                grp_raw  = str(row[10]).strip() if row[10] else ''
+                company  = str(row[13]).strip() if row[13] else ''
+                if not grp_raw or grp_raw == 'nan': continue
+                # Parse group code and name from "MEC-GF10478 | Hyrox Mechelen 008646"
+                parts = grp_raw.split('|')
+                grp_code = parts[0].strip() if parts else grp_raw
+                grp_name = parts[1].strip() if len(parts) > 1 else grp_code
+                if grp_code not in groups:
+                    groups[grp_code] = {
+                        'code': grp_code, 'name': grp_name,
+                        'company': company, 'rooms': [], 'arrival': arr_raw, 'departure': dep_raw
+                    }
+                groups[grp_code]['rooms'].append(room)
+                if arr_raw and arr_raw < groups[grp_code]['arrival']:
+                    groups[grp_code]['arrival'] = arr_raw
+            result['groups'] = sorted(
+                [g for g in groups.values() if len(g['rooms']) >= 2],
+                key=lambda x: -len(x['rooms'])
+            )
+        except Exception as e:
+            print(f"[VDV] MICE parse error (RES_033): {e}")
+    return result
+
+
 # Load VdV data once at startup
 VDV_GUESTS_RAW      = []
 VDV_CHANNEL_STATS   = {}
 VDV_FUTURE_BOOKINGS = []
 VDV_FUTURE_SCORES   = []
+VDV_MICE_DATA       = {}
 try:
     VDV_GUESTS_RAW      = _parse_vdv_guests()
     VDV_CHANNEL_STATS   = _parse_vdv_channel_stats()
     VDV_FUTURE_BOOKINGS = _parse_vdv_future_bookings()
+    VDV_MICE_DATA       = _parse_mice_data()
     if VDV_FUTURE_BOOKINGS:
         VDV_FUTURE_SCORES = _score_vdv_future(VDV_FUTURE_BOOKINGS)
     print(f"[VDV] Loaded {len(VDV_GUESTS_RAW)} repeat guests, "
           f"{len(VDV_FUTURE_BOOKINGS)} future bookings, "
+          f"{VDV_MICE_DATA.get('total',0)} MICE bookings, "
           f"channels: {list(VDV_CHANNEL_STATS.keys())}")
 except Exception as _vdv_err:
     print(f"[VDV] Startup warning: {_vdv_err}")
@@ -780,6 +882,25 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False):
     ch_data = VDV_CHANNEL_STATS
     today   = datetime.now()
     today_str = today.strftime('%d %b %Y')
+
+    # ── MICE data ────────────────────────────────────────────────────────────
+    mice = VDV_MICE_DATA if VDV_MICE_DATA else {
+        'total': 993, 'total_nights': 2163,
+        'by_segment': {'BNSGRP': 179, 'CORPFIX': 443, 'CORPDYN': 173, 'MTGBNS': 198},
+        'top_clients': [], 'groups': []
+    }
+    mice_total   = mice.get('total', 0)
+    mice_nights  = mice.get('total_nights', 0)
+    mice_seg     = mice.get('by_segment', {})
+    mice_clients = mice.get('top_clients', [])
+    mice_groups  = mice.get('groups', [])
+    mice_avg_nights = round(mice_nights / mice_total, 1) if mice_total > 0 else 0
+    # Estimated MICE revenue: avg corporate ADR €145 × avg nights
+    mice_est_rev = int(mice_total * 145 * max(1, mice_avg_nights))
+    mice_seg_js  = json.dumps([
+        mice_seg.get('CORPFIX', 0), mice_seg.get('CORPDYN', 0),
+        mice_seg.get('BNSGRP', 0),  mice_seg.get('MTGBNS', 0)
+    ])
 
     # ── Historical numbers (real Shiji data) ───────────────────────────────
     MONTHS       = ['Oct 2025','Nov 2025','Dec 2025','Jan 2026','Feb 2026','Mar 2026']
@@ -1056,6 +1177,31 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
 
 /* ACTION PLAN */
 .ap-grid{{display:grid;grid-template-columns:1fr 1fr;gap:14px;}}
+/* MICE */
+.mice-grid{{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px;}}
+.mice-card{{background:#fff;border:1px solid #e4e8f0;border-radius:12px;padding:18px 20px;}}
+.mice-card.blue{{background:#eff6ff;border-color:#bfdbfe;}}
+.mice-num{{font-family:'Syne',sans-serif;font-size:32px;font-weight:800;line-height:1;letter-spacing:-1px;color:#0d1120;}}
+.mice-num.blue{{color:#1d4ed8;}}
+.mice-lbl{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;margin-top:5px;text-transform:uppercase;letter-spacing:1px;}}
+.mice-sub{{font-size:11px;color:#64748b;margin-top:3px;}}
+.mice-row{{display:grid;grid-template-columns:1fr 280px;gap:14px;margin-bottom:18px;align-items:start;}}
+.mice-chart-card{{background:#fff;border:1px solid #e4e8f0;border-radius:12px;padding:18px 20px;}}
+.mice-chart-title{{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:#0d1120;margin-bottom:14px;}}
+.mice-tbl{{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e4e8f0;font-size:12px;}}
+.mice-tbl th{{background:#f8fafc;color:#94a3b8;font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1px;padding:10px 14px;text-align:left;border-bottom:1px solid #e4e8f0;}}
+.mice-tbl td{{padding:10px 14px;border-bottom:1px solid #f1f5f9;color:#374151;}}
+.mice-tbl tr:last-child td{{border-bottom:none;}}
+.seg-pill{{display:inline-block;padding:2px 9px;border-radius:99px;font-size:10px;font-family:'JetBrains Mono',monospace;font-weight:500;border:1px solid;}}
+.seg-corpfix{{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;}}
+.seg-corpdyn{{background:#f0fdf4;color:#15803d;border-color:#bbf7d0;}}
+.seg-bnsgrp{{background:#fdf4ff;color:#7e22ce;border-color:#e9d5ff;}}
+.seg-mtgbns{{background:#fff7ed;color:#c2410c;border-color:#fed7aa;}}
+.grp-row{{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #f1f5f9;font-size:12px;}}
+.grp-row:last-child{{border-bottom:none;}}
+.grp-name{{font-weight:600;color:#0d1120;}}
+.grp-co{{color:#64748b;font-size:11px;margin-top:2px;}}
+.grp-rooms{{font-family:'JetBrains Mono',monospace;font-size:11px;color:#0d1120;font-weight:600;background:#f0fdf4;padding:3px 10px;border-radius:99px;border:1px solid #bbf7d0;color:#15803d;}}
 .ap-card{{background:#fff;border:1px solid #e4e8f0;border-radius:12px;padding:20px;}}
 .ap-head{{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:#0d1120;margin-bottom:12px;display:flex;align-items:center;gap:8px;}}
 .pi{{background:#f8fafc;border-radius:7px;padding:8px 11px;margin-bottom:6px;font-size:12px;line-height:1.5;color:#374151;}}
@@ -1281,6 +1427,83 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
     <button class="ap-btn ghost" onclick="openBulk('departure')">Send departure reminder →</button>
   </div>
 </div>
+
+<!-- MICE & CORPORATE INTELLIGENCE ──────────────────────────────────── -->
+<div class="sh"><span class="sh-title">MICE & Corporate Intelligence</span><span class="sh-sub">B2B · Meetings, Incentives, Conferences & Events</span></div>
+
+<div class="mice-grid">
+  <div class="mice-card blue">
+    <div class="mice-num blue">{mice_total:,}</div>
+    <div class="mice-lbl">MICE Bookings</div>
+    <div class="mice-sub">in current dataset</div>
+  </div>
+  <div class="mice-card">
+    <div class="mice-num">{mice_nights:,}</div>
+    <div class="mice-lbl">Total Nights</div>
+    <div class="mice-sub">{mice_avg_nights} avg per stay</div>
+  </div>
+  <div class="mice-card">
+    <div class="mice-num" style="color:#15803d">€{mice_est_rev:,}</div>
+    <div class="mice-lbl">Est. MICE Revenue</div>
+    <div class="mice-sub">at €145 avg corporate ADR</div>
+  </div>
+  <div class="mice-card">
+    <div class="mice-num">{len(mice_clients)}</div>
+    <div class="mice-lbl">Corporate Accounts</div>
+    <div class="mice-sub">active in period</div>
+  </div>
+</div>
+
+<div class="mice-row">
+  <div>
+    <div class="mice-chart-title">Top Corporate Accounts</div>
+    <table class="mice-tbl">
+      <thead><tr><th>#</th><th>Company</th><th>Segment</th><th>Bookings</th><th>Nights</th><th>Avg Stay</th></tr></thead>
+      <tbody>
+        {"".join(
+          f'<tr>'
+          f'<td style="color:#94a3b8;font-family:monospace;font-size:11px">{i+1}</td>'
+          f'<td style="font-weight:600;color:#0d1120">{c["company"]}</td>'
+          f'<td><span class="seg-pill seg-{c["seg_code"].lower()}">{c["segment"]}</span></td>'
+          f'<td style="font-family:monospace">{c["bookings"]}</td>'
+          f'<td style="font-family:monospace">{c["nights"]}</td>'
+          f'<td style="font-family:monospace">{round(c["nights"]/c["bookings"],1) if c["bookings"] else 0}n</td>'
+          f'</tr>'
+          for i, c in enumerate(mice_clients)
+        ) if mice_clients else "<tr><td colspan='6' style='color:#94a3b8;text-align:center;padding:20px'>No data — local VDV-Data files required</td></tr>"}
+      </tbody>
+    </table>
+  </div>
+  <div class="mice-chart-card">
+    <div class="mice-chart-title">Segment Mix</div>
+    <canvas id="miceSegChart" height="200"></canvas>
+    <div style="margin-top:14px">
+      {"".join(
+        f'<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f5f9;font-size:12px;">'
+        f'<span style="color:#64748b">{lbl}</span>'
+        f'<span style="font-family:monospace;font-weight:600">{cnt}</span>'
+        f'</div>'
+        for lbl, cnt in [
+          ('Corporate Fixed (CORPFIX)', mice_seg.get('CORPFIX', 0)),
+          ('Corporate Dynamic (CORPDYN)', mice_seg.get('CORPDYN', 0)),
+          ('Business Group (BNSGRP)', mice_seg.get('BNSGRP', 0)),
+          ('Meeting Business (MTGBNS)', mice_seg.get('MTGBNS', 0)),
+        ]
+      )}
+    </div>
+  </div>
+</div>
+
+{f"""<div class="mice-chart-title" style="margin-bottom:10px">Active Group Blocks</div>
+<div style="background:#fff;border:1px solid #e4e8f0;border-radius:12px;padding:18px 20px;margin-bottom:18px;">
+  {"".join(
+    f'<div class="grp-row">'
+    f'<div><div class="grp-name">{g["name"]}</div><div class="grp-co">{g["company"]} · {g["arrival"]} → {g["departure"]}</div></div>'
+    f'<span class="grp-rooms">{len(g["rooms"])} rooms</span>'
+    f'</div>'
+    for g in mice_groups
+  ) if mice_groups else '<div style="color:#94a3b8;font-size:12px;text-align:center;padding:12px">No active group blocks in dataset</div>'}
+</div>""" if True else ""}
 
 </div><!-- /page -->
 
@@ -1542,6 +1765,30 @@ function toast(msg,type){{
 }}
 document.getElementById('detailMo').onclick = e=>{{ if(e.target===document.getElementById('detailMo')) closeMo(); }};
 document.getElementById('ecMo').onclick     = e=>{{ if(e.target===document.getElementById('ecMo')) closeEc(); }};
+
+// MICE segment doughnut
+(function() {{
+  const ctx = document.getElementById('miceSegChart');
+  if (!ctx) return;
+  new Chart(ctx, {{
+    type: 'doughnut',
+    data: {{
+      labels: ['Corporate Fixed', 'Corporate Dynamic', 'Business Group', 'Meeting Business'],
+      datasets: [{{
+        data: {mice_seg_js},
+        backgroundColor: ['#bfdbfe','#bbf7d0','#e9d5ff','#fed7aa'],
+        borderColor:      ['#1d4ed8','#15803d','#7e22ce','#c2410c'],
+        borderWidth: 1.5
+      }}]
+    }},
+    options: {{
+      cutout: '62%',
+      plugins: {{
+        legend: {{ display: false }}
+      }}
+    }}
+  }});
+}})();
 </script>
 </body>
 </html>"""
