@@ -2455,7 +2455,7 @@ def is_valid_email(email):
     """Basic email format validation."""
     return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email))
 
-def build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=False, lang="en", first_login=False):
+def build_dashboard(hotel_name, sample, scores, tonight_scores, tonight_sample=None, uploaded=False, lang="en", first_login=False):
     high = sum(1 for s in scores if s >= 70)
     med  = sum(1 for s in scores if 40 <= s < 70)
     low  = sum(1 for s in scores if s < 40)
@@ -2465,14 +2465,58 @@ def build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=False, 
     safe_overbook = int(predicted_noshows * 0.80)
     revenue = safe_overbook * avg_rate
 
+    # --- Full-dataset analytics ---
+    if tonight_sample is not None and len(tonight_sample) > 0:
+        all_scores   = list(tonight_scores)
+        total_bookings = len(tonight_sample)
+        high_total   = sum(1 for s in all_scores if s >= 70)
+        med_total    = sum(1 for s in all_scores if 40 <= s < 70)
+        low_total    = sum(1 for s in all_scores if s < 40)
+        avg_adr      = float(tonight_sample["adr"].mean()) if "adr" in tonight_sample.columns else float(avg_rate)
+        wk = tonight_sample["stays_in_week_nights"] if "stays_in_week_nights" in tonight_sample.columns else pd.Series([1]*total_bookings)
+        we = tonight_sample["stays_in_weekend_nights"] if "stays_in_weekend_nights" in tonight_sample.columns else pd.Series([0]*total_bookings)
+        avg_nights   = max(1.0, float((wk + we).mean()))
+        revenue_at_risk = int(high_total * avg_adr * avg_nights)
+
+        # Lead-time buckets for chart
+        lt_buckets = [[] for _ in range(5)]
+        for idx, (_, row) in enumerate(tonight_sample.iterrows()):
+            lt = float(row.get("lead_time", 0))
+            s  = all_scores[idx] if idx < len(all_scores) else 0
+            if lt <= 7:    lt_buckets[0].append(s)
+            elif lt <= 30: lt_buckets[1].append(s)
+            elif lt <= 60: lt_buckets[2].append(s)
+            elif lt <= 90: lt_buckets[3].append(s)
+            else:          lt_buckets[4].append(s)
+        lt_high_js = json.dumps([sum(1 for s in b if s >= 70)      for b in lt_buckets])
+        lt_med_js  = json.dumps([sum(1 for s in b if 40 <= s < 70) for b in lt_buckets])
+        lt_low_js  = json.dumps([sum(1 for s in b if s < 40)       for b in lt_buckets])
+
+        # Table: top 50 highest-risk bookings
+        table_pairs = sorted(zip(tonight_sample.iterrows(), all_scores), key=lambda x: x[1], reverse=True)[:50]
+    else:
+        total_bookings  = len(sample)
+        high_total      = high
+        med_total       = med
+        low_total       = low
+        avg_adr         = float(avg_rate)
+        avg_nights      = 2.0
+        revenue_at_risk = int(high_total * avg_adr * avg_nights)
+        lt_high_js      = json.dumps([0, 0, 0, 0, 0])
+        lt_med_js       = json.dumps([0, 0, 0, 0, 0])
+        lt_low_js       = json.dumps([0, 0, 0, 0, 0])
+        table_pairs     = list(zip(sample.iterrows(), scores))
+
+    savings_default_bk  = int(high_total * 0.20)
+    savings_default_rev = int(revenue_at_risk * 0.20)
+
     bookings_data = []
-    for _, booking in sample.iterrows():
+    for (_, booking), _ in table_pairs:
         bookings_data.append({k: float(booking.get(k, 0)) for k in features})
     bookings_js = json.dumps(bookings_data)
 
     rows = ""
-    for i, (_, booking) in enumerate(sample.iterrows()):
-        score = scores[i]
+    for i, ((_, booking), score) in enumerate(table_pairs):
         if score >= 70:
             badge = f'<span class="badge high">{t("high", lang)} {score:.1f}%</span>'
             action = f'<button class="btn dep" onclick="event.stopPropagation(); openEmailComposer({i}, \'deposit\')">{t("req_dep", lang)}</button>'
@@ -2484,12 +2528,13 @@ def build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=False, 
             action = f'<button class="btn mon" onclick="event.stopPropagation(); openEmailComposer({i}, \'monitor\')">{t("monitor", lang)}</button>'
 
         lead = int(booking.get("lead_time", 0))
-        adr = int(booking.get("adr", 0))
-        rep = t("yes", lang) if booking.get("is_repeated_guest", 0) else t("no", lang)
+        adr  = int(booking.get("adr", 0))
+        rep  = t("yes", lang) if booking.get("is_repeated_guest", 0) else t("no", lang)
         canc = int(booking.get("previous_cancellations", 0))
 
         rows += f"""<tr class="clickable-row" onclick="showDetail({i}, {score:.1f})">
-            <td><span style="color:#008000;font-weight:600">{t("booking", lang)} {i+1}</span></td>
+            <td><span style="font-family:'JetBrains Mono',monospace;color:#94a3b8;font-size:11px">{i+1}</span></td>
+            <td><span style="color:#0d1120;font-weight:600">{t("booking", lang)} {i+1}</span></td>
             <td>{lead} {t("days", lang)}</td><td>EUR {adr}</td><td>{rep}</td><td>{canc}</td>
             <td>{badge}</td><td>{action}</td>
         </tr>"""
@@ -2528,6 +2573,7 @@ def build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=False, 
 <title>Occupado — {hotel_name}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 *,*::before,*::after{{margin:0;padding:0;box-sizing:border-box;}}
 body{{background:#ffffff;color:#0d1120;font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}}
@@ -2656,6 +2702,30 @@ td:first-child{{color:#0d1120;font-weight:600;}}
 /* TOAST */
 .toast{{position:fixed;bottom:24px;right:24px;background:#0d1120;color:#ffffff;border-radius:10px;padding:14px 18px;font-size:13px;transform:translateY(70px);opacity:0;transition:all 0.3s;z-index:2000;box-shadow:0 8px 24px rgba(0,0,0,0.15);}}
 .toast.show{{transform:translateY(0);opacity:1;}}
+/* HERO CARDS */
+.hero-cards{{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px;}}
+.hero-card{{background:#f8fafc;border:1px solid #e4e8f0;border-radius:12px;padding:22px;}}
+.hero-card-red{{background:#fef2f2;border-color:#fecaca;}}
+.hero-val{{font-family:'Syne',sans-serif;font-size:34px;font-weight:800;line-height:1;letter-spacing:-1.5px;color:#0d1120;}}
+.hero-lbl{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;margin-top:6px;text-transform:uppercase;letter-spacing:1px;}}
+.hero-sub{{font-size:12px;color:#64748b;margin-top:4px;}}
+/* CHARTS */
+.charts-row{{display:grid;grid-template-columns:260px 1fr;gap:12px;margin-bottom:28px;}}
+.chart-card{{background:#f8fafc;border:1px solid #e4e8f0;border-radius:12px;padding:22px;}}
+.chart-head{{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:#0d1120;margin-bottom:16px;letter-spacing:-0.2px;}}
+/* SAVINGS CALC */
+.savings-wrap{{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:14px;padding:28px;display:grid;grid-template-columns:1fr 1fr;gap:32px;margin-bottom:36px;align-items:center;}}
+.sav-main{{text-align:center;}}
+.sav-lbl{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:1px;}}
+.sav-pct{{font-family:'Syne',sans-serif;font-size:60px;font-weight:800;color:#00d165;line-height:1;letter-spacing:-3px;margin:8px 0;}}
+.sav-slider{{width:100%;margin:16px 0 4px;accent-color:#00d165;cursor:pointer;}}
+.sav-range{{display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;}}
+.sav-results{{}}
+.sav-row{{display:flex;justify-content:space-between;align-items:center;padding:14px 0;border-bottom:1px solid #d1fae5;font-size:13px;}}
+.sav-row:last-child{{border-bottom:none;}}
+.sav-row-lbl{{color:#64748b;}}
+.sav-row-val{{font-family:'JetBrains Mono',monospace;font-weight:600;color:#0d1120;font-size:15px;}}
+.sav-row-val.green{{color:#16a34a;}}
 </style>
 </head>
 <body>
@@ -2680,22 +2750,68 @@ td:first-child{{color:#0d1120;font-weight:600;}}
     <button onclick="document.getElementById('welcome-banner').style.display='none'" class="welcome-close">×</button>
 </div>''' if first_login else ''}
 <div class="content">
-<div class="page-sub">{t("live_dashboard", lang)} · {len(sample)} {t("bookings_analysed", lang)}</div>
+<div class="page-sub">{t("live_dashboard", lang)} · {total_bookings} {t("bookings_analysed", lang)}</div>
 {upload_banner}
-<div class="section-title">{t("upload_data", lang)}</div>
-<form method="POST" action="/upload" enctype="multipart/form-data">
-    <div class="upload-zone" onclick="document.getElementById('csv-input').click()">
-        <div class="upload-zone-title">{t("drop_csv", lang)}</div>
-        <div class="upload-zone-sub">{t("export_pms", lang)}</div>
-        <input type="file" id="csv-input" name="csv_file" accept=".csv" style="display:none" onchange="this.form.submit()">
-        <button type="button" class="upload-btn" onclick="event.stopPropagation();document.getElementById('csv-input').click()">{t("choose_file", lang)}</button>
-    </div>
-</form>
-<div class="stats">
-    <div class="stat"><div class="stat-value" style="color:#cc0000">{high}</div><div class="stat-label">{t("high_risk", lang)}</div></div>
-    <div class="stat"><div class="stat-value" style="color:#cc6600">{med}</div><div class="stat-label">{t("medium_risk", lang)}</div></div>
-    <div class="stat"><div class="stat-value" style="color:#008000">{low}</div><div class="stat-label">{t("low_risk", lang)}</div></div>
+
+<div class="section-title">Overview</div>
+<div class="hero-cards">
+  <div class="hero-card">
+    <div class="hero-val">{total_bookings}</div>
+    <div class="hero-lbl">Bookings Analysed</div>
+  </div>
+  <div class="hero-card hero-card-red">
+    <div class="hero-val" style="color:#dc2626">{high_total}</div>
+    <div class="hero-lbl">High Risk</div>
+    <div class="hero-sub">{f"{high_total/total_bookings*100:.0f}%" if total_bookings > 0 else "0%"} of bookings</div>
+  </div>
+  <div class="hero-card hero-card-red">
+    <div class="hero-val" style="color:#dc2626">€{revenue_at_risk:,}</div>
+    <div class="hero-lbl">Revenue at Risk</div>
+    <div class="hero-sub">from high-risk bookings</div>
+  </div>
+  <div class="hero-card">
+    <div class="hero-val">€{avg_adr:.0f}</div>
+    <div class="hero-lbl">Avg Daily Rate</div>
+    <div class="hero-sub">{avg_nights:.1f} avg nights/stay</div>
+  </div>
 </div>
+
+<div class="charts-row">
+  <div class="chart-card" style="display:flex;flex-direction:column;align-items:center;">
+    <div class="chart-head" style="align-self:flex-start">Risk Distribution</div>
+    <canvas id="riskDoughnut" width="200" height="200"></canvas>
+  </div>
+  <div class="chart-card">
+    <div class="chart-head">Risk by Lead Time</div>
+    <canvas id="leadTimeChart" height="180"></canvas>
+  </div>
+</div>
+
+<div class="section-title">Savings Calculator</div>
+<div class="savings-wrap">
+  <div class="sav-main">
+    <div class="sav-lbl">If you convert</div>
+    <div class="sav-pct" id="savPct">20%</div>
+    <div class="sav-lbl">of high-risk bookings</div>
+    <input type="range" min="5" max="60" value="20" step="5" class="sav-slider" id="savSlider" oninput="updateSavings(this.value)">
+    <div class="sav-range"><span>5%</span><span>60%</span></div>
+  </div>
+  <div class="sav-results">
+    <div class="sav-row">
+      <span class="sav-row-lbl">Bookings saved</span>
+      <span class="sav-row-val" id="savBookings">{savings_default_bk}</span>
+    </div>
+    <div class="sav-row">
+      <span class="sav-row-lbl">Revenue recovered</span>
+      <span class="sav-row-val green" id="savRevenue">€{savings_default_rev:,}</span>
+    </div>
+    <div class="sav-row">
+      <span class="sav-row-lbl">Annual projection</span>
+      <span class="sav-row-val green" id="savAnnual">€{savings_default_rev * 12:,}</span>
+    </div>
+  </div>
+</div>
+
 <div class="section-title">{t("optimizer", lang)}</div>
 <div class="optimizer">
     <div class="opt-main">
@@ -2705,7 +2821,7 @@ td:first-child{{color:#0d1120;font-weight:600;}}
         <button class="opt-btn" onclick="showToast('Recommendation applied! {safe_overbook} rooms released.')">{t("apply", lang)}</button>
     </div>
     <div class="opt-stats">
-        <div class="opt-row"><span class="opt-row-label">{t("bookings_analysed_stat", lang)}</span><span class="opt-row-value">{len(sample)}</span></div>
+        <div class="opt-row"><span class="opt-row-label">{t("bookings_analysed_stat", lang)}</span><span class="opt-row-value">{total_bookings}</span></div>
         <div class="opt-row"><span class="opt-row-label">{t("predicted", lang)}</span><span class="opt-row-value" style="color:#cc0000">{predicted_noshows}</span></div>
         <div class="opt-row"><span class="opt-row-label">{t("confidence", lang)}</span><span class="opt-row-value" style="color:#008000">80.7%</span></div>
         <div class="opt-row"><span class="opt-row-label">{t("walk_risk", lang)}</span><span class="opt-row-value" style="color:#008000">2.1%</span></div>
@@ -2715,9 +2831,20 @@ td:first-child{{color:#0d1120;font-weight:600;}}
 {bulk_action_html}
 <div class="section-title">{t("click_row", lang)}</div>
 <table>
-<thead><tr><th>{t("booking", lang)}</th><th>{t("lead", lang)}</th><th>{t("rate", lang)}</th><th>{t("returning", lang)}</th><th>{t("cancels", lang)}</th><th>{t("risk", lang)}</th><th>{t("action", lang)}</th></tr></thead>
+<thead><tr><th>#</th><th>{t("booking", lang)}</th><th>{t("lead", lang)}</th><th>{t("rate", lang)}</th><th>{t("returning", lang)}</th><th>{t("cancels", lang)}</th><th>{t("risk", lang)}</th><th>{t("action", lang)}</th></tr></thead>
 <tbody>{rows}</tbody>
 </table>
+<div style="margin-top:48px;">
+<div class="section-title">{t("upload_data", lang)}</div>
+<form method="POST" action="/upload" enctype="multipart/form-data">
+    <div class="upload-zone" onclick="document.getElementById('csv-input').click()">
+        <div class="upload-zone-title">{t("drop_csv", lang)}</div>
+        <div class="upload-zone-sub">{t("export_pms", lang)}</div>
+        <input type="file" id="csv-input" name="csv_file" accept=".csv" style="display:none" onchange="this.form.submit()">
+        <button type="button" class="upload-btn" onclick="event.stopPropagation();document.getElementById('csv-input').click()">{t("choose_file", lang)}</button>
+    </div>
+</form>
+</div>
 </div>
 
 <div class="modal-overlay" id="modal">
@@ -3133,6 +3260,71 @@ function showToast(msg, type) {{
 document.getElementById('modal').addEventListener('click', e => {{ if (e.target === this) closeModal(); }});
 document.getElementById('emailComposer').addEventListener('click', e => {{ if (e.target === this) closeEmailComposer(); }});
 document.getElementById('bulkEmailComposer').addEventListener('click', e => {{ if (e.target === this) closeBulkEmailComposer(); }});
+
+// Risk distribution doughnut
+(function() {{
+  const ctx = document.getElementById('riskDoughnut');
+  if (!ctx) return;
+  new Chart(ctx, {{
+    type: 'doughnut',
+    data: {{
+      labels: ['High Risk', 'Medium', 'Low Risk'],
+      datasets: [{{
+        data: [{high_total}, {med_total}, {low_total}],
+        backgroundColor: ['#fecaca', '#fde68a', '#bbf7d0'],
+        borderColor: ['#dc2626', '#d97706', '#16a34a'],
+        borderWidth: 1.5
+      }}]
+    }},
+    options: {{
+      cutout: '65%',
+      plugins: {{
+        legend: {{ position: 'bottom', labels: {{ font: {{ family: 'Inter', size: 11 }}, padding: 12 }} }}
+      }}
+    }}
+  }});
+}})();
+
+// Lead-time stacked bar
+(function() {{
+  const ctx = document.getElementById('leadTimeChart');
+  if (!ctx) return;
+  new Chart(ctx, {{
+    type: 'bar',
+    data: {{
+      labels: ['0–7 days', '8–30 days', '31–60 days', '61–90 days', '90+ days'],
+      datasets: [
+        {{ label: 'High Risk', data: {lt_high_js}, backgroundColor: '#fecaca', borderColor: '#dc2626', borderWidth: 1 }},
+        {{ label: 'Medium',    data: {lt_med_js},  backgroundColor: '#fde68a', borderColor: '#d97706', borderWidth: 1 }},
+        {{ label: 'Low Risk',  data: {lt_low_js},  backgroundColor: '#bbf7d0', borderColor: '#16a34a', borderWidth: 1 }}
+      ]
+    }},
+    options: {{
+      responsive: true,
+      scales: {{
+        x: {{ stacked: true, grid: {{ display: false }}, ticks: {{ font: {{ family: 'Inter', size: 11 }} }} }},
+        y: {{ stacked: true, beginAtZero: true, ticks: {{ font: {{ family: 'Inter', size: 11 }} }} }}
+      }},
+      plugins: {{
+        legend: {{ position: 'bottom', labels: {{ font: {{ family: 'Inter', size: 11 }}, padding: 12 }} }}
+      }}
+    }}
+  }});
+}})();
+
+// Savings calculator
+const _savHighTotal = {high_total};
+const _savAvgAdr    = {avg_adr:.2f};
+const _savAvgNights = {avg_nights:.2f};
+function updateSavings(pct) {{
+  const p = parseInt(pct) / 100;
+  const bk  = Math.round(_savHighTotal * p);
+  const rev = Math.round(bk * _savAvgAdr * _savAvgNights);
+  document.getElementById('savPct').textContent = pct + '%';
+  document.getElementById('savBookings').textContent = bk.toLocaleString();
+  document.getElementById('savRevenue').textContent = '€' + rev.toLocaleString();
+  document.getElementById('savAnnual').textContent  = '€' + (rev * 12).toLocaleString();
+}}
 </script>
 </body>
 </html>"""
@@ -3349,7 +3541,7 @@ def dashboard():
     tonight_scores = model.predict_proba(tonight_sample)[:, 1] * 100
 
     first_login = session.pop("first_login", False)
-    return build_dashboard(hotel_name, sample, scores, tonight_scores, uploaded=uploaded, lang=lang, first_login=first_login)
+    return build_dashboard(hotel_name, sample, scores, tonight_scores, tonight_sample=tonight_sample, uploaded=uploaded, lang=lang, first_login=first_login)
 
 @app.route("/clear")
 @login_required
