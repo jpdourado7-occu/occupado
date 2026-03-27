@@ -518,6 +518,19 @@ HOTELS = {
 with open("occupado_model.pkl", "rb") as f:
     model = pickle.load(f)
 
+# VdV-specific model trained on Shiji data (4 features, no data leakage)
+_VDV_MODEL_FEATURES = [
+    'arrival_date_week_number', 'stays_in_weekend_nights',
+    'stays_in_week_nights', 'is_repeated_guest'
+]
+try:
+    with open("occupado_model_vdv.pkl", "rb") as f:
+        model_vdv = pickle.load(f)
+    print("[VdV] VdV-specific model loaded (4 features, AUC 0.704)")
+except Exception:
+    model_vdv = None
+    print("[VdV] VdV-specific model not found, falling back to generic")
+
 df = pd.read_csv("hotel_bookings.csv")
 
 # ── VAN DER VALK MECHELEN — Pre-loaded data & enhanced dashboard ──────────────
@@ -626,15 +639,13 @@ def _parse_vdv_channel_stats():
 
 
 def _score_vdv_guests(guests):
-    """Score VdV repeat guests using the trained model."""
+    """Score VdV repeat guests using the VdV-specific model (4 features)."""
     if not guests:
         return []
-    today = datetime.now()
     feat_rows = []
     for g in guests:
         arr = g['arr_date']
         dep = g['dep_date']
-        lead = max(0, (arr - today).days)
         wkend = wkday = 0
         if dep:
             d = arr
@@ -643,16 +654,22 @@ def _score_vdv_guests(guests):
                 else: wkday += 1
                 d += timedelta(days=1)
         week_num = int(arr.isocalendar()[1])
-        adr = 149.0 if 'CORP' in g.get('membership', '') else (150.0 if g['nights'] >= 10 else 115.0)
-        prev_ok = 5 if 'VIP' in g.get('membership', '') else 3
-        feat_rows.append([lead, week_num, wkend, wkday, g['adults'],
-                          1, 0, prev_ok, 0, 0, adr, 1 if g.get('note') else 0])
-    feat_cols = ['lead_time','arrival_date_week_number','stays_in_weekend_nights',
-                 'stays_in_week_nights','adults','is_repeated_guest',
-                 'previous_cancellations','previous_bookings_not_canceled',
-                 'booking_changes','days_in_waiting_list','adr','total_of_special_requests']
-    df_feat = pd.DataFrame(feat_rows, columns=feat_cols)
-    return [float(s) for s in model.predict_proba(df_feat)[:, 1] * 100]
+        is_repeat = 1  # all guests in this table are repeat guests by definition
+        feat_rows.append([week_num, wkend, wkday, is_repeat])
+    df_feat = pd.DataFrame(feat_rows, columns=_VDV_MODEL_FEATURES)
+    m = model_vdv if model_vdv is not None else model
+    if model_vdv is None:
+        # fallback: use generic model with full feature set
+        feat_cols = ['lead_time','arrival_date_week_number','stays_in_weekend_nights',
+                     'stays_in_week_nights','adults','is_repeated_guest',
+                     'previous_cancellations','previous_bookings_not_canceled',
+                     'booking_changes','days_in_waiting_list','adr','total_of_special_requests']
+        full_rows = [[max(0,(g['arr_date']-datetime.now()).days),
+                      int(g['arr_date'].isocalendar()[1]),
+                      r[1], r[2], g['adults'], 1, 0, 3, 0, 0, 130.0, 0]
+                     for g, r in zip(guests, feat_rows)]
+        df_feat = pd.DataFrame(full_rows, columns=feat_cols)
+    return [float(s) for s in m.predict_proba(df_feat)[:, 1] * 100]
 
 
 def _parse_vdv_future_bookings():
@@ -739,9 +756,16 @@ def _parse_vdv_future_bookings():
 
 
 def _score_vdv_future(bookings):
-    """Score VdV future bookings using the trained model."""
+    """Score VdV future bookings using the VdV-specific model (4 features)."""
     if not bookings:
         return []
+    if model_vdv is not None:
+        rows_feat = [[b['week_num'], b['wkend'], b['wkday'],
+                      1 if b['channel'] == 'Corporate' else 0]
+                     for b in bookings]
+        df = pd.DataFrame(rows_feat, columns=_VDV_MODEL_FEATURES)
+        return [float(s) for s in model_vdv.predict_proba(df)[:, 1] * 100]
+    # Fallback to generic model
     feat_cols = ['lead_time','arrival_date_week_number','stays_in_weekend_nights',
                  'stays_in_week_nights','adults','is_repeated_guest',
                  'previous_cancellations','previous_bookings_not_canceled',
