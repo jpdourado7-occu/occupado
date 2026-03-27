@@ -2955,7 +2955,7 @@ def build_dashboard(hotel_name, sample, scores, tonight_scores, tonight_sample=N
 body{{background:#ffffff;color:#0d1120;font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}}
 a{{text-decoration:none;}}
 /* TOPBAR */
-.topbar{{height:62px;background:#ffffff;border-bottom:1px solid #e4e8f0;display:flex;align-items:center;padding:0 32px;position:sticky;top:0;z-index:100;}}
+.topbar{{height:62px;background:#ffffff;border-bottom:1px solid #e4e8f0;display:flex;align-items:center;padding:0 48px;position:sticky;top:0;z-index:100;}}
 .topbar-brand{{display:flex;align-items:center;gap:6px;}}
 .topbar-name{{font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:#0d1120;letter-spacing:-0.4px;}}
 .topbar-name span{{color:#00d165;}}
@@ -2973,9 +2973,9 @@ a{{text-decoration:none;}}
 .welcome-close{{background:none;border:none;color:#94a3b8;font-size:18px;cursor:pointer;padding:0 4px;line-height:1;}}
 .welcome-close:hover{{color:#0d1120;}}
 /* CONTENT */
-.content{{padding:36px 32px;}}
-.page-sub{{font-family:'JetBrains Mono',monospace;font-size:11px;color:#94a3b8;margin-bottom:28px;letter-spacing:0.5px;}}
-.section-title{{font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:#0d1120;letter-spacing:-0.4px;margin-bottom:14px;margin-top:36px;}}
+.content{{padding:44px 48px;max-width:1280px;margin:0 auto;}}
+.page-sub{{font-family:'JetBrains Mono',monospace;font-size:11px;color:#94a3b8;margin-bottom:32px;letter-spacing:0.5px;}}
+.section-title{{font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:#0d1120;letter-spacing:0px;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:16px;margin-top:52px;}}
 /* UPLOAD ZONE */
 .upload-zone{{border:1px dashed #cbd5e1;border-radius:14px;padding:36px;text-align:center;background:#f8fafc;margin-bottom:28px;cursor:pointer;transition:all .2s;}}
 .upload-zone:hover{{border-color:#00d165;background:#f0fdf4;}}
@@ -2984,41 +2984,41 @@ a{{text-decoration:none;}}
 .upload-btn{{padding:10px 24px;background:#00d165;color:#080c14;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}}
 .upload-banner{{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:9px;padding:12px 18px;font-size:13px;color:#166534;margin-bottom:20px;font-weight:500;}}
 /* STATS */
-.stats{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:28px;}}
-.stat{{background:#f8fafc;border:1px solid #e4e8f0;border-radius:12px;padding:20px 22px;}}
+.stats{{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:32px;}}
+.stat{{background:#f8fafc;border:1px solid #e4e8f0;border-radius:16px;padding:24px 26px;}}
 .stat-value{{font-family:'Syne',sans-serif;font-size:44px;font-weight:800;line-height:1;letter-spacing:-2px;}}
 .stat-label{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;margin-top:6px;text-transform:uppercase;letter-spacing:1px;}}
 /* OPTIMIZER */
-.optimizer{{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:36px;}}
-.opt-main{{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:28px;}}
+.optimizer{{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:40px;}}
+.opt-main{{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:16px;padding:32px;}}
 .opt-value{{font-family:'Syne',sans-serif;font-size:72px;font-weight:800;color:#00d165;line-height:1;letter-spacing:-3px;}}
 .opt-label{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#64748b;margin-top:6px;text-transform:uppercase;letter-spacing:1px;}}
-.opt-btn{{margin-top:20px;width:100%;padding:11px;background:#00d165;border:none;border-radius:8px;color:#080c14;font-size:13px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;transition:all .2s;}}
+.opt-btn{{margin-top:24px;width:100%;padding:13px;background:#00d165;border:none;border-radius:10px;color:#080c14;font-size:13px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;transition:all .2s;}}
 .opt-btn:hover{{background:#04e270;}}
-.opt-stats{{background:#f8fafc;border:1px solid #e4e8f0;border-radius:12px;padding:22px;}}
-.opt-row{{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid #f1f5f9;font-size:13px;}}
+.opt-stats{{background:#f8fafc;border:1px solid #e4e8f0;border-radius:16px;padding:26px;}}
+.opt-row{{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid #f1f5f9;font-size:13px;}}
 .opt-row:last-child{{border-bottom:none;}}
 .opt-row-label{{color:#64748b;}}
 .opt-row-value{{font-family:'JetBrains Mono',monospace;font-weight:500;color:#0d1120;}}
 /* BULK ACTIONS */
-.bulk-action-zone{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:36px;}}
-.bulk-action-card{{background:#f8fafc;border:1px solid #e4e8f0;border-radius:12px;padding:22px;transition:border-color .2s;}}
-.bulk-action-card:hover{{border-color:#cbd5e1;}}
-.bulk-action-icon{{font-size:26px;margin-bottom:10px;}}
-.bulk-action-title{{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:#0d1120;margin-bottom:5px;letter-spacing:-0.2px;}}
-.bulk-action-sub{{font-size:12px;color:#64748b;margin-bottom:16px;line-height:1.5;}}
-.bulk-action-btn{{padding:9px 14px;background:#ffffff;border:1px solid #e4e8f0;border-radius:8px;color:#0d1120;font-size:12px;font-weight:600;cursor:pointer;width:100%;font-family:'Inter',sans-serif;transition:all .2s;}}
+.bulk-action-zone{{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:40px;}}
+.bulk-action-card{{background:#ffffff;border:1px solid #e4e8f0;border-radius:16px;padding:26px;transition:border-color .2s,box-shadow .2s;}}
+.bulk-action-card:hover{{border-color:#cbd5e1;box-shadow:0 2px 12px rgba(0,0,0,0.04);}}
+.bulk-action-icon{{font-size:24px;margin-bottom:12px;}}
+.bulk-action-title{{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:#0d1120;margin-bottom:6px;letter-spacing:-0.2px;}}
+.bulk-action-sub{{font-size:12px;color:#94a3b8;margin-bottom:18px;line-height:1.6;}}
+.bulk-action-btn{{padding:10px 14px;background:#f8fafc;border:1px solid #e4e8f0;border-radius:9px;color:#0d1120;font-size:12px;font-weight:600;cursor:pointer;width:100%;font-family:'Inter',sans-serif;transition:all .2s;}}
 .bulk-action-btn:hover{{background:#f1f5f9;}}
 .bulk-action-btn.deposit-btn{{background:#fef2f2;border-color:#fecaca;color:#dc2626;}}
 .bulk-action-btn.deposit-btn:hover{{background:#fee2e2;}}
 .bulk-action-btn.reminder-btn{{background:#fffbeb;border-color:#fde68a;color:#b45309;}}
 .bulk-action-btn.reminder-btn:hover{{background:#fef3c7;}}
 /* TABLE */
-table{{width:100%;border-collapse:collapse;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e4e8f0;}}
-th{{background:#f8fafc;color:#94a3b8;font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:1px;padding:13px 16px;text-align:left;border-bottom:1px solid #e4e8f0;}}
-td{{padding:13px 16px;font-size:13px;border-bottom:1px solid #f1f5f9;color:#374151;}}
+table{{width:100%;border-collapse:collapse;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e4e8f0;}}
+th{{background:#f8fafc;color:#94a3b8;font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:0.08em;padding:14px 18px;text-align:left;border-bottom:1px solid #e4e8f0;font-weight:500;}}
+td{{padding:14px 18px;font-size:13px;border-bottom:1px solid #f8fafc;color:#374151;}}
 .clickable-row{{cursor:pointer;}}
-.clickable-row:hover td{{background:#f8fafc;}}
+.clickable-row:hover td{{background:#fafbfc;}}
 td:first-child{{color:#0d1120;font-weight:600;}}
 .badge{{padding:3px 10px;border-radius:99px;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:500;border:1px solid;}}
 .high{{background:#fef2f2;color:#dc2626;border-color:#fecaca;}}
@@ -3079,29 +3079,45 @@ td:first-child{{color:#0d1120;font-weight:600;}}
 .toast{{position:fixed;bottom:24px;right:24px;background:#0d1120;color:#ffffff;border-radius:10px;padding:14px 18px;font-size:13px;transform:translateY(70px);opacity:0;transition:all 0.3s;z-index:2000;box-shadow:0 8px 24px rgba(0,0,0,0.15);}}
 .toast.show{{transform:translateY(0);opacity:1;}}
 /* HERO CARDS */
-.hero-cards{{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px;}}
-.hero-card{{background:#f8fafc;border:1px solid #e4e8f0;border-radius:12px;padding:22px;}}
-.hero-card-red{{background:#fef2f2;border-color:#fecaca;}}
-.hero-val{{font-family:'Syne',sans-serif;font-size:34px;font-weight:800;line-height:1;letter-spacing:-1.5px;color:#0d1120;}}
-.hero-lbl{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;margin-top:6px;text-transform:uppercase;letter-spacing:1px;}}
-.hero-sub{{font-size:12px;color:#64748b;margin-top:4px;}}
+.hero-cards{{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:32px;}}
+.hero-card{{background:#ffffff;border:1px solid #e4e8f0;border-radius:16px;padding:28px 24px;}}
+.hero-card-red{{background:#fff8f8;border-color:#fecaca;}}
+.hero-val{{font-family:'Syne',sans-serif;font-size:40px;font-weight:800;line-height:1;letter-spacing:-2px;color:#0d1120;}}
+.hero-lbl{{font-size:12px;color:#94a3b8;margin-top:8px;font-weight:500;}}
+.hero-sub{{font-size:11px;color:#cbd5e1;margin-top:3px;font-family:'JetBrains Mono',monospace;}}
 /* CHARTS */
-.charts-row{{display:grid;grid-template-columns:260px 1fr;gap:12px;margin-bottom:28px;}}
-.chart-card{{background:#f8fafc;border:1px solid #e4e8f0;border-radius:12px;padding:22px;}}
-.chart-head{{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:#0d1120;margin-bottom:16px;letter-spacing:-0.2px;}}
+.charts-row{{display:grid;grid-template-columns:240px 1fr;gap:16px;margin-bottom:32px;}}
+.chart-card{{background:#ffffff;border:1px solid #e4e8f0;border-radius:16px;padding:26px;}}
+.chart-head{{font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:20px;}}
 /* SAVINGS CALC */
-.savings-wrap{{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:14px;padding:28px;display:grid;grid-template-columns:1fr 1fr;gap:32px;margin-bottom:36px;align-items:center;}}
+.savings-wrap{{background:#ffffff;border:1px solid #e4e8f0;border-radius:16px;padding:36px;display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-bottom:40px;align-items:center;}}
 .sav-main{{text-align:center;}}
-.sav-lbl{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:1px;}}
-.sav-pct{{font-family:'Syne',sans-serif;font-size:60px;font-weight:800;color:#00d165;line-height:1;letter-spacing:-3px;margin:8px 0;}}
-.sav-slider{{width:100%;margin:16px 0 4px;accent-color:#00d165;cursor:pointer;}}
-.sav-range{{display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;}}
+.sav-lbl{{font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;font-weight:500;}}
+.sav-pct{{font-family:'Syne',sans-serif;font-size:64px;font-weight:800;color:#00d165;line-height:1;letter-spacing:-3px;margin:10px 0;}}
+.sav-slider{{width:100%;margin:20px 0 6px;accent-color:#00d165;cursor:pointer;}}
+.sav-range{{display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:10px;color:#cbd5e1;}}
 .sav-results{{}}
-.sav-row{{display:flex;justify-content:space-between;align-items:center;padding:14px 0;border-bottom:1px solid #d1fae5;font-size:13px;}}
+.sav-row{{display:flex;justify-content:space-between;align-items:center;padding:16px 0;border-bottom:1px solid #f1f5f9;font-size:13px;}}
 .sav-row:last-child{{border-bottom:none;}}
 .sav-row-lbl{{color:#64748b;}}
-.sav-row-val{{font-family:'JetBrains Mono',monospace;font-weight:600;color:#0d1120;font-size:15px;}}
-.sav-row-val.green{{color:#16a34a;}}
+.sav-row-val{{font-family:'Syne',sans-serif;font-weight:800;color:#0d1120;font-size:22px;letter-spacing:-0.5px;}}
+.sav-row-val.green{{color:#00d165;}}
+/* MOBILE */
+@media(max-width:900px){{
+  .content{{padding:28px 20px;}}
+  .hero-cards{{grid-template-columns:1fr 1fr;gap:10px;}}
+  .hero-val{{font-size:32px;}}
+  .charts-row{{grid-template-columns:1fr;}}
+  .optimizer{{grid-template-columns:1fr;}}
+  .savings-wrap{{grid-template-columns:1fr;gap:28px;padding:24px;}}
+  .bulk-action-zone{{grid-template-columns:1fr;}}
+  .topbar{{padding:0 16px;}}
+  .topbar-hotel{{display:none;}}
+  table{{font-size:12px;}}
+  th,td{{padding:11px 12px;}}
+  td:nth-child(5),th:nth-child(5),td:nth-child(6),th:nth-child(6){{display:none;}}
+  .section-title{{margin-top:36px;}}
+}}
 </style>
 </head>
 <body>
@@ -3129,7 +3145,7 @@ td:first-child{{color:#0d1120;font-weight:600;}}
 <div class="page-sub">{t("live_dashboard", lang)} · {total_bookings} {t("bookings_analysed", lang)}</div>
 {upload_banner}
 
-<div class="section-title">Overview</div>
+<div class="section-title" style="margin-top:0">Overview</div>
 <div class="hero-cards">
   <div class="hero-card">
     <div class="hero-val">{total_bookings}</div>
@@ -3198,9 +3214,9 @@ td:first-child{{color:#0d1120;font-weight:600;}}
     </div>
     <div class="opt-stats">
         <div class="opt-row"><span class="opt-row-label">{t("bookings_analysed_stat", lang)}</span><span class="opt-row-value">{total_bookings}</span></div>
-        <div class="opt-row"><span class="opt-row-label">{t("predicted", lang)}</span><span class="opt-row-value" style="color:#cc0000">{predicted_noshows}</span></div>
-        <div class="opt-row"><span class="opt-row-label">{t("confidence", lang)}</span><span class="opt-row-value" style="color:#008000">80.7%</span></div>
-        <div class="opt-row"><span class="opt-row-label">{t("walk_risk", lang)}</span><span class="opt-row-value" style="color:#008000">2.1%</span></div>
+        <div class="opt-row"><span class="opt-row-label">{t("predicted", lang)}</span><span class="opt-row-value" style="color:#dc2626">{predicted_noshows}</span></div>
+        <div class="opt-row"><span class="opt-row-label">{t("confidence", lang)}</span><span class="opt-row-value" style="color:#00d165">80.7%</span></div>
+        <div class="opt-row"><span class="opt-row-label">{t("walk_risk", lang)}</span><span class="opt-row-value" style="color:#00d165">2.1%</span></div>
         <div class="opt-row"><span class="opt-row-label">{t("avg_rate", lang)}</span><span class="opt-row-value">EUR {avg_rate:.0f}</span></div>
     </div>
 </div>
@@ -3227,12 +3243,12 @@ td:first-child{{color:#0d1120;font-weight:600;}}
     <div class="modal">
         <button class="modal-close" onclick="closeModal()">✕</button>
         <div class="modal-title" id="modal-title">Booking Detail</div>
-        <div class="modal-sub" id="modal-sub">AI Risk Analysis</div>
+        <div class="modal-sub" id="modal-sub">Risk Analysis</div>
         <div class="score-display" id="modal-score">0%</div>
         <div class="score-bar-bg"><div class="score-bar-fill" id="modal-bar" style="width:0%"></div></div>
         <div class="score-verdict" id="modal-verdict"></div>
         <div id="modal-reasons"></div>
-        <button style="margin-top:24px; width:100%; padding:14px; border:none; border-radius:10px; font-size:15px; font-weight:700; background:#008000; color:#ffffff; cursor:pointer;" onclick="closeModal()">Close</button>
+        <button style="margin-top:24px; width:100%; padding:14px; border:none; border-radius:10px; font-size:14px; font-weight:700; background:#0d1120; color:#ffffff; cursor:pointer; font-family:'Inter',sans-serif;" onclick="closeModal()">Close</button>
     </div>
 </div>
 
@@ -3277,19 +3293,19 @@ td:first-child{{color:#0d1120;font-weight:600;}}
             <div class="bulk-email-subtitle" id="bulkEmailSubtitle">{t("select_book", lang)}</div>
         </div>
         
-        <div style="background:#f5faf5; border:1px solid rgba(0,128,0,0.15); border-radius:10px; padding:12px; margin-bottom:16px;">
+        <div style="background:#f8fafc; border:1px solid #e4e8f0; border-radius:10px; padding:14px; margin-bottom:16px;">
             <div style="margin-bottom:10px;">
                 <label class="email-label">{t("select_book", lang)}</label>
-                <div id="bulkBookingsList" style="max-height:150px; overflow-y:auto; margin-bottom:10px; padding:8px; background:white; border:1px solid rgba(0,128,0,0.1); border-radius:6px;"></div>
+                <div id="bulkBookingsList" style="max-height:150px; overflow-y:auto; margin-bottom:10px; padding:8px; background:white; border:1px solid #e4e8f0; border-radius:8px;"></div>
                 <input type="text" id="bulkBookingsInput" class="email-input" placeholder="Edit or remove booking numbers..." style="margin-bottom:6px;">
-                <div style="font-family:'DM Mono',monospace; font-size:10px; color:#999;">{t("auto_pop", lang)}</div>
+                <div style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#94a3b8;">{t("auto_pop", lang)}</div>
             </div>
-            <div style="background:#f0f0f0; padding:10px; border-radius:6px; text-align:center; display:flex; justify-content:space-between; align-items:center;">
-                <div style="display:flex; align-items:center; gap:12px;">
-                    <span style="font-family:'Syne',sans-serif; font-size:24px; font-weight:800; color:#008000;" id="bulkCountBig">0</span>
-                    <span style="font-family:'DM Mono',monospace; font-size:12px; color:#4a6648; font-weight:600;">{t("selected_count", lang)}</span>
+            <div style="background:#f1f5f9; padding:12px 14px; border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-family:'Syne',sans-serif; font-size:24px; font-weight:800; color:#0d1120;" id="bulkCountBig">0</span>
+                    <span style="font-family:'Inter',sans-serif; font-size:12px; color:#64748b; font-weight:500;">{t("selected_count", lang)}</span>
                 </div>
-                <button type="button" style="padding:8px 20px; background:#008000; color:white; border:none; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif;" onclick="saveBookingChanges()">{t("save_changes", lang)}</button>
+                <button type="button" style="padding:8px 18px; background:#00d165; color:#080c14; border:none; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; font-family:'Inter',sans-serif;" onclick="saveBookingChanges()">{t("save_changes", lang)}</button>
             </div>
         </div>
         
@@ -3343,15 +3359,15 @@ function populateBulkBookingsList() {{
             
             highRiskNums.push(idx + 1);
             
-            html += `<div class="bulk-booking-row" data-booking="` + (idx + 1) + `" style="padding:8px; margin-bottom:4px; background:rgba(204, 0, 0, 0.08); border:2px solid rgba(204, 0, 0, 0.2); border-radius:6px; font-size:11px; display:flex; justify-content:space-between; align-items:center; transition:all 0.3s; cursor:pointer; user-select:none;" onclick="addBookingToField(` + (idx + 1) + `)">
+            html += `<div class="bulk-booking-row" data-booking="` + (idx + 1) + `" style="padding:9px 12px; margin-bottom:4px; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; font-size:11px; display:flex; justify-content:space-between; align-items:center; transition:all 0.2s; cursor:pointer; user-select:none;" onclick="addBookingToField(` + (idx + 1) + `)">
                 <div>
-                    <span style="color:#008000; font-weight:600;">Booking ` + (idx + 1) + `</span>
-                    <span style="color:#999; margin:0 8px;">·</span>
-                    <span style="color:#999; font-size:10px;">` + leadTime + ` lead</span>
-                    <span style="color:#999; margin:0 4px;">·</span>
-                    <span style="color:#999; font-size:10px;">` + roomRate + `</span>
+                    <span style="color:#0d1120; font-weight:600;">Booking ` + (idx + 1) + `</span>
+                    <span style="color:#cbd5e1; margin:0 8px;">·</span>
+                    <span style="color:#94a3b8; font-size:10px;">` + leadTime + ` lead</span>
+                    <span style="color:#cbd5e1; margin:0 4px;">·</span>
+                    <span style="color:#94a3b8; font-size:10px;">` + roomRate + `</span>
                 </div>
-                <span style="color:#cc0000; font-weight:600;">` + scoreText + `</span>
+                <span style="color:#dc2626; font-weight:600; font-family:'JetBrains Mono',monospace;">` + scoreText + `</span>
             </div>`;
         }}
     }});
@@ -3396,12 +3412,12 @@ function updateBookingVisuals() {{
         
         if (selectedNums.includes(bookingNum)) {{
             row.style.opacity = '1';
-            row.style.background = 'rgba(204, 0, 0, 0.08)';
-            row.style.borderColor = 'rgba(204, 0, 0, 0.2)';
+            row.style.background = '#fef2f2';
+            row.style.borderColor = '#fecaca';
         }} else {{
             row.style.opacity = '0.4';
-            row.style.background = 'rgba(100, 100, 100, 0.08)';
-            row.style.borderColor = 'rgba(100, 100, 100, 0.1)';
+            row.style.background = '#f8fafc';
+            row.style.borderColor = '#e4e8f0';
         }}
     }});
     
@@ -3600,23 +3616,23 @@ function showDetail(idx, score) {{
     const bar = document.getElementById('modal-bar');
     bar.style.width = score + '%';
     if (score >= 70) {{
-        bar.style.background = '#cc0000';
-        document.getElementById('modal-score').style.color = '#cc0000';
+        bar.style.background = '#ef4444';
+        document.getElementById('modal-score').style.color = '#ef4444';
         document.getElementById('modal-verdict').textContent = 'HIGH RISK';
-        document.getElementById('modal-verdict').style.background = 'rgba(255,69,96,0.1)';
-        document.getElementById('modal-verdict').style.color = '#cc0000';
+        document.getElementById('modal-verdict').style.background = '#fef2f2';
+        document.getElementById('modal-verdict').style.color = '#dc2626';
     }} else if (score >= 40) {{
-        bar.style.background = '#cc6600';
-        document.getElementById('modal-score').style.color = '#cc6600';
+        bar.style.background = '#f59e0b';
+        document.getElementById('modal-score').style.color = '#d97706';
         document.getElementById('modal-verdict').textContent = 'MEDIUM RISK';
-        document.getElementById('modal-verdict').style.background = 'rgba(255,179,64,0.1)';
-        document.getElementById('modal-verdict').style.color = '#cc6600';
+        document.getElementById('modal-verdict').style.background = '#fffbeb';
+        document.getElementById('modal-verdict').style.color = '#b45309';
     }} else {{
-        bar.style.background = '#008000';
-        document.getElementById('modal-score').style.color = '#008000';
+        bar.style.background = '#00d165';
+        document.getElementById('modal-score').style.color = '#00d165';
         document.getElementById('modal-verdict').textContent = 'LOW RISK';
-        document.getElementById('modal-verdict').style.background = 'rgba(0,128,0,0.1)';
-        document.getElementById('modal-verdict').style.color = '#008000';
+        document.getElementById('modal-verdict').style.background = '#f0fdf4';
+        document.getElementById('modal-verdict').style.color = '#16a34a';
     }}
     document.getElementById('modal').classList.add('show');
 }}
@@ -3629,7 +3645,7 @@ function showToast(msg, type) {{
     const t = document.getElementById('toast');
     t.textContent = msg;
     t.classList.add('show');
-    t.style.background = type === 'error' ? '#cc0000' : '#008000';
+    t.style.background = type === 'error' ? '#dc2626' : '#0d1120';
     setTimeout(() => t.classList.remove('show'), 3000);
 }}
 
@@ -3647,15 +3663,15 @@ document.getElementById('bulkEmailComposer').addEventListener('click', e => {{ i
       labels: ['High Risk', 'Medium', 'Low Risk'],
       datasets: [{{
         data: [{high_total}, {med_total}, {low_total}],
-        backgroundColor: ['#fecaca', '#fde68a', '#bbf7d0'],
-        borderColor: ['#dc2626', '#d97706', '#16a34a'],
-        borderWidth: 1.5
+        backgroundColor: ['#ef4444', '#f59e0b', '#00d165'],
+        borderWidth: 0,
+        hoverOffset: 4
       }}]
     }},
     options: {{
-      cutout: '65%',
+      cutout: '72%',
       plugins: {{
-        legend: {{ position: 'bottom', labels: {{ font: {{ family: 'Inter', size: 11 }}, padding: 12 }} }}
+        legend: {{ position: 'bottom', labels: {{ font: {{ family: 'Inter', size: 11 }}, padding: 16, usePointStyle: true, pointStyle: 'circle' }} }}
       }}
     }}
   }});
@@ -3668,21 +3684,21 @@ document.getElementById('bulkEmailComposer').addEventListener('click', e => {{ i
   new Chart(ctx, {{
     type: 'bar',
     data: {{
-      labels: ['0–7 days', '8–30 days', '31–60 days', '61–90 days', '90+ days'],
+      labels: ['0–7d', '8–30d', '31–60d', '61–90d', '90+d'],
       datasets: [
-        {{ label: 'High Risk', data: {lt_high_js}, backgroundColor: '#fecaca', borderColor: '#dc2626', borderWidth: 1 }},
-        {{ label: 'Medium',    data: {lt_med_js},  backgroundColor: '#fde68a', borderColor: '#d97706', borderWidth: 1 }},
-        {{ label: 'Low Risk',  data: {lt_low_js},  backgroundColor: '#bbf7d0', borderColor: '#16a34a', borderWidth: 1 }}
+        {{ label: 'High Risk', data: {lt_high_js}, backgroundColor: '#ef4444', borderWidth: 0, borderRadius: 0 }},
+        {{ label: 'Medium',    data: {lt_med_js},  backgroundColor: '#f59e0b', borderWidth: 0, borderRadius: 0 }},
+        {{ label: 'Low Risk',  data: {lt_low_js},  backgroundColor: '#00d165', borderWidth: 0, borderRadius: 4 }}
       ]
     }},
     options: {{
       responsive: true,
       scales: {{
-        x: {{ stacked: true, grid: {{ display: false }}, ticks: {{ font: {{ family: 'Inter', size: 11 }} }} }},
-        y: {{ stacked: true, beginAtZero: true, ticks: {{ font: {{ family: 'Inter', size: 11 }} }} }}
+        x: {{ stacked: true, grid: {{ display: false }}, border: {{ display: false }}, ticks: {{ font: {{ family: 'Inter', size: 11 }}, color: '#94a3b8' }} }},
+        y: {{ stacked: true, beginAtZero: true, grid: {{ color: '#f1f5f9' }}, border: {{ display: false }}, ticks: {{ font: {{ family: 'Inter', size: 11 }}, color: '#94a3b8' }} }}
       }},
       plugins: {{
-        legend: {{ position: 'bottom', labels: {{ font: {{ family: 'Inter', size: 11 }}, padding: 12 }} }}
+        legend: {{ position: 'bottom', labels: {{ font: {{ family: 'Inter', size: 11 }}, padding: 16, usePointStyle: true, pointStyle: 'circle', color: '#64748b' }} }}
       }}
     }}
   }});
