@@ -1066,7 +1066,7 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False):
     fc_arr_fore = json.dumps([None] * len(fc_hist) + [r['arrivals'] for r in fc_fore])
     fc_boundary = len(fc_hist)  # index where forecast starts
     # Group pipeline status badges
-    STATUS_COLORS = {{'Definite': '#00d165', 'Deposit': '#f59e0b', 'Tentative': '#9ca3af', 'Prospect': '#e5e7eb'}}
+    STATUS_COLORS = {'Definite': '#00d165', 'Deposit': '#f59e0b', 'Tentative': '#9ca3af', 'Prospect': '#e5e7eb'}
 
     # Risk score per corporate client (rule-based)
     SEG_RISK = {'BNSGRP': 2, 'CORPDYN': 1, 'MTGBNS': 1, 'CORPFIX': 0}
