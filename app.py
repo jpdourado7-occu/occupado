@@ -1092,34 +1092,35 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False):
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 *,*::before,*::after{{margin:0;padding:0;box-sizing:border-box;}}
-body{{background:#f4f6f9;color:#0d1120;font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}}
+body{{background:#f8fafc;color:#0d1120;font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}}
 a{{text-decoration:none;color:inherit;}}
 
 /* TOPBAR */
-.topbar{{height:58px;background:#fff;border-bottom:1px solid #e4e8f0;display:flex;align-items:center;padding:0 28px;position:sticky;top:0;z-index:100;gap:12px;}}
-.tb-brand{{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:#0d1120;letter-spacing:-.3px;}}
+.topbar{{height:62px;background:#fff;border-bottom:1px solid #e4e8f0;display:flex;align-items:center;padding:0 48px;position:sticky;top:0;z-index:100;gap:12px;}}
+.tb-brand{{font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:#0d1120;letter-spacing:-.4px;}}
 .tb-brand span{{color:#00d165;}}
-.tb-hotel{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;padding-left:12px;border-left:1px solid #e4e8f0;}}
+.tb-hotel{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;padding-left:14px;border-left:1px solid #e4e8f0;}}
 .tb-right{{margin-left:auto;display:flex;gap:8px;align-items:center;}}
-.tb-btn{{padding:6px 14px;border:1px solid #e4e8f0;border-radius:6px;font-size:12px;color:#64748b;background:transparent;cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s;}}
+.tb-btn{{padding:7px 16px;border:1px solid #e4e8f0;border-radius:7px;font-size:12px;color:#64748b;background:transparent;cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s;text-decoration:none;}}
 .tb-btn:hover{{border-color:#cbd5e1;color:#0d1120;}}
-.lang-sel{{padding:6px 10px;border:1px solid #e4e8f0;border-radius:6px;font-size:12px;color:#64748b;background:transparent;cursor:pointer;font-family:'Inter',sans-serif;outline:none;}}
+.lang-sel{{padding:7px 10px;border:1px solid #e4e8f0;border-radius:7px;font-size:12px;color:#64748b;background:transparent;cursor:pointer;font-family:'Inter',sans-serif;outline:none;}}
 
 /* LAYOUT */
-.page{{max-width:1200px;margin:0 auto;padding:28px 28px 60px;}}
-.row{{display:grid;gap:14px;margin-bottom:14px;}}
+.page{{max-width:1280px;margin:0 auto;padding:40px 48px 80px;}}
+.row{{display:grid;gap:16px;margin-bottom:16px;}}
 .row-3{{grid-template-columns:repeat(3,1fr);}}
 .row-2{{grid-template-columns:1fr 1fr;}}
 .row-2l{{grid-template-columns:2fr 1fr;}}
 .row-hero{{grid-template-columns:1fr 1fr 1fr;}}
 
 /* SECTION HEADER */
-.sh{{display:flex;align-items:baseline;gap:10px;margin:28px 0 14px;}}
-.sh-title{{font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:#0d1120;}}
+.sh{{display:flex;align-items:center;gap:12px;margin:44px 0 16px;}}
+.sh-title{{font-size:11px;font-weight:700;color:#0d1120;text-transform:uppercase;letter-spacing:0.08em;}}
 .sh-sub{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;}}
+.sh:first-child{{margin-top:0;}}
 
 /* HERO METRICS */
-.hero-card{{background:#0d1120;border-radius:14px;padding:28px 24px;color:#fff;position:relative;overflow:hidden;}}
+.hero-card{{background:#0d1120;border-radius:16px;padding:32px 28px;color:#fff;position:relative;overflow:hidden;}}
 .hero-card::after{{content:'';position:absolute;right:-20px;top:-20px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.03);}}
 .hc-label{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;}}
 .hc-num{{font-family:'Syne',sans-serif;font-size:48px;font-weight:800;line-height:1;letter-spacing:-2px;}}
@@ -1130,9 +1131,9 @@ a{{text-decoration:none;color:inherit;}}
 .hc-tag{{display:inline-block;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:3px 8px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;margin-top:10px;}}
 
 /* STANDARD CARDS */
-.card{{background:#fff;border:1px solid #e4e8f0;border-radius:12px;padding:22px;}}
-.card-title{{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:#0d1120;margin-bottom:3px;}}
-.card-sub{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;margin-bottom:16px;text-transform:uppercase;letter-spacing:.5px;}}
+.card{{background:#fff;border:1px solid #e4e8f0;border-radius:16px;padding:26px;}}
+.card-title{{font-size:13px;font-weight:600;color:#0d1120;margin-bottom:3px;}}
+.card-sub{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;margin-bottom:18px;text-transform:uppercase;letter-spacing:.06em;}}
 
 /* STAT ROWS */
 .stat-row{{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid #f1f5f9;font-size:12.5px;}}
@@ -1141,7 +1142,7 @@ a{{text-decoration:none;color:inherit;}}
 .sr-val{{font-family:'JetBrains Mono',monospace;font-weight:500;color:#0d1120;}}
 
 /* TODAY STRIP */
-.today-strip{{background:#fff;border:1px solid #e4e8f0;border-radius:12px;padding:16px 20px;display:grid;grid-template-columns:repeat(5,1fr);gap:0;margin-bottom:14px;}}
+.today-strip{{background:#fff;border:1px solid #e4e8f0;border-radius:16px;padding:20px 24px;display:grid;grid-template-columns:repeat(5,1fr);gap:0;margin-bottom:16px;}}
 .ts-item{{text-align:center;padding:8px 0;border-right:1px solid #f1f5f9;}}
 .ts-item:last-child{{border-right:none;}}
 .ts-num{{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:#0d1120;line-height:1;}}
@@ -1151,9 +1152,9 @@ a{{text-decoration:none;color:inherit;}}
 .ts-label{{font-family:'JetBrains Mono',monospace;font-size:9px;color:#94a3b8;margin-top:4px;text-transform:uppercase;letter-spacing:.5px;}}
 
 /* TABLE */
-.tbl{{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e4e8f0;}}
-.tbl th{{background:#f8fafc;color:#94a3b8;font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1px;padding:10px 12px;text-align:left;border-bottom:1px solid #e4e8f0;white-space:nowrap;}}
-.tbl td{{padding:10px 12px;font-size:12px;border-bottom:1px solid #f8fafc;color:#374151;vertical-align:middle;}}
+.tbl{{width:100%;border-collapse:collapse;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e4e8f0;}}
+.tbl th{{background:#f8fafc;color:#94a3b8;font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;padding:12px 14px;text-align:left;border-bottom:1px solid #e4e8f0;white-space:nowrap;font-weight:500;}}
+.tbl td{{padding:12px 14px;font-size:12px;border-bottom:1px solid #f8fafc;color:#374151;vertical-align:middle;}}
 .cr{{cursor:pointer;transition:background .1s;}}
 .cr:hover td{{background:#f8fafc;}}
 .gn{{font-weight:600;color:#0d1120;font-size:12.5px;}}
@@ -1175,7 +1176,7 @@ a{{text-decoration:none;color:inherit;}}
 .nt{{font-size:11px;color:#94a3b8;font-style:italic;}}
 
 /* SAVINGS CARD */
-.savings-card{{background:linear-gradient(135deg,#052e16,#0f2218);border-radius:12px;padding:24px;color:#fff;}}
+.savings-card{{background:#0d1120;border-radius:16px;padding:28px;color:#fff;}}
 .sv-row{{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07);}}
 .sv-row:last-child{{border-bottom:none;}}
 .sv-label{{font-size:12.5px;color:#94a3b8;}}
@@ -1191,8 +1192,8 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
 /* ACTION PLAN */
 .ap-grid{{display:grid;grid-template-columns:1fr 1fr;gap:14px;}}
 /* MICE */
-.mice-grid{{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px;}}
-.mice-card{{background:#fff;border:1px solid #e4e8f0;border-radius:12px;padding:18px 20px;}}
+.mice-grid{{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:18px;}}
+.mice-card{{background:#fff;border:1px solid #e4e8f0;border-radius:16px;padding:22px 22px;}}
 .mice-card.blue{{background:#eff6ff;border-color:#bfdbfe;}}
 .mice-num{{font-family:'Syne',sans-serif;font-size:32px;font-weight:800;line-height:1;letter-spacing:-1px;color:#0d1120;}}
 .mice-num.blue{{color:#1d4ed8;}}
@@ -1282,6 +1283,22 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
 /* TOAST */
 .toast{{position:fixed;bottom:22px;right:22px;background:#0d1120;color:#fff;border-radius:9px;padding:12px 16px;font-size:12.5px;transform:translateY(50px);opacity:0;transition:all .25s;z-index:2000;}}
 .toast.show{{transform:translateY(0);opacity:1;}}
+/* MOBILE */
+@media(max-width:900px){{
+  .page{{padding:24px 16px 60px;}}
+  .topbar{{padding:0 16px;}}
+  .tb-hotel{{display:none;}}
+  .row-hero{{grid-template-columns:1fr;}}
+  .row-2{{grid-template-columns:1fr;}}
+  .row-2l{{grid-template-columns:1fr;}}
+  .row-3{{grid-template-columns:1fr;}}
+  .mice-grid{{grid-template-columns:1fr 1fr;}}
+  .today-strip{{grid-template-columns:repeat(3,1fr);}}
+  .today-strip .ts-item:nth-child(4),.today-strip .ts-item:nth-child(5){{display:none;}}
+  .tbl th:nth-child(4),.tbl td:nth-child(4),.tbl th:nth-child(5),.tbl td:nth-child(5){{display:none;}}
+  .sh{{margin:32px 0 12px;}}
+  .fstrip{{grid-template-columns:1fr 1fr;}}
+}}
 </style>
 </head>
 <body>
@@ -1578,8 +1595,8 @@ const trendChart = new Chart(document.getElementById('trendChart'), {{
   data: {{
     labels: months,
     datasets: [
-      {{ label: 'Cancellations', data: cxData, backgroundColor: '#f87171', borderRadius: 4, borderWidth: 0, stack: 'a' }},
-      {{ label: 'No-shows',      data: nsData, backgroundColor: '#fbbf24', borderRadius: 4, borderWidth: 0, stack: 'a' }}
+      {{ label: 'Cancellations', data: cxData, backgroundColor: '#ef4444', borderRadius: 4, borderWidth: 0, stack: 'a' }},
+      {{ label: 'No-shows',      data: nsData, backgroundColor: '#f59e0b', borderRadius: 4, borderWidth: 0, stack: 'a' }}
     ]
   }},
   options: {{
@@ -1641,8 +1658,8 @@ new Chart(document.getElementById('futMonthChart'), {{
   data: {{
     labels: {fut_mlabels_js},
     datasets: [
-      {{ label: 'High Risk', data: {fut_mhigh_js}, backgroundColor: '#f87171', borderRadius: 4, borderWidth: 0, stack: 'a' }},
-      {{ label: 'Medium Risk', data: {fut_mmed_js}, backgroundColor: '#fbbf24', borderRadius: 4, borderWidth: 0, stack: 'a' }}
+      {{ label: 'High Risk', data: {fut_mhigh_js}, backgroundColor: '#ef4444', borderRadius: 4, borderWidth: 0, stack: 'a' }},
+      {{ label: 'Medium Risk', data: {fut_mmed_js}, backgroundColor: '#f59e0b', borderRadius: 4, borderWidth: 0, stack: 'a' }}
     ]
   }},
   options: {{
@@ -2756,7 +2773,7 @@ def build_empty_state(hotel_name, lang="en"):
 *,*::before,*::after{{margin:0;padding:0;box-sizing:border-box;}}
 body{{background:#ffffff;color:#0d1120;font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}}
 a{{text-decoration:none;}}
-.topbar{{height:62px;background:#ffffff;border-bottom:1px solid #e4e8f0;display:flex;align-items:center;padding:0 32px;}}
+.topbar{{height:62px;background:#ffffff;border-bottom:1px solid #e4e8f0;display:flex;align-items:center;padding:0 48px;}}
 .topbar-name{{font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:#0d1120;letter-spacing:-0.4px;}}
 .topbar-name span{{color:#00d165;}}
 .topbar-hotel{{font-family:'JetBrains Mono',monospace;font-size:11px;color:#94a3b8;margin-left:12px;padding-left:12px;border-left:1px solid #e4e8f0;}}
@@ -2764,6 +2781,7 @@ a{{text-decoration:none;}}
 .btn-nav{{padding:7px 16px;background:transparent;border:1px solid #e4e8f0;border-radius:7px;color:#64748b;font-size:12px;font-weight:500;text-decoration:none;}}
 .btn-nav:hover{{border-color:#cbd5e1;color:#0d1120;}}
 .page{{max-width:600px;margin:0 auto;padding:80px 24px 40px;text-align:center;}}
+@media(max-width:600px){{.topbar{{padding:0 16px;}}.topbar-hotel{{display:none;}}.page{{padding:48px 16px;}}.features{{grid-template-columns:1fr;}}}}
 .welcome-tag{{display:inline-flex;align-items:center;gap:6px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:99px;padding:5px 14px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#16a34a;margin-bottom:24px;}}
 .welcome-dot{{width:6px;height:6px;background:#00d165;border-radius:50%;}}
 h1{{font-family:'Syne',sans-serif;font-size:40px;font-weight:800;color:#0d1120;letter-spacing:-1.5px;line-height:1.1;margin-bottom:14px;}}
