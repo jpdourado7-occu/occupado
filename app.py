@@ -1089,21 +1089,21 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False):
 <title>Occupado — Van der Valk Mechelen</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 *,*::before,*::after{{margin:0;padding:0;box-sizing:border-box;}}
-body{{background:#fff;color:#111827;font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;font-size:14px;line-height:1.5;}}
+body{{background:#fff;color:#111827;font-family:'Plus Jakarta Sans',sans-serif;-webkit-font-smoothing:antialiased;font-size:14px;line-height:1.5;}}
 a{{text-decoration:none;color:inherit;}}
 /* TOPBAR */
 .topbar{{height:56px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;padding:0 40px;background:#fff;position:sticky;top:0;z-index:100;gap:12px;}}
-.tb-brand{{font-size:15px;font-weight:700;letter-spacing:-0.3px;color:#111827;font-family:'Inter',sans-serif;}}
+.tb-brand{{font-size:15px;font-weight:700;letter-spacing:-0.3px;color:#111827;font-family:'Plus Jakarta Sans',sans-serif;}}
 .tb-brand span{{color:#00d165;}}
 .tb-hotel{{font-size:12px;color:#9ca3af;padding-left:14px;border-left:1px solid #e5e7eb;}}
 .tb-right{{margin-left:auto;display:flex;gap:6px;align-items:center;}}
-.tb-btn{{padding:6px 14px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;color:#6b7280;background:transparent;cursor:pointer;font-family:'Inter',sans-serif;transition:border-color .15s,color .15s;text-decoration:none;display:inline-flex;align-items:center;}}
+.tb-btn{{padding:6px 14px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;color:#6b7280;background:transparent;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;transition:border-color .15s,color .15s;text-decoration:none;display:inline-flex;align-items:center;}}
 .tb-btn:hover{{border-color:#d1d5db;color:#111827;}}
-.lang-sel{{padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;color:#6b7280;background:transparent;cursor:pointer;font-family:'Inter',sans-serif;outline:none;}}
+.lang-sel{{padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;color:#6b7280;background:transparent;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;outline:none;}}
 /* PAGE */
 .page{{max-width:1100px;margin:0 auto;padding:40px 40px 80px;}}
 /* ROWS */
@@ -1167,7 +1167,7 @@ a{{text-decoration:none;color:inherit;}}
 .stb-f{{background:#f0fdf4;color:#15803d;border-color:#bbf7d0;}}
 .ntd{{max-width:160px;}}
 .nt{{font-size:11px;color:#9ca3af;font-style:italic;}}
-.abtn{{padding:4px 10px;border-radius:5px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid;background:transparent;font-family:'Inter',sans-serif;transition:background .1s;white-space:nowrap;}}
+.abtn{{padding:4px 10px;border-radius:5px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid;background:transparent;font-family:'Plus Jakarta Sans',sans-serif;transition:background .1s;white-space:nowrap;}}
 .dep{{color:#ef4444;border-color:#fecaca;}}.dep:hover{{background:#fef2f2;}}
 .rem{{color:#f59e0b;border-color:#fde68a;}}.rem:hover{{background:#fffbeb;}}
 .mon{{color:#00d165;border-color:#bbf7d0;}}.mon:hover{{background:#f0fdf4;}}
@@ -1219,7 +1219,7 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
 .pi:last-child{{border-bottom:none;}}
 .pi b{{color:#111827;}}
 .pi.empty{{color:#9ca3af;font-style:italic;}}
-.ap-btn{{margin-top:14px;width:100%;padding:9px;background:#00d165;border:none;border-radius:6px;color:#0a0a0a;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;transition:background .15s;}}
+.ap-btn{{margin-top:14px;width:100%;padding:9px;background:#00d165;border:none;border-radius:6px;color:#0a0a0a;font-size:12px;font-weight:600;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;transition:background .15s;}}
 .ap-btn:hover{{background:#04e270;}}
 .ap-btn.ghost{{background:#fff;border:1px solid #e5e7eb;color:#111827;}}
 .ap-btn.ghost:hover{{background:#f9fafb;}}
@@ -1257,12 +1257,12 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
 .ec.show{{display:flex;}}
 .eb{{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:28px;width:100%;max-width:540px;max-height:90vh;overflow-y:auto;}}
 .el{{font-size:11px;font-weight:500;color:#9ca3af;text-transform:uppercase;letter-spacing:0.08em;display:block;margin-bottom:5px;}}
-.ei{{width:100%;padding:9px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;color:#111827;outline:none;margin-bottom:10px;font-family:'Inter',sans-serif;}}
+.ei{{width:100%;padding:9px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;color:#111827;outline:none;margin-bottom:10px;font-family:'Plus Jakarta Sans',sans-serif;}}
 .ei:focus{{border-color:#00d165;background:#fff;}}
-.eta{{width:100%;padding:9px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;color:#111827;outline:none;resize:vertical;min-height:140px;margin-bottom:10px;font-family:'Inter',sans-serif;line-height:1.6;}}
+.eta{{width:100%;padding:9px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;color:#111827;outline:none;resize:vertical;min-height:140px;margin-bottom:10px;font-family:'Plus Jakarta Sans',sans-serif;line-height:1.6;}}
 .eta:focus{{border-color:#00d165;background:#fff;}}
 .ea{{display:flex;gap:8px;margin-top:16px;}}
-.es{{flex:1;padding:10px;background:#00d165;color:#0a0a0a;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;}}
+.es{{flex:1;padding:10px;background:#00d165;color:#0a0a0a;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;}}
 .es:hover{{background:#04e270;}}
 .ecc{{flex:1;padding:10px;background:transparent;color:#6b7280;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;cursor:pointer;}}
 .ecc:hover{{background:#f9fafb;}}
@@ -1292,7 +1292,7 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
 
 /* ── DYNAMICS ────────────────────────────────────────────── */
 .filter-bar{{display:flex;gap:8px;margin-bottom:20px;align-items:center;flex-wrap:wrap;}}
-.f-tab{{padding:5px 16px;border:1px solid #e5e7eb;border-radius:99px;font-size:12px;color:#6b7280;cursor:pointer;transition:all .15s;background:#fff;font-family:'Inter',sans-serif;}}
+.f-tab{{padding:5px 16px;border:1px solid #e5e7eb;border-radius:99px;font-size:12px;color:#6b7280;cursor:pointer;transition:all .15s;background:#fff;font-family:'Plus Jakarta Sans',sans-serif;}}
 .f-tab:hover{{border-color:#111827;color:#111827;}}
 .f-tab.active{{background:#111827;color:#fff;border-color:#111827;}}
 .f-count{{font-size:10px;opacity:.6;margin-left:3px;}}
@@ -1428,7 +1428,7 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
     <div class="alert-title">{fut_no_gtd:,} bookings have no deposit or guarantee (GTD: NONE)</div>
     <div class="alert-sub">These reservations carry no financial commitment — highest no-show risk. Contact before arrival or request payment guarantee.</div>
   </div>
-  <div style="font-family:'Syne',sans-serif;font-size:32px;font-weight:800;color:#ea580c;flex-shrink:0;">{round(fut_no_gtd/max(1,fut_total)*100)}%</div>
+  <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:32px;font-weight:800;color:#ea580c;flex-shrink:0;">{round(fut_no_gtd/max(1,fut_total)*100)}%</div>
 </div>
 
 <div class="fstrip">
@@ -1590,7 +1590,7 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
 <div class="ec" id="ecMo">
   <div class="eb">
     <div style="margin-bottom:16px;">
-      <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:#0d1120;" id="ec-title">Email Guest</div>
+      <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:16px;font-weight:800;color:#0d1120;" id="ec-title">Email Guest</div>
       <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;margin-top:2px;" id="ec-sub"></div>
     </div>
     <label class="el">To (email)</label><input type="email" id="ec-email" class="ei" placeholder="guest@example.com">
@@ -2148,26 +2148,26 @@ function toggleExpand(row, idx, score) {{
 <title>Occupado — Van der Valk Hotel Mechelen</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 *,*::before,*::after{{margin:0;padding:0;box-sizing:border-box;}}
-body{{background:#f5f7fb;color:#0d1120;font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}}
+body{{background:#f5f7fb;color:#0d1120;font-family:'Plus Jakarta Sans',sans-serif;-webkit-font-smoothing:antialiased;}}
 a{{text-decoration:none;}}
 /* TOPBAR */
 .topbar{{height:62px;background:#ffffff;border-bottom:1px solid #e4e8f0;display:flex;align-items:center;padding:0 32px;position:sticky;top:0;z-index:100;}}
 .topbar-brand{{display:flex;align-items:center;gap:6px;}}
-.topbar-name{{font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:#0d1120;letter-spacing:-0.4px;}}
+.topbar-name{{font-family:'Plus Jakarta Sans',sans-serif;font-size:17px;font-weight:800;color:#0d1120;letter-spacing:-0.4px;}}
 .topbar-name span{{color:#00d165;}}
 .topbar-hotel{{font-family:'JetBrains Mono',monospace;font-size:11px;color:#94a3b8;margin-left:8px;padding-left:12px;border-left:1px solid #e4e8f0;}}
 .topbar-right{{display:flex;align-items:center;gap:8px;margin-left:auto;}}
 .btn-nav{{padding:7px 16px;background:transparent;border:1px solid #e4e8f0;border-radius:7px;color:#64748b;font-size:12px;font-weight:500;text-decoration:none;transition:all .2s;}}
 .btn-nav:hover{{border-color:#cbd5e1;color:#0d1120;}}
-.lang-selector{{padding:7px 12px;background:transparent;border:1px solid #e4e8f0;border-radius:7px;color:#64748b;font-size:12px;cursor:pointer;font-family:'Inter',sans-serif;outline:none;}}
+.lang-selector{{padding:7px 12px;background:transparent;border:1px solid #e4e8f0;border-radius:7px;color:#64748b;font-size:12px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;outline:none;}}
 /* HERO */
 .hero{{background:linear-gradient(135deg,#0d1120 0%,#0f2218 100%);padding:40px 32px 36px;margin-bottom:0;}}
 .hero-eyebrow{{font-family:'JetBrains Mono',monospace;font-size:11px;color:#00d165;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;}}
-.hero-title{{font-family:'Syne',sans-serif;font-size:32px;font-weight:800;color:#ffffff;letter-spacing:-0.8px;margin-bottom:6px;}}
+.hero-title{{font-family:'Plus Jakarta Sans',sans-serif;font-size:32px;font-weight:800;color:#ffffff;letter-spacing:-0.8px;margin-bottom:6px;}}
 .hero-sub{{font-size:13px;color:#94a3b8;}}
 .hero-badges{{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;}}
 .hero-badge{{background:rgba(0,209,101,0.12);border:1px solid rgba(0,209,101,0.25);border-radius:6px;padding:5px 12px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#00d165;}}
@@ -2175,12 +2175,12 @@ a{{text-decoration:none;}}
 .hero-badge.info{{background:rgba(148,163,184,0.12);border-color:rgba(148,163,184,0.25);color:#94a3b8;}}
 /* CONTENT */
 .content{{padding:28px 32px;}}
-.section-title{{font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:#0d1120;letter-spacing:-0.3px;margin-bottom:14px;margin-top:32px;}}
+.section-title{{font-family:'Plus Jakarta Sans',sans-serif;font-size:17px;font-weight:700;color:#0d1120;letter-spacing:-0.3px;margin-bottom:14px;margin-top:32px;}}
 .section-sub{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;margin-top:-10px;margin-bottom:16px;text-transform:uppercase;letter-spacing:0.5px;}}
 /* KPI GRID */
 .kpi-grid{{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:12px;}}
 .kpi-card{{background:#ffffff;border:1px solid #e4e8f0;border-radius:12px;padding:18px 20px;}}
-.kpi-num{{font-family:'Syne',sans-serif;font-size:36px;font-weight:800;line-height:1;letter-spacing:-1.5px;}}
+.kpi-num{{font-family:'Plus Jakarta Sans',sans-serif;font-size:36px;font-weight:800;line-height:1;letter-spacing:-1.5px;}}
 .kpi-label{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;margin-top:5px;text-transform:uppercase;letter-spacing:0.8px;line-height:1.4;}}
 .kpi-trend{{font-size:11px;margin-top:4px;font-weight:500;}}
 .kpi-num.green{{color:#00d165;}}
@@ -2193,10 +2193,10 @@ a{{text-decoration:none;}}
 /* CHARTS ROW */
 .charts-row{{display:grid;grid-template-columns:1fr 2fr 2fr;gap:14px;margin-bottom:28px;}}
 .chart-card{{background:#ffffff;border:1px solid #e4e8f0;border-radius:14px;padding:22px;}}
-.chart-title{{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:#0d1120;letter-spacing:-0.2px;margin-bottom:4px;}}
+.chart-title{{font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:700;color:#0d1120;letter-spacing:-0.2px;margin-bottom:4px;}}
 .chart-sub{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;margin-bottom:14px;text-transform:uppercase;letter-spacing:0.5px;}}
 .donut-center{{text-align:center;margin-top:8px;}}
-.donut-big{{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:#00d165;}}
+.donut-big{{font-family:'Plus Jakarta Sans',sans-serif;font-size:28px;font-weight:800;color:#00d165;}}
 .donut-label{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;}}
 /* TABLE */
 table{{width:100%;border-collapse:collapse;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e4e8f0;margin-bottom:28px;}}
@@ -2210,7 +2210,7 @@ td{{padding:12px 14px;font-size:12.5px;border-bottom:1px solid #f1f5f9;color:#37
 .high{{background:#fef2f2;color:#dc2626;border-color:#fecaca;}}
 .med{{background:#fffbeb;color:#b45309;border-color:#fde68a;}}
 .low{{background:#f0fdf4;color:#16a34a;border-color:#bbf7d0;}}
-.btn{{padding:5px 12px;border-radius:6px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid;background:transparent;font-family:'Inter',sans-serif;transition:all .2s;white-space:nowrap;}}
+.btn{{padding:5px 12px;border-radius:6px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid;background:transparent;font-family:'Plus Jakarta Sans',sans-serif;transition:all .2s;white-space:nowrap;}}
 .dep{{color:#dc2626;border-color:#fecaca;}}.dep:hover{{background:#fef2f2;}}
 .rem{{color:#b45309;border-color:#fde68a;}}.rem:hover{{background:#fffbeb;}}
 .mon{{color:#16a34a;border-color:#bbf7d0;}}.mon:hover{{background:#f0fdf4;}}
@@ -2231,14 +2231,14 @@ td{{padding:12px 14px;font-size:12.5px;border-bottom:1px solid #f1f5f9;color:#37
 .plan-icon.inhouse{{background:#eff6ff;}}
 .plan-icon.intel{{background:#f0fdf4;}}
 .plan-icon.bulk{{background:#faf5ff;}}
-.plan-card-title{{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:#0d1120;}}
+.plan-card-title{{font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:700;color:#0d1120;}}
 .plan-card-sub{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;}}
 .plan-item{{background:#f8fafc;border:1px solid #e4e8f0;border-radius:8px;padding:10px 12px;margin-bottom:8px;}}
 .plan-item:last-child{{margin-bottom:0;}}
 .plan-guest{{font-weight:600;font-size:12px;color:#0d1120;margin-bottom:3px;}}
 .plan-tip{{font-size:11.5px;color:#64748b;line-height:1.4;}}
 .plan-empty{{font-family:'JetBrains Mono',monospace;font-size:11px;color:#94a3b8;padding:10px;}}
-.plan-action-btn{{margin-top:12px;width:100%;padding:9px;background:#ffffff;border:1px solid #e4e8f0;border-radius:8px;color:#0d1120;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;transition:all .2s;}}
+.plan-action-btn{{margin-top:12px;width:100%;padding:9px;background:#ffffff;border:1px solid #e4e8f0;border-radius:8px;color:#0d1120;font-size:12px;font-weight:600;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;transition:all .2s;}}
 .plan-action-btn:hover{{background:#f1f5f9;}}
 .plan-action-btn.green-btn{{background:#00d165;border-color:#00d165;color:#080c14;}}
 .plan-action-btn.green-btn:hover{{background:#04e270;}}
@@ -2247,7 +2247,7 @@ td{{padding:12px 14px;font-size:12.5px;border-bottom:1px solid #f1f5f9;color:#37
 .intel-item{{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;}}
 .intel-item.warn{{background:#fffbeb;border-color:#fde68a;}}
 .intel-item.info{{background:#eff6ff;border-color:#bfdbfe;}}
-.intel-num{{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#15803d;line-height:1;}}
+.intel-num{{font-family:'Plus Jakarta Sans',sans-serif;font-size:22px;font-weight:800;color:#15803d;line-height:1;}}
 .intel-num.warn{{color:#92400e;}}
 .intel-num.info{{color:#1d4ed8;}}
 .intel-label{{font-family:'JetBrains Mono',monospace;font-size:9px;color:#64748b;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;}}
@@ -2255,16 +2255,16 @@ td{{padding:12px 14px;font-size:12.5px;border-bottom:1px solid #f1f5f9;color:#37
 .optimizer-card{{background:#ffffff;border:1px solid #e4e8f0;border-radius:14px;padding:24px;margin-bottom:28px;}}
 .optimizer-row{{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:18px;}}
 .opt-stat{{background:#f8fafc;border:1px solid #e4e8f0;border-radius:9px;padding:14px;}}
-.opt-stat-val{{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:#0d1120;line-height:1;}}
+.opt-stat-val{{font-family:'Plus Jakarta Sans',sans-serif;font-size:26px;font-weight:800;color:#0d1120;line-height:1;}}
 .opt-stat-label{{font-family:'JetBrains Mono',monospace;font-size:9px;color:#94a3b8;margin-top:4px;text-transform:uppercase;}}
 /* BULK ACTIONS */
 .bulk-zone{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:28px;}}
 .bulk-card{{background:#f8fafc;border:1px solid #e4e8f0;border-radius:12px;padding:20px;transition:border-color .2s;}}
 .bulk-card:hover{{border-color:#cbd5e1;}}
 .bulk-icon{{font-size:24px;margin-bottom:8px;}}
-.bulk-card-title{{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:#0d1120;margin-bottom:4px;}}
+.bulk-card-title{{font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:700;color:#0d1120;margin-bottom:4px;}}
 .bulk-card-sub{{font-size:12px;color:#64748b;margin-bottom:14px;line-height:1.4;}}
-.bulk-btn{{padding:9px 14px;background:#ffffff;border:1px solid #e4e8f0;border-radius:8px;color:#0d1120;font-size:12px;font-weight:600;cursor:pointer;width:100%;font-family:'Inter',sans-serif;transition:all .2s;}}
+.bulk-btn{{padding:9px 14px;background:#ffffff;border:1px solid #e4e8f0;border-radius:8px;color:#0d1120;font-size:12px;font-weight:600;cursor:pointer;width:100%;font-family:'Plus Jakarta Sans',sans-serif;transition:all .2s;}}
 .bulk-btn:hover{{background:#f1f5f9;}}
 .bulk-btn.green-btn{{background:#00d165;border-color:#00d165;color:#080c14;}}
 .bulk-btn.green-btn:hover{{background:#04e270;}}
@@ -2273,9 +2273,9 @@ td{{padding:12px 14px;font-size:12.5px;border-bottom:1px solid #f1f5f9;color:#37
 .modal-overlay.show{{display:flex;}}
 .modal{{background:#ffffff;border:1px solid #e4e8f0;border-radius:20px;padding:36px;width:100%;max-width:520px;max-height:88vh;overflow-y:auto;position:relative;box-shadow:0 16px 48px rgba(0,0,0,0.1);}}
 .modal-close{{position:absolute;top:14px;right:16px;font-size:20px;cursor:pointer;color:#94a3b8;background:none;border:none;}}
-.modal-title{{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#0d1120;margin-bottom:2px;}}
+.modal-title{{font-family:'Plus Jakarta Sans',sans-serif;font-size:20px;font-weight:800;color:#0d1120;margin-bottom:2px;}}
 .modal-sub{{font-family:'JetBrains Mono',monospace;font-size:11px;color:#94a3b8;margin-bottom:18px;}}
-.score-display{{font-family:'Syne',sans-serif;font-size:56px;font-weight:800;line-height:1;margin-bottom:6px;}}
+.score-display{{font-family:'Plus Jakarta Sans',sans-serif;font-size:56px;font-weight:800;line-height:1;margin-bottom:6px;}}
 .score-bar-bg{{height:8px;background:#f1f5f9;border-radius:4px;overflow:hidden;margin-bottom:10px;}}
 .score-bar-fill{{height:100%;border-radius:4px;}}
 .score-verdict{{font-size:12px;font-weight:600;padding:6px 12px;border-radius:6px;display:inline-block;margin-bottom:14px;}}
@@ -2292,14 +2292,14 @@ td{{padding:12px 14px;font-size:12.5px;border-bottom:1px solid #f1f5f9;color:#37
 .email-composer{{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1001;align-items:center;justify-content:center;backdrop-filter:blur(4px);}}
 .email-composer.show{{display:flex;}}
 .email-box{{background:#ffffff;border:1px solid #e4e8f0;border-radius:20px;padding:32px;width:100%;max-width:600px;max-height:90vh;overflow-y:auto;box-shadow:0 16px 48px rgba(0,0,0,0.1);}}
-.email-title{{font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:#0d1120;margin-bottom:2px;}}
+.email-title{{font-family:'Plus Jakarta Sans',sans-serif;font-size:17px;font-weight:800;color:#0d1120;margin-bottom:2px;}}
 .email-label{{font-family:'JetBrains Mono',monospace;font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:6px;font-weight:500;}}
-.email-input{{width:100%;padding:10px 13px;background:#f8fafc;border:1px solid #e4e8f0;border-radius:8px;font-size:13px;color:#0d1120;outline:none;margin-bottom:12px;font-family:'Inter',sans-serif;}}
+.email-input{{width:100%;padding:10px 13px;background:#f8fafc;border:1px solid #e4e8f0;border-radius:8px;font-size:13px;color:#0d1120;outline:none;margin-bottom:12px;font-family:'Plus Jakarta Sans',sans-serif;}}
 .email-input:focus{{border-color:#00d165;background:#fff;}}
-.email-textarea{{width:100%;padding:10px 13px;background:#f8fafc;border:1px solid #e4e8f0;border-radius:8px;font-size:12.5px;color:#0d1120;outline:none;resize:vertical;min-height:160px;margin-bottom:12px;font-family:'Inter',sans-serif;line-height:1.6;}}
+.email-textarea{{width:100%;padding:10px 13px;background:#f8fafc;border:1px solid #e4e8f0;border-radius:8px;font-size:12.5px;color:#0d1120;outline:none;resize:vertical;min-height:160px;margin-bottom:12px;font-family:'Plus Jakarta Sans',sans-serif;line-height:1.6;}}
 .email-textarea:focus{{border-color:#00d165;background:#fff;}}
 .email-actions{{display:flex;gap:10px;margin-top:16px;}}
-.email-send{{flex:1;padding:11px;background:#00d165;color:#080c14;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}}
+.email-send{{flex:1;padding:11px;background:#00d165;color:#080c14;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;}}
 .email-send:hover{{background:#04e270;}}
 .email-cancel{{flex:1;padding:11px;background:#f8fafc;color:#64748b;border:1px solid #e4e8f0;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;}}
 /* TOAST */
@@ -3108,13 +3108,13 @@ def build_empty_state(hotel_name, lang="en"):
 <head>
 <title>Occupado — {hotel_name}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{{margin:0;padding:0;box-sizing:border-box;}}
-body{{background:#ffffff;color:#0d1120;font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}}
+body{{background:#ffffff;color:#0d1120;font-family:'Plus Jakarta Sans',sans-serif;-webkit-font-smoothing:antialiased;}}
 a{{text-decoration:none;}}
 .topbar{{height:62px;background:#ffffff;border-bottom:1px solid #e4e8f0;display:flex;align-items:center;padding:0 48px;}}
-.topbar-name{{font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:#0d1120;letter-spacing:-0.4px;}}
+.topbar-name{{font-family:'Plus Jakarta Sans',sans-serif;font-size:17px;font-weight:800;color:#0d1120;letter-spacing:-0.4px;}}
 .topbar-name span{{color:#00d165;}}
 .topbar-hotel{{font-family:'JetBrains Mono',monospace;font-size:11px;color:#94a3b8;margin-left:12px;padding-left:12px;border-left:1px solid #e4e8f0;}}
 .topbar-right{{margin-left:auto;display:flex;gap:8px;}}
@@ -3124,20 +3124,20 @@ a{{text-decoration:none;}}
 @media(max-width:600px){{.topbar{{padding:0 16px;}}.topbar-hotel{{display:none;}}.page{{padding:48px 16px;}}.features{{grid-template-columns:1fr;}}}}
 .welcome-tag{{display:inline-flex;align-items:center;gap:6px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:99px;padding:5px 14px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#16a34a;margin-bottom:24px;}}
 .welcome-dot{{width:6px;height:6px;background:#00d165;border-radius:50%;}}
-h1{{font-family:'Syne',sans-serif;font-size:40px;font-weight:800;color:#0d1120;letter-spacing:-1.5px;line-height:1.1;margin-bottom:14px;}}
+h1{{font-family:'Plus Jakarta Sans',sans-serif;font-size:40px;font-weight:800;color:#0d1120;letter-spacing:-1.5px;line-height:1.1;margin-bottom:14px;}}
 h1 span{{color:#00d165;}}
 .sub{{font-size:16px;color:#64748b;line-height:1.6;margin-bottom:48px;}}
 .features{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:48px;text-align:left;}}
 .feat{{background:#f8fafc;border:1px solid #e4e8f0;border-radius:12px;padding:20px;}}
 .feat-icon{{font-size:22px;margin-bottom:10px;}}
-.feat-title{{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:#0d1120;margin-bottom:4px;letter-spacing:-0.2px;}}
+.feat-title{{font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:700;color:#0d1120;margin-bottom:4px;letter-spacing:-0.2px;}}
 .feat-sub{{font-size:12px;color:#64748b;line-height:1.5;}}
 .upload-card{{background:#f8fafc;border:2px dashed #cbd5e1;border-radius:16px;padding:40px;margin-bottom:20px;cursor:pointer;transition:all .2s;}}
 .upload-card:hover{{border-color:#00d165;background:#f0fdf4;}}
 .upload-icon{{font-size:36px;margin-bottom:12px;}}
-.upload-title{{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#0d1120;margin-bottom:6px;letter-spacing:-0.4px;}}
+.upload-title{{font-family:'Plus Jakarta Sans',sans-serif;font-size:18px;font-weight:800;color:#0d1120;margin-bottom:6px;letter-spacing:-0.4px;}}
 .upload-sub{{font-size:13px;color:#64748b;margin-bottom:24px;}}
-.upload-btn{{display:inline-block;padding:13px 32px;background:#00d165;color:#080c14;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}}
+.upload-btn{{display:inline-block;padding:13px 32px;background:#00d165;color:#080c14;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;}}
 .upload-btn:hover{{background:#04e270;}}
 .demo-link{{font-size:13px;color:#94a3b8;}}
 .demo-link a{{color:#64748b;text-decoration:underline;text-underline-offset:3px;}}
@@ -3308,11 +3308,11 @@ def build_dashboard(hotel_name, sample, scores, tonight_scores, tonight_sample=N
 <head>
 <title>Occupado — {hotel_name}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 *,*::before,*::after{{margin:0;padding:0;box-sizing:border-box;}}
-body{{background:#fff;color:#111827;font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;font-size:14px;}}
+body{{background:#fff;color:#111827;font-family:'Plus Jakarta Sans',sans-serif;-webkit-font-smoothing:antialiased;font-size:14px;}}
 a{{text-decoration:none;}}
 .topbar{{height:56px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;padding:0 40px;background:#fff;position:sticky;top:0;z-index:100;}}
 .topbar-brand{{display:flex;align-items:center;gap:8px;}}
@@ -3320,7 +3320,7 @@ a{{text-decoration:none;}}
 .topbar-name span{{color:#00d165;}}
 .topbar-hotel{{font-size:12px;color:#9ca3af;margin-left:14px;padding-left:14px;border-left:1px solid #e5e7eb;}}
 .topbar-right{{display:flex;align-items:center;gap:6px;margin-left:auto;}}
-.lang-selector{{padding:6px 10px;background:transparent;border:1px solid #e5e7eb;border-radius:6px;color:#6b7280;font-size:12px;cursor:pointer;font-family:'Inter',sans-serif;outline:none;}}
+.lang-selector{{padding:6px 10px;background:transparent;border:1px solid #e5e7eb;border-radius:6px;color:#6b7280;font-size:12px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;outline:none;}}
 .btn-nav{{padding:6px 14px;background:transparent;border:1px solid #e5e7eb;border-radius:6px;color:#6b7280;font-size:12px;font-weight:500;text-decoration:none;display:inline-flex;align-items:center;}}
 .btn-nav:hover{{border-color:#d1d5db;color:#111827;}}
 .clear-btn{{padding:6px 12px;background:transparent;border:1px solid #fecaca;border-radius:6px;color:#ef4444;font-size:12px;font-weight:500;text-decoration:none;}}
@@ -3334,7 +3334,7 @@ a{{text-decoration:none;}}
 .upload-zone:hover{{border-color:#00d165;background:#f0fdf4;}}
 .upload-zone-title{{font-size:15px;font-weight:600;color:#111827;margin-bottom:6px;}}
 .upload-zone-sub{{font-size:13px;color:#9ca3af;margin-bottom:20px;}}
-.upload-btn{{padding:9px 22px;background:#00d165;color:#0a0a0a;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;}}
+.upload-btn{{padding:9px 22px;background:#00d165;color:#0a0a0a;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;}}
 .upload-banner{{border:1px solid #bbf7d0;border-radius:8px;padding:10px 16px;font-size:13px;color:#15803d;margin-bottom:20px;font-weight:500;}}
 .hero-cards{{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-bottom:48px;}}
 .hero-card{{background:#fff;padding:28px 28px;border-right:1px solid #e5e7eb;}}
@@ -3361,7 +3361,7 @@ a{{text-decoration:none;}}
 .opt-main{{border:1px solid #e5e7eb;border-radius:12px;padding:28px;}}
 .opt-value{{font-size:64px;font-weight:700;color:#00d165;line-height:1;letter-spacing:-3px;}}
 .opt-label{{font-size:11px;color:#9ca3af;margin-top:6px;text-transform:uppercase;letter-spacing:0.06em;font-weight:500;}}
-.opt-btn{{margin-top:24px;width:100%;padding:11px;background:#00d165;border:none;border-radius:7px;color:#0a0a0a;font-size:13px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;transition:background .15s;}}
+.opt-btn{{margin-top:24px;width:100%;padding:11px;background:#00d165;border:none;border-radius:7px;color:#0a0a0a;font-size:13px;font-weight:600;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;transition:background .15s;}}
 .opt-btn:hover{{background:#04e270;}}
 .opt-stats{{border:1px solid #e5e7eb;border-radius:12px;padding:24px;}}
 .opt-row{{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #f3f4f6;font-size:13px;}}
@@ -3374,7 +3374,7 @@ a{{text-decoration:none;}}
 .bulk-action-icon{{display:none;}}
 .bulk-action-title{{font-size:13px;font-weight:600;color:#111827;margin-bottom:4px;}}
 .bulk-action-sub{{font-size:12px;color:#9ca3af;margin-bottom:16px;line-height:1.5;}}
-.bulk-action-btn{{padding:8px 14px;background:transparent;border:1px solid #e5e7eb;border-radius:6px;color:#111827;font-size:12px;font-weight:500;cursor:pointer;width:100%;font-family:'Inter',sans-serif;transition:background .15s;}}
+.bulk-action-btn{{padding:8px 14px;background:transparent;border:1px solid #e5e7eb;border-radius:6px;color:#111827;font-size:12px;font-weight:500;cursor:pointer;width:100%;font-family:'Plus Jakarta Sans',sans-serif;transition:background .15s;}}
 .bulk-action-btn:hover{{background:#f9fafb;}}
 .bulk-action-btn.deposit-btn{{border-color:#fecaca;color:#ef4444;}}
 .bulk-action-btn.deposit-btn:hover{{background:#fef2f2;}}
@@ -3391,7 +3391,7 @@ tr:last-child td{{border-bottom:none;}}
 .high{{background:#fef2f2;color:#ef4444;border-color:#fecaca;}}
 .med{{background:#fffbeb;color:#f59e0b;border-color:#fde68a;}}
 .low{{background:#f0fdf4;color:#00d165;border-color:#bbf7d0;}}
-.btn{{padding:4px 10px;border-radius:5px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid;background:transparent;font-family:'Inter',sans-serif;transition:background .1s;}}
+.btn{{padding:4px 10px;border-radius:5px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid;background:transparent;font-family:'Plus Jakarta Sans',sans-serif;transition:background .1s;}}
 .dep{{color:#ef4444;border-color:#fecaca;}}.dep:hover{{background:#fef2f2;}}
 .rem{{color:#f59e0b;border-color:#fde68a;}}.rem:hover{{background:#fffbeb;}}
 .mon{{color:#00d165;border-color:#bbf7d0;}}.mon:hover{{background:#f0fdf4;}}
@@ -3410,25 +3410,25 @@ tr:last-child td{{border-bottom:none;}}
 .email-box{{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:28px;width:100%;max-width:580px;max-height:90vh;overflow-y:auto;}}
 .email-title{{font-size:17px;font-weight:700;color:#111827;margin-bottom:2px;letter-spacing:-0.3px;}}
 .email-label{{font-size:11px;font-weight:500;color:#9ca3af;text-transform:uppercase;letter-spacing:0.08em;display:block;margin-bottom:5px;}}
-.email-input{{width:100%;padding:9px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;color:#111827;outline:none;margin-bottom:10px;font-family:'Inter',sans-serif;}}
+.email-input{{width:100%;padding:9px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;color:#111827;outline:none;margin-bottom:10px;font-family:'Plus Jakarta Sans',sans-serif;}}
 .email-input:focus{{border-color:#00d165;background:#fff;}}
 .email-input::placeholder{{color:#d1d5db;}}
-.email-textarea{{width:100%;padding:9px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;color:#111827;outline:none;resize:vertical;min-height:160px;margin-bottom:10px;font-family:'Inter',sans-serif;line-height:1.6;}}
+.email-textarea{{width:100%;padding:9px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;color:#111827;outline:none;resize:vertical;min-height:160px;margin-bottom:10px;font-family:'Plus Jakarta Sans',sans-serif;line-height:1.6;}}
 .email-textarea:focus{{border-color:#00d165;background:#fff;}}
 .email-actions{{display:flex;gap:8px;margin-top:16px;}}
-.email-send{{flex:1;padding:11px;background:#00d165;color:#0a0a0a;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;}}
+.email-send{{flex:1;padding:11px;background:#00d165;color:#0a0a0a;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;}}
 .email-send:hover{{background:#04e270;}}
-.email-cancel{{flex:1;padding:11px;background:transparent;color:#6b7280;border:1px solid #e5e7eb;border-radius:7px;font-size:13px;cursor:pointer;font-family:'Inter',sans-serif;}}
+.email-cancel{{flex:1;padding:11px;background:transparent;color:#6b7280;border:1px solid #e5e7eb;border-radius:7px;font-size:13px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;}}
 .bulk-email-composer{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.25);z-index:1002;align-items:center;justify-content:center;}}
 .bulk-email-composer.show{{display:flex;}}
 .bulk-email-box{{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:28px;width:100%;max-width:580px;max-height:90vh;overflow-y:auto;}}
 .bulk-email-title{{font-size:17px;font-weight:700;color:#111827;margin-bottom:2px;letter-spacing:-0.3px;}}
 .bulk-email-subtitle{{font-size:11px;color:#9ca3af;}}
 .bulk-email-actions{{display:flex;gap:8px;margin-top:16px;}}
-.bulk-email-send{{flex:1;padding:11px;background:#00d165;color:#0a0a0a;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;}}
+.bulk-email-send{{flex:1;padding:11px;background:#00d165;color:#0a0a0a;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;}}
 .bulk-email-send.deposit{{background:#fef2f2;color:#ef4444;border:1px solid #fecaca;}}
 .bulk-email-send.reminder{{background:#fffbeb;color:#f59e0b;border:1px solid #fde68a;}}
-.bulk-email-cancel{{flex:1;padding:11px;background:transparent;color:#6b7280;border:1px solid #e5e7eb;border-radius:7px;font-size:13px;cursor:pointer;font-family:'Inter',sans-serif;}}
+.bulk-email-cancel{{flex:1;padding:11px;background:transparent;color:#6b7280;border:1px solid #e5e7eb;border-radius:7px;font-size:13px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;}}
 .bulk-booking-row{{padding:8px 12px;margin-bottom:3px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:11px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;}}
 .toast{{position:fixed;bottom:24px;right:24px;background:#111827;color:#fff;border-radius:8px;padding:12px 16px;font-size:13px;transform:translateY(50px);opacity:0;transition:all .25s;z-index:2000;}}
 .toast.show{{transform:translateY(0);opacity:1;}}
@@ -3454,7 +3454,7 @@ tr:last-child td{{border-bottom:none;}}
 
 /* ── DYNAMICS ────────────────────────────────────────────── */
 .filter-bar{{display:flex;gap:8px;margin-bottom:20px;align-items:center;flex-wrap:wrap;}}
-.f-tab{{padding:5px 16px;border:1px solid #e5e7eb;border-radius:99px;font-size:12px;color:#6b7280;cursor:pointer;transition:all .15s;background:#fff;font-family:'Inter',sans-serif;}}
+.f-tab{{padding:5px 16px;border:1px solid #e5e7eb;border-radius:99px;font-size:12px;color:#6b7280;cursor:pointer;transition:all .15s;background:#fff;font-family:'Plus Jakarta Sans',sans-serif;}}
 .f-tab:hover{{border-color:#111827;color:#111827;}}
 .f-tab.active{{background:#111827;color:#fff;border-color:#111827;}}
 .f-count{{font-size:10px;opacity:.6;margin-left:3px;}}
@@ -3622,7 +3622,7 @@ tr:last-child td{{border-bottom:none;}}
         <div class="score-bar-bg"><div class="score-bar-fill" id="modal-bar" style="width:0%"></div></div>
         <div class="score-verdict" id="modal-verdict"></div>
         <div id="modal-reasons"></div>
-        <button style="margin-top:24px; width:100%; padding:14px; border:none; border-radius:10px; font-size:14px; font-weight:700; background:#0d1120; color:#ffffff; cursor:pointer; font-family:'Inter',sans-serif;" onclick="closeModal()">Close</button>
+        <button style="margin-top:24px; width:100%; padding:14px; border:none; border-radius:10px; font-size:14px; font-weight:700; background:#0d1120; color:#ffffff; cursor:pointer; font-family:'Plus Jakarta Sans',sans-serif;" onclick="closeModal()">Close</button>
     </div>
 </div>
 
@@ -3676,10 +3676,10 @@ tr:last-child td{{border-bottom:none;}}
             </div>
             <div style="background:#f1f5f9; padding:12px 14px; border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
                 <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="font-family:'Syne',sans-serif; font-size:24px; font-weight:800; color:#0d1120;" id="bulkCountBig">0</span>
-                    <span style="font-family:'Inter',sans-serif; font-size:12px; color:#64748b; font-weight:500;">{t("selected_count", lang)}</span>
+                    <span style="font-family:'Plus Jakarta Sans',sans-serif; font-size:24px; font-weight:800; color:#0d1120;" id="bulkCountBig">0</span>
+                    <span style="font-family:'Plus Jakarta Sans',sans-serif; font-size:12px; color:#64748b; font-weight:500;">{t("selected_count", lang)}</span>
                 </div>
-                <button type="button" style="padding:8px 18px; background:#00d165; color:#080c14; border:none; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; font-family:'Inter',sans-serif;" onclick="saveBookingChanges()">{t("save_changes", lang)}</button>
+                <button type="button" style="padding:8px 18px; background:#00d165; color:#080c14; border:none; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; font-family:'Plus Jakarta Sans',sans-serif;" onclick="saveBookingChanges()">{t("save_changes", lang)}</button>
             </div>
         </div>
         
@@ -4045,7 +4045,7 @@ document.getElementById('bulkEmailComposer').addEventListener('click', e => {{ i
     options: {{
       cutout: '72%',
       plugins: {{
-        legend: {{ position: 'bottom', labels: {{ font: {{ family: 'Inter', size: 11 }}, padding: 16, usePointStyle: true, pointStyle: 'circle' }} }}
+        legend: {{ position: 'bottom', labels: {{ font: {{ family: 'Plus Jakarta Sans', size: 11 }}, padding: 16, usePointStyle: true, pointStyle: 'circle' }} }}
       }}
     }}
   }});
@@ -4068,11 +4068,11 @@ document.getElementById('bulkEmailComposer').addEventListener('click', e => {{ i
     options: {{
       responsive: true,
       scales: {{
-        x: {{ stacked: true, grid: {{ display: false }}, border: {{ display: false }}, ticks: {{ font: {{ family: 'Inter', size: 11 }}, color: '#94a3b8' }} }},
-        y: {{ stacked: true, beginAtZero: true, grid: {{ color: '#f1f5f9' }}, border: {{ display: false }}, ticks: {{ font: {{ family: 'Inter', size: 11 }}, color: '#94a3b8' }} }}
+        x: {{ stacked: true, grid: {{ display: false }}, border: {{ display: false }}, ticks: {{ font: {{ family: 'Plus Jakarta Sans', size: 11 }}, color: '#94a3b8' }} }},
+        y: {{ stacked: true, beginAtZero: true, grid: {{ color: '#f1f5f9' }}, border: {{ display: false }}, ticks: {{ font: {{ family: 'Plus Jakarta Sans', size: 11 }}, color: '#94a3b8' }} }}
       }},
       plugins: {{
-        legend: {{ position: 'bottom', labels: {{ font: {{ family: 'Inter', size: 11 }}, padding: 16, usePointStyle: true, pointStyle: 'circle', color: '#64748b' }} }}
+        legend: {{ position: 'bottom', labels: {{ font: {{ family: 'Plus Jakarta Sans', size: 11 }}, padding: 16, usePointStyle: true, pointStyle: 'circle', color: '#64748b' }} }}
       }}
     }}
   }});
@@ -4377,22 +4377,22 @@ def login():
 <head><title>Occupado — Sign in</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{{margin:0;padding:0;box-sizing:border-box;}}
-body{{background:#f5f7fb;font-family:'Inter',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;-webkit-font-smoothing:antialiased;}}
+body{{background:#f5f7fb;font-family:'Plus Jakarta Sans',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;-webkit-font-smoothing:antialiased;}}
 .card{{background:#ffffff;border:1px solid #e4e8f0;border-radius:20px;width:100%;max-width:400px;padding:48px;box-shadow:0 4px 32px rgba(0,0,0,0.06);}}
-.brand{{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#0d1120;letter-spacing:-0.5px;margin-bottom:28px;}}
+.brand{{font-family:'Plus Jakarta Sans',sans-serif;font-size:22px;font-weight:800;color:#0d1120;letter-spacing:-0.5px;margin-bottom:28px;}}
 .brand span{{color:#00d165;}}
-.card-title{{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#0d1120;letter-spacing:-0.6px;margin-bottom:6px;}}
+.card-title{{font-family:'Plus Jakarta Sans',sans-serif;font-size:22px;font-weight:800;color:#0d1120;letter-spacing:-0.6px;margin-bottom:6px;}}
 .card-sub{{font-size:13px;color:#64748b;margin-bottom:28px;}}
 .err{{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:12px 14px;border-radius:9px;font-size:13px;margin-bottom:20px;line-height:1.5;}}
 .ok{{background:#f0fdf4;border:1px solid #bbf7d0;color:#16a34a;padding:12px 14px;border-radius:9px;font-size:13px;margin-bottom:20px;line-height:1.5;}}
 label{{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:500;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:7px;}}
-input{{width:100%;padding:12px 14px;background:#f8fafc;border:1px solid #e4e8f0;border-radius:9px;font-size:14px;color:#0d1120;margin-bottom:16px;outline:none;font-family:'Inter',sans-serif;transition:border-color .2s,background .2s;}}
+input{{width:100%;padding:12px 14px;background:#f8fafc;border:1px solid #e4e8f0;border-radius:9px;font-size:14px;color:#0d1120;margin-bottom:16px;outline:none;font-family:'Plus Jakarta Sans',sans-serif;transition:border-color .2s,background .2s;}}
 input:focus{{border-color:#00d165;background:#ffffff;}}
 input::placeholder{{color:#cbd5e1;}}
-.btn-submit{{width:100%;padding:13px;background:#00d165;color:#080c14;border:none;border-radius:9px;font-weight:700;cursor:pointer;font-size:14px;font-family:'Inter',sans-serif;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:6px;margin-top:4px;}}
+.btn-submit{{width:100%;padding:13px;background:#00d165;color:#080c14;border:none;border-radius:9px;font-weight:700;cursor:pointer;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:6px;margin-top:4px;}}
 .btn-submit:hover{{background:#04e270;box-shadow:0 4px 16px rgba(0,209,101,0.25);}}
 .links{{margin-top:24px;text-align:center;display:flex;flex-direction:column;gap:10px;}}
 .links a{{font-size:13px;color:#94a3b8;text-decoration:none;transition:color .2s;}}
@@ -4503,17 +4503,17 @@ def settings():
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 body {{ background:#ffffff; color:#0a1a0a; font-family:'DM Sans',sans-serif; }}
 .topbar {{ background:#008000; padding:16px 40px; display:flex; align-items:center; justify-content:space-between; }}
-.topbar-logo {{ font-family:'Syne',sans-serif; font-size:22px; font-weight:800; color:#ffffff; }}
+.topbar-logo {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:22px; font-weight:800; color:#ffffff; }}
 .topbar-hotel {{ font-family:'DM Mono',monospace; font-size:12px; color:rgba(255,255,255,0.8); }}
 .topbar-right {{ display:flex; align-items:center; gap:10px; }}
 .btn-nav {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; }}
 .btn-nav:hover {{ background:rgba(255,255,255,0.25); }}
 .content {{ padding:60px 40px; display:flex; align-items:center; justify-content:center; min-height:calc(100vh - 80px); }}
 .wrapper {{ width:100%; max-width:500px; text-align:center; }}
-.page-title {{ font-family:'Syne',sans-serif; font-size:36px; font-weight:800; margin-bottom:8px; }}
+.page-title {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:36px; font-weight:800; margin-bottom:8px; }}
 .page-sub {{ font-family:'DM Mono',monospace; font-size:12px; color:#4a6648; margin-bottom:40px; }}
 .card {{ background:#f5faf5; border:1px solid rgba(0,128,0,0.15); border-radius:16px; padding:40px; }}
-.card-title {{ font-family:'Syne',sans-serif; font-size:18px; font-weight:700; margin-bottom:12px; }}
+.card-title {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:18px; font-weight:700; margin-bottom:12px; }}
 .card-sub {{ font-size:13px; color:#4a6648; margin-bottom:24px; }}
 label {{ font-size:12px; color:#4a6648; display:block; margin-bottom:8px; font-family:'DM Mono',monospace; font-weight:600; text-align:left; }}
 input {{ width:100%; padding:12px 16px; background:#ffffff; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; margin-bottom:20px; font-family:'DM Sans',sans-serif; }}
@@ -4693,15 +4693,15 @@ def map_fields():
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 body {{ background:#f5faf5; font-family:'DM Sans',sans-serif; color:#0a1a0a; }}
 .topbar {{ background:#008000; padding:16px 40px; display:flex; align-items:center; justify-content:space-between; }}
-.topbar-logo {{ font-family:'Syne',sans-serif; font-size:22px; font-weight:800; color:#ffffff; }}
+.topbar-logo {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:22px; font-weight:800; color:#ffffff; }}
 .topbar-hotel {{ font-family:'DM Mono',monospace; font-size:12px; color:rgba(255,255,255,0.8); }}
 .btn-nav {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; }}
 .btn-nav:hover {{ background:rgba(255,255,255,0.25); }}
 .content {{ max-width:860px; margin:0 auto; padding:48px 24px; }}
-.page-title {{ font-family:'Syne',sans-serif; font-size:32px; font-weight:800; margin-bottom:6px; }}
+.page-title {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:32px; font-weight:800; margin-bottom:6px; }}
 .page-sub {{ font-size:13px; color:#4a6648; font-family:'DM Mono',monospace; margin-bottom:32px; }}
 .card {{ background:#ffffff; border:1px solid rgba(0,128,0,0.15); border-radius:16px; padding:32px; margin-bottom:24px; }}
-.card-title {{ font-family:'Syne',sans-serif; font-size:18px; font-weight:700; margin-bottom:6px; }}
+.card-title {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:18px; font-weight:700; margin-bottom:6px; }}
 .card-sub {{ font-size:13px; color:#4a6648; margin-bottom:24px; }}
 .submit-btn {{ width:100%; padding:16px; background:#008000; color:white; border:none; border-radius:12px; font-weight:700; font-size:16px; cursor:pointer; font-family:'DM Sans',sans-serif; margin-top:8px; }}
 .submit-btn:hover {{ background:#006600; }}
@@ -4961,15 +4961,15 @@ def shiji_upload():
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 body {{ background:#f5faf5; font-family:'DM Sans',sans-serif; color:#0a1a0a; }}
 .topbar {{ background:#008000; padding:16px 40px; display:flex; align-items:center; justify-content:space-between; }}
-.topbar-logo {{ font-family:'Syne',sans-serif; font-size:22px; font-weight:800; color:#ffffff; }}
+.topbar-logo {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:22px; font-weight:800; color:#ffffff; }}
 .topbar-hotel {{ font-family:'DM Mono',monospace; font-size:12px; color:rgba(255,255,255,0.8); }}
 .btn-nav {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; }}
 .btn-nav:hover {{ background:rgba(255,255,255,0.25); }}
 .content {{ max-width:700px; margin:0 auto; padding:48px 24px; }}
-.page-title {{ font-family:'Syne',sans-serif; font-size:32px; font-weight:800; margin-bottom:6px; }}
+.page-title {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:32px; font-weight:800; margin-bottom:6px; }}
 .page-sub {{ font-size:13px; color:#4a6648; font-family:'DM Mono',monospace; margin-bottom:32px; }}
 .card {{ background:#ffffff; border:1px solid rgba(0,128,0,0.15); border-radius:16px; padding:32px; margin-bottom:20px; }}
-.card-title {{ font-family:'Syne',sans-serif; font-size:18px; font-weight:700; margin-bottom:12px; }}
+.card-title {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:18px; font-weight:700; margin-bottom:12px; }}
 .card-sub {{ font-size:13px; color:#4a6648; margin-bottom:24px; line-height:1.6; }}
 .file-row {{ margin-bottom:20px; }}
 .file-label {{ font-size:12px; font-family:'DM Mono',monospace; color:#4a6648; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; display:block; margin-bottom:8px; }}
@@ -5042,10 +5042,10 @@ def send_verification_email(to_email, hotel_name, token):
         html = f"""
         <div style="font-family:'DM Sans',sans-serif;max-width:480px;margin:0 auto;">
           <div style="background:#008000;padding:24px 32px;border-radius:12px 12px 0 0;">
-            <span style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:#fff;">Occupado</span>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:24px;font-weight:800;color:#fff;">Occupado</span>
           </div>
           <div style="background:#ffffff;padding:32px;border:1px solid rgba(0,128,0,0.15);border-radius:0 0 12px 12px;">
-            <h2 style="font-family:'Syne',sans-serif;color:#0a1a0a;margin-bottom:12px;">Verify your email</h2>
+            <h2 style="font-family:'Plus Jakarta Sans',sans-serif;color:#0a1a0a;margin-bottom:12px;">Verify your email</h2>
             <p style="color:#4a6648;margin-bottom:24px;line-height:1.6;">Hi <strong>{hotel_name}</strong>, thanks for registering with Occupado. Click the button below to activate your account.</p>
             <a href="{verify_url}" style="display:inline-block;background:#008000;color:#fff;padding:14px 28px;border-radius:10px;font-weight:700;text-decoration:none;font-size:15px;">Verify Email →</a>
             <p style="color:#4a6648;font-size:12px;margin-top:24px;">Or copy this link: {verify_url}</p>
@@ -5073,10 +5073,10 @@ def send_reset_email(to_email, hotel_name, token):
         html = f"""
         <div style="font-family:'DM Sans',sans-serif;max-width:480px;margin:0 auto;">
           <div style="background:#008000;padding:24px 32px;border-radius:12px 12px 0 0;">
-            <span style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:#fff;">Occupado</span>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:24px;font-weight:800;color:#fff;">Occupado</span>
           </div>
           <div style="background:#ffffff;padding:32px;border:1px solid rgba(0,128,0,0.15);border-radius:0 0 12px 12px;">
-            <h2 style="font-family:'Syne',sans-serif;color:#0a1a0a;margin-bottom:12px;">Reset your password</h2>
+            <h2 style="font-family:'Plus Jakarta Sans',sans-serif;color:#0a1a0a;margin-bottom:12px;">Reset your password</h2>
             <p style="color:#4a6648;margin-bottom:24px;line-height:1.6;">Hi <strong>{hotel_name}</strong>, click the button below to reset your password. This link expires in <strong>1 hour</strong>.</p>
             <a href="{reset_url}" style="display:inline-block;background:#008000;color:#fff;padding:14px 28px;border-radius:10px;font-weight:700;text-decoration:none;font-size:15px;">Reset Password →</a>
             <p style="color:#4a6648;font-size:12px;margin-top:24px;">If you didn't request this, ignore this email. Your password won't change.</p>
@@ -5135,7 +5135,7 @@ def forgot_password():
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 body {{ background:#f5faf5; font-family:'DM Sans',sans-serif; min-height:100vh; display:flex; align-items:center; justify-content:center; }}
 .box {{ background:#ffffff; padding:48px; border-radius:20px; width:100%; max-width:400px; border:1px solid rgba(0,128,0,0.15); }}
-.logo {{ font-family:'Syne',sans-serif; font-size:28px; font-weight:800; color:#008000; margin-bottom:8px; }}
+.logo {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:28px; font-weight:800; color:#008000; margin-bottom:8px; }}
 .subtitle {{ font-size:13px; color:#4a6648; margin-bottom:28px; font-family:'DM Mono',monospace; }}
 label {{ font-size:12px; color:#4a6648; display:block; margin-bottom:6px; font-family:'DM Mono',monospace; font-weight:600; }}
 input {{ width:100%; padding:12px; background:#f5faf5; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; margin-bottom:16px; outline:none; }}
@@ -5182,7 +5182,7 @@ def reset_password(token):
 </style>
 </head>
 <body><div class="box">
-<div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:#008000;margin-bottom:16px;">Occupado</div>
+<div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:28px;font-weight:800;color:#008000;margin-bottom:16px;">Occupado</div>
 <div style="font-size:36px;margin-bottom:16px;">❌</div>
 <h2 style="margin-bottom:12px;color:#0a1a0a;">{msg}</h2>
 <a href="/forgot-password" style="color:#008000;font-weight:700;text-decoration:none;">Request a new link →</a>
@@ -5233,7 +5233,7 @@ def reset_password(token):
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 body {{ background:#f5faf5; font-family:'DM Sans',sans-serif; min-height:100vh; display:flex; align-items:center; justify-content:center; }}
 .box {{ background:#ffffff; padding:48px; border-radius:20px; width:100%; max-width:400px; border:1px solid rgba(0,128,0,0.15); }}
-.logo {{ font-family:'Syne',sans-serif; font-size:28px; font-weight:800; color:#008000; margin-bottom:8px; }}
+.logo {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:28px; font-weight:800; color:#008000; margin-bottom:8px; }}
 .subtitle {{ font-size:13px; color:#4a6648; margin-bottom:28px; font-family:'DM Mono',monospace; }}
 label {{ font-size:12px; color:#4a6648; display:block; margin-bottom:6px; font-family:'DM Mono',monospace; font-weight:600; }}
 input {{ width:100%; padding:12px; background:#f5faf5; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; margin-bottom:16px; outline:none; }}
@@ -5332,24 +5332,24 @@ def register():
 <head><title>Occupado — Start free pilot</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{{margin:0;padding:0;box-sizing:border-box;}}
-body{{background:#f5f7fb;font-family:'Inter',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;-webkit-font-smoothing:antialiased;}}
+body{{background:#f5f7fb;font-family:'Plus Jakarta Sans',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;-webkit-font-smoothing:antialiased;}}
 .card{{background:#ffffff;border:1px solid #e4e8f0;border-radius:20px;width:100%;max-width:460px;padding:48px;box-shadow:0 4px 32px rgba(0,0,0,0.06);}}
-.brand{{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#0d1120;letter-spacing:-0.5px;margin-bottom:28px;}}
+.brand{{font-family:'Plus Jakarta Sans',sans-serif;font-size:22px;font-weight:800;color:#0d1120;letter-spacing:-0.5px;margin-bottom:28px;}}
 .brand span{{color:#00d165;}}
 .pilot-badge{{display:inline-flex;align-items:center;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:99px;padding:5px 12px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#16a34a;letter-spacing:1px;margin-bottom:20px;}}
-.card-title{{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#0d1120;letter-spacing:-0.6px;margin-bottom:6px;}}
+.card-title{{font-family:'Plus Jakarta Sans',sans-serif;font-size:22px;font-weight:800;color:#0d1120;letter-spacing:-0.6px;margin-bottom:6px;}}
 .card-sub{{font-size:13px;color:#64748b;margin-bottom:28px;}}
 .err{{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:12px 14px;border-radius:9px;font-size:13px;margin-bottom:20px;line-height:1.5;}}
 .ok{{background:#f0fdf4;border:1px solid #bbf7d0;color:#16a34a;padding:12px 14px;border-radius:9px;font-size:13px;margin-bottom:20px;line-height:1.5;}}
 .ok a{{color:#00d165;font-weight:600;text-decoration:none;}}
 label{{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:500;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:7px;}}
-input{{width:100%;padding:12px 14px;background:#f8fafc;border:1px solid #e4e8f0;border-radius:9px;font-size:14px;color:#0d1120;margin-bottom:16px;outline:none;font-family:'Inter',sans-serif;transition:border-color .2s,background .2s;}}
+input{{width:100%;padding:12px 14px;background:#f8fafc;border:1px solid #e4e8f0;border-radius:9px;font-size:14px;color:#0d1120;margin-bottom:16px;outline:none;font-family:'Plus Jakarta Sans',sans-serif;transition:border-color .2s,background .2s;}}
 input:focus{{border-color:#00d165;background:#ffffff;}}
 input::placeholder{{color:#cbd5e1;}}
-.btn-submit{{width:100%;padding:13px;background:#00d165;color:#080c14;border:none;border-radius:9px;font-weight:700;cursor:pointer;font-size:14px;font-family:'Inter',sans-serif;transition:all .2s;margin-top:4px;}}
+.btn-submit{{width:100%;padding:13px;background:#00d165;color:#080c14;border:none;border-radius:9px;font-weight:700;cursor:pointer;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;transition:all .2s;margin-top:4px;}}
 .btn-submit:hover{{background:#04e270;box-shadow:0 4px 16px rgba(0,209,101,0.25);}}
 .divider{{height:1px;background:#e4e8f0;margin:20px 0;}}
 .back-link{{text-align:center;font-size:13px;}}
@@ -5405,7 +5405,7 @@ def verify_email(token):
 </style>
 </head>
 <body><div class="box">
-<div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:#008000;margin-bottom:16px;">Occupado</div>
+<div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:28px;font-weight:800;color:#008000;margin-bottom:16px;">Occupado</div>
 <div style="font-size:36px;margin-bottom:16px;">❌</div>
 <h2 style="margin-bottom:12px;color:#0a1a0a;">Invalid or expired link</h2>
 <p style="color:#4a6648;margin-bottom:24px;">This verification link is not valid. Please register again.</p>
@@ -5430,7 +5430,7 @@ def verify_email(token):
 </style>
 </head>
 <body><div class="box">
-<div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:#008000;margin-bottom:16px;">Occupado</div>
+<div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:28px;font-weight:800;color:#008000;margin-bottom:16px;">Occupado</div>
 <div style="font-size:36px;margin-bottom:16px;">⏰</div>
 <h2 style="margin-bottom:12px;color:#0a1a0a;">Verification link expired</h2>
 <p style="color:#4a6648;margin-bottom:24px;">This link expired after 24 hours. Please register again to get a new link.</p>
@@ -5482,7 +5482,7 @@ def admin_login():
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 body {{ background:#f5faf5; font-family:'DM Sans',sans-serif; min-height:100vh; display:flex; align-items:center; justify-content:center; }}
 .box {{ background:#fff; padding:48px; border-radius:20px; width:100%; max-width:380px; border:1px solid rgba(0,128,0,0.15); }}
-.logo {{ font-family:'Syne',sans-serif; font-size:26px; font-weight:800; color:#008000; margin-bottom:4px; }}
+.logo {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:26px; font-weight:800; color:#008000; margin-bottom:4px; }}
 .subtitle {{ font-size:12px; color:#4a6648; font-family:'DM Mono',monospace; margin-bottom:28px; }}
 label {{ font-size:12px; color:#4a6648; display:block; margin-bottom:6px; font-family:'DM Mono',monospace; font-weight:600; text-transform:uppercase; }}
 input {{ width:100%; padding:12px; background:#f5faf5; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; margin-bottom:16px; outline:none; }}
@@ -5559,20 +5559,20 @@ def admin_panel():
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 body {{ background:#f5faf5; font-family:'DM Sans',sans-serif; color:#0a1a0a; }}
 .topbar {{ background:#008000; padding:16px 40px; display:flex; align-items:center; justify-content:space-between; }}
-.topbar-logo {{ font-family:'Syne',sans-serif; font-size:22px; font-weight:800; color:#ffffff; }}
+.topbar-logo {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:22px; font-weight:800; color:#ffffff; }}
 .topbar-sub {{ font-family:'DM Mono',monospace; font-size:12px; color:rgba(255,255,255,0.8); }}
 .btn-nav {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; }}
 .btn-nav:hover {{ background:rgba(255,255,255,0.25); }}
 .content {{ max-width:1000px; margin:0 auto; padding:48px 24px; }}
-.page-title {{ font-family:'Syne',sans-serif; font-size:32px; font-weight:800; margin-bottom:6px; }}
+.page-title {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:32px; font-weight:800; margin-bottom:6px; }}
 .page-sub {{ font-size:13px; color:#4a6648; font-family:'DM Mono',monospace; margin-bottom:32px; }}
 .stats {{ display:flex; gap:16px; margin-bottom:28px; flex-wrap:wrap; }}
 .stat-card {{ background:#fff; border:1px solid rgba(0,128,0,0.15); border-radius:12px; padding:20px 28px; flex:1; min-width:140px; }}
-.stat-num {{ font-family:'Syne',sans-serif; font-size:32px; font-weight:800; color:#008000; line-height:1; }}
+.stat-num {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:32px; font-weight:800; color:#008000; line-height:1; }}
 .stat-label {{ font-size:12px; color:#4a6648; font-family:'DM Mono',monospace; margin-top:6px; }}
 .card {{ background:#fff; border:1px solid rgba(0,128,0,0.15); border-radius:16px; overflow:hidden; }}
 .card-header {{ padding:20px 24px; border-bottom:1px solid rgba(0,128,0,0.08); }}
-.card-title {{ font-family:'Syne',sans-serif; font-size:18px; font-weight:700; }}
+.card-title {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:18px; font-weight:700; }}
 table {{ width:100%; border-collapse:collapse; }}
 th {{ padding:12px 16px; text-align:left; font-size:11px; font-family:'DM Mono',monospace; color:#4a6648; text-transform:uppercase; letter-spacing:0.5px; border-bottom:2px solid rgba(0,128,0,0.1); background:#f5faf5; }}
 tr:hover td {{ background:rgba(0,128,0,0.02); }}
