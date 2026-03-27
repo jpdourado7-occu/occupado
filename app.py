@@ -454,8 +454,8 @@ def send_consolidated_alert(hotel_name, alert_email, high_risk_bookings, hotel_u
                 <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
                     <thead>
                         <tr style="background:#f0f0f0;border-bottom:2px solid #008000;">
-                            <th style="padding:12px 16px;text-align:left;font-family:'DM Mono',monospace;font-size:12px;color:#0a1a0a;font-weight:600;">Booking ID</th>
-                            <th style="padding:12px 16px;text-align:right;font-family:'DM Mono',monospace;font-size:12px;color:#0a1a0a;font-weight:600;">Risk Score</th>
+                            <th style="padding:12px 16px;text-align:left;font-family:'JetBrains Mono',monospace;font-size:12px;color:#0a1a0a;font-weight:600;">Booking ID</th>
+                            <th style="padding:12px 16px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:12px;color:#0a1a0a;font-weight:600;">Risk Score</th>
                         </tr>
                     </thead>
                     <tbody>{booking_rows}</tbody>
@@ -480,7 +480,7 @@ def send_email_to_guest(guest_email, guest_name, hotel_name, subject, message_bo
         return False
     
     html_content = f"""
-    <div style="font-family:'DM Sans',sans-serif;max-width:600px;margin:0 auto;background:#f5faf5;padding:24px;border-radius:12px;">
+    <div style="font-family:'Plus Jakarta Sans',sans-serif;max-width:600px;margin:0 auto;background:#f5faf5;padding:24px;border-radius:12px;">
         <div style="background:#008000;color:white;padding:20px;border-radius:8px 8px 0 0;margin:-24px -24px 24px -24px;">
             <h2 style="margin:0;font-size:18px;">{hotel_name}</h2>
         </div>
@@ -1089,7 +1089,7 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False):
 <title>Occupado — Van der Valk Mechelen</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 *,*::before,*::after{{margin:0;padding:0;box-sizing:border-box;}}
@@ -1097,7 +1097,7 @@ body{{background:#fff;color:#111827;font-family:'Plus Jakarta Sans',sans-serif;-
 a{{text-decoration:none;color:inherit;}}
 /* TOPBAR */
 .topbar{{height:56px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;padding:0 40px;background:#fff;position:sticky;top:0;z-index:100;gap:12px;}}
-.tb-brand{{font-size:15px;font-weight:700;letter-spacing:-0.3px;color:#111827;font-family:'Plus Jakarta Sans',sans-serif;}}
+.tb-brand{{font-size:15px;font-weight:700;letter-spacing:-0.3px;color:#111827;font-family:'Syne',sans-serif;}}
 .tb-brand span{{color:#00d165;}}
 .tb-hotel{{font-size:12px;color:#9ca3af;padding-left:14px;border-left:1px solid #e5e7eb;}}
 .tb-right{{margin-left:auto;display:flex;gap:6px;align-items:center;}}
@@ -2148,7 +2148,7 @@ function toggleExpand(row, idx, score) {{
 <title>Occupado — Van der Valk Hotel Mechelen</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 *,*::before,*::after{{margin:0;padding:0;box-sizing:border-box;}}
@@ -2156,7 +2156,7 @@ body{{background:#f5f7fb;color:#0d1120;font-family:'Plus Jakarta Sans',sans-seri
 a{{text-decoration:none;}}
 /* TOPBAR */
 .topbar{{height:62px;background:#ffffff;border-bottom:1px solid #e4e8f0;display:flex;align-items:center;padding:0 32px;position:sticky;top:0;z-index:100;}}
-.topbar-brand{{display:flex;align-items:center;gap:6px;}}
+.topbar-brand{{display:flex;align-items:center;gap:6px;font-family:'Syne',sans-serif;}}
 .topbar-name{{font-family:'Plus Jakarta Sans',sans-serif;font-size:17px;font-weight:800;color:#0d1120;letter-spacing:-0.4px;}}
 .topbar-name span{{color:#00d165;}}
 .topbar-hotel{{font-family:'JetBrains Mono',monospace;font-size:11px;color:#94a3b8;margin-left:8px;padding-left:12px;border-left:1px solid #e4e8f0;}}
@@ -3108,7 +3108,7 @@ def build_empty_state(hotel_name, lang="en"):
 <head>
 <title>Occupado — {hotel_name}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{{margin:0;padding:0;box-sizing:border-box;}}
 body{{background:#ffffff;color:#0d1120;font-family:'Plus Jakarta Sans',sans-serif;-webkit-font-smoothing:antialiased;}}
@@ -3308,14 +3308,14 @@ def build_dashboard(hotel_name, sample, scores, tonight_scores, tonight_sample=N
 <head>
 <title>Occupado — {hotel_name}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 *,*::before,*::after{{margin:0;padding:0;box-sizing:border-box;}}
 body{{background:#fff;color:#111827;font-family:'Plus Jakarta Sans',sans-serif;-webkit-font-smoothing:antialiased;font-size:14px;}}
 a{{text-decoration:none;}}
 .topbar{{height:56px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;padding:0 40px;background:#fff;position:sticky;top:0;z-index:100;}}
-.topbar-brand{{display:flex;align-items:center;gap:8px;}}
+.topbar-brand{{display:flex;align-items:center;gap:8px;font-family:'Syne',sans-serif;}}
 .topbar-name{{font-size:15px;font-weight:700;letter-spacing:-0.3px;color:#111827;}}
 .topbar-name span{{color:#00d165;}}
 .topbar-hotel{{font-size:12px;color:#9ca3af;margin-left:14px;padding-left:14px;border-left:1px solid #e5e7eb;}}
@@ -3630,7 +3630,7 @@ tr:last-child td{{border-bottom:none;}}
     <div class="email-box">
         <div style="margin-bottom:24px;">
             <div class="email-title" id="emailTitle">{t("email_guest", lang)}</div>
-            <div style="font-family:'DM Mono',monospace; font-size:12px; color:#4a6648; margin-top:4px;" id="emailSubtitle">Booking 1</div>
+            <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#4a6648; margin-top:4px;" id="emailSubtitle">Booking 1</div>
         </div>
         
         <div>
@@ -4377,12 +4377,12 @@ def login():
 <head><title>Occupado — Sign in</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{{margin:0;padding:0;box-sizing:border-box;}}
 body{{background:#f5f7fb;font-family:'Plus Jakarta Sans',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;-webkit-font-smoothing:antialiased;}}
 .card{{background:#ffffff;border:1px solid #e4e8f0;border-radius:20px;width:100%;max-width:400px;padding:48px;box-shadow:0 4px 32px rgba(0,0,0,0.06);}}
-.brand{{font-family:'Plus Jakarta Sans',sans-serif;font-size:22px;font-weight:800;color:#0d1120;letter-spacing:-0.5px;margin-bottom:28px;}}
+.brand{{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#0d1120;letter-spacing:-0.5px;margin-bottom:28px;}}
 .brand span{{color:#00d165;}}
 .card-title{{font-family:'Plus Jakarta Sans',sans-serif;font-size:22px;font-weight:800;color:#0d1120;letter-spacing:-0.6px;margin-bottom:6px;}}
 .card-sub{{font-size:13px;color:#64748b;margin-bottom:28px;}}
@@ -4498,35 +4498,36 @@ def settings():
     return f"""<!DOCTYPE html>
 <html>
 <head><title>Occupado — {t("settings_title", lang)}</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-body {{ background:#ffffff; color:#0a1a0a; font-family:'DM Sans',sans-serif; }}
-.topbar {{ background:#008000; padding:16px 40px; display:flex; align-items:center; justify-content:space-between; }}
-.topbar-logo {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:22px; font-weight:800; color:#ffffff; }}
-.topbar-hotel {{ font-family:'DM Mono',monospace; font-size:12px; color:rgba(255,255,255,0.8); }}
-.topbar-right {{ display:flex; align-items:center; gap:10px; }}
-.btn-nav {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; }}
-.btn-nav:hover {{ background:rgba(255,255,255,0.25); }}
-.content {{ padding:60px 40px; display:flex; align-items:center; justify-content:center; min-height:calc(100vh - 80px); }}
-.wrapper {{ width:100%; max-width:500px; text-align:center; }}
-.page-title {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:36px; font-weight:800; margin-bottom:8px; }}
-.page-sub {{ font-family:'DM Mono',monospace; font-size:12px; color:#4a6648; margin-bottom:40px; }}
-.card {{ background:#f5faf5; border:1px solid rgba(0,128,0,0.15); border-radius:16px; padding:40px; }}
-.card-title {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:18px; font-weight:700; margin-bottom:12px; }}
-.card-sub {{ font-size:13px; color:#4a6648; margin-bottom:24px; }}
-label {{ font-size:12px; color:#4a6648; display:block; margin-bottom:8px; font-family:'DM Mono',monospace; font-weight:600; text-align:left; }}
-input {{ width:100%; padding:12px 16px; background:#ffffff; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; margin-bottom:20px; font-family:'DM Sans',sans-serif; }}
-input:focus {{ border-color:#008000; outline:none; }}
-button {{ padding:12px 32px; background:#008000; color:white; border:none; border-radius:10px; font-weight:600; cursor:pointer; font-size:14px; font-family:'DM Sans',sans-serif; }}
-button:hover {{ background:#006600; }}
+*,*::before,*::after{{margin:0;padding:0;box-sizing:border-box;}}
+body{{background:#f9fafb;color:#111827;font-family:'Plus Jakarta Sans',sans-serif;-webkit-font-smoothing:antialiased;}}
+.topbar{{background:#fff;border-bottom:1px solid #e5e7eb;padding:0 40px;height:56px;display:flex;align-items:center;justify-content:space-between;}}
+.topbar-logo{{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#111827;letter-spacing:-0.3px;}}
+.topbar-logo span{{color:#00d165;}}
+.topbar-hotel{{font-size:11px;color:#9ca3af;font-family:'JetBrains Mono',monospace;margin-top:2px;}}
+.topbar-right{{display:flex;align-items:center;gap:8px;}}
+.btn-nav{{padding:7px 16px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;color:#374151;font-size:13px;font-weight:500;text-decoration:none;transition:border-color .15s;}}
+.btn-nav:hover{{border-color:#111827;color:#111827;}}
+.content{{padding:60px 40px;display:flex;align-items:center;justify-content:center;min-height:calc(100vh - 56px);}}
+.wrapper{{width:100%;max-width:480px;text-align:center;}}
+.page-title{{font-size:28px;font-weight:700;color:#111827;letter-spacing:-0.5px;margin-bottom:6px;}}
+.page-sub{{font-size:13px;color:#6b7280;margin-bottom:36px;}}
+.card{{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:36px;}}
+.card-title{{font-size:16px;font-weight:600;color:#111827;margin-bottom:8px;}}
+.card-sub{{font-size:13px;color:#6b7280;margin-bottom:24px;}}
+label{{font-size:10px;font-weight:500;color:#9ca3af;text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:7px;text-align:left;font-family:'JetBrains Mono',monospace;}}
+input{{width:100%;padding:11px 14px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;font-size:14px;margin-bottom:20px;font-family:'Plus Jakarta Sans',sans-serif;color:#111827;outline:none;transition:border-color .15s;}}
+input:focus{{border-color:#00d165;}}
+button{{padding:11px 28px;background:#00d165;color:#080c14;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;transition:background .15s;}}
+button:hover{{background:#04e270;}}
 
 </style>
 </head>
 <body>
 <div class="topbar">
     <div>
-        <div class="topbar-logo">{t("occupado", lang)}</div>
+        <div class="topbar-logo">Occup<span>ado</span></div>
         <div class="topbar-hotel">{hotel_name} · {t("settings_title", lang)}</div>
     </div>
     <div class="topbar-right">
@@ -4665,21 +4666,21 @@ def map_fields():
     for feat in features:
         label = FEATURE_LABELS[feat]
         matched_col = auto_map[feat]
-        badge = f'<span style="background:#e8f5e9;color:#2e7d32;border-radius:6px;padding:2px 8px;font-size:11px;font-family:DM Mono,monospace;">✓ auto-matched</span>' if matched_col else f'<span style="background:#fff3e0;color:#e65100;border-radius:6px;padding:2px 8px;font-size:11px;font-family:DM Mono,monospace;">needs mapping</span>'
+        badge = f'<span style="background:#e8f5e9;color:#2e7d32;border-radius:6px;padding:2px 8px;font-size:11px;font-family:JetBrains Mono,monospace;">✓ auto-matched</span>' if matched_col else f'<span style="background:#fff3e0;color:#e65100;border-radius:6px;padding:2px 8px;font-size:11px;font-family:JetBrains Mono,monospace;">needs mapping</span>'
         rows_html += f"""
         <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:center;padding:14px 0;border-bottom:1px solid rgba(0,128,0,0.08);">
             <div>
-                <div style="font-size:13px;font-weight:600;color:#0a1a0a;font-family:'DM Mono',monospace;">{feat}</div>
+                <div style="font-size:13px;font-weight:600;color:#0a1a0a;font-family:'JetBrains Mono',monospace;">{feat}</div>
                 <div style="font-size:12px;color:#4a6648;margin-top:2px;">{label}</div>
             </div>
-            <select name="map_{feat}" style="padding:10px 12px;border:1px solid rgba(0,128,0,0.2);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:#f5faf5;color:#0a1a0a;width:100%;outline:none;">
+            <select name="map_{feat}" style="padding:10px 12px;border:1px solid rgba(0,128,0,0.2);border-radius:8px;font-size:13px;font-family:'Plus Jakarta Sans',sans-serif;background:#f5faf5;color:#0a1a0a;width:100%;outline:none;">
                 {col_options(matched_col)}
             </select>
             <div>{badge}</div>
         </div>"""
 
     # Preview table
-    preview_header = "".join(f'<th style="padding:8px 12px;font-size:11px;font-family:DM Mono,monospace;color:#4a6648;text-align:left;border-bottom:1px solid rgba(0,128,0,0.1);">{c}</th>' for c in preview_cols)
+    preview_header = "".join(f'<th style="padding:8px 12px;font-size:11px;font-family:JetBrains Mono,monospace;color:#4a6648;text-align:left;border-bottom:1px solid rgba(0,128,0,0.1);">{c}</th>' for c in preview_cols)
     preview_body = ""
     for row in preview_rows:
         cells = "".join(f'<td style="padding:8px 12px;font-size:12px;color:#0a1a0a;border-bottom:1px solid rgba(0,128,0,0.06);">{str(row.get(c,""))[:20]}</td>' for c in preview_cols)
@@ -4688,31 +4689,32 @@ def map_fields():
     return f"""<!DOCTYPE html>
 <html>
 <head><title>Occupado — Map Your Data</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-body {{ background:#f5faf5; font-family:'DM Sans',sans-serif; color:#0a1a0a; }}
-.topbar {{ background:#008000; padding:16px 40px; display:flex; align-items:center; justify-content:space-between; }}
-.topbar-logo {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:22px; font-weight:800; color:#ffffff; }}
-.topbar-hotel {{ font-family:'DM Mono',monospace; font-size:12px; color:rgba(255,255,255,0.8); }}
-.btn-nav {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; }}
-.btn-nav:hover {{ background:rgba(255,255,255,0.25); }}
-.content {{ max-width:860px; margin:0 auto; padding:48px 24px; }}
-.page-title {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:32px; font-weight:800; margin-bottom:6px; }}
-.page-sub {{ font-size:13px; color:#4a6648; font-family:'DM Mono',monospace; margin-bottom:32px; }}
-.card {{ background:#ffffff; border:1px solid rgba(0,128,0,0.15); border-radius:16px; padding:32px; margin-bottom:24px; }}
-.card-title {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:18px; font-weight:700; margin-bottom:6px; }}
-.card-sub {{ font-size:13px; color:#4a6648; margin-bottom:24px; }}
-.submit-btn {{ width:100%; padding:16px; background:#008000; color:white; border:none; border-radius:12px; font-weight:700; font-size:16px; cursor:pointer; font-family:'DM Sans',sans-serif; margin-top:8px; }}
-.submit-btn:hover {{ background:#006600; }}
-select:focus {{ border-color:#008000; background:white; }}
+*,*::before,*::after{{margin:0;padding:0;box-sizing:border-box;}}
+body{{background:#f9fafb;font-family:'Plus Jakarta Sans',sans-serif;color:#111827;-webkit-font-smoothing:antialiased;}}
+.topbar{{background:#fff;border-bottom:1px solid #e5e7eb;padding:0 40px;height:56px;display:flex;align-items:center;justify-content:space-between;}}
+.topbar-logo{{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#111827;letter-spacing:-0.3px;}}
+.topbar-logo span{{color:#00d165;}}
+.topbar-hotel{{font-size:11px;color:#9ca3af;font-family:'JetBrains Mono',monospace;margin-top:2px;}}
+.btn-nav{{padding:7px 16px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;color:#374151;font-size:13px;font-weight:500;text-decoration:none;transition:border-color .15s;display:inline-block;}}
+.btn-nav:hover{{border-color:#111827;color:#111827;}}
+.content{{max-width:860px;margin:0 auto;padding:48px 24px;}}
+.page-title{{font-size:28px;font-weight:700;color:#111827;letter-spacing:-0.5px;margin-bottom:6px;}}
+.page-sub{{font-size:12px;color:#9ca3af;font-family:'JetBrains Mono',monospace;margin-bottom:32px;}}
+.card{{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:28px;margin-bottom:20px;}}
+.card-title{{font-size:16px;font-weight:600;color:#111827;margin-bottom:6px;}}
+.card-sub{{font-size:13px;color:#6b7280;margin-bottom:20px;}}
+.submit-btn{{width:100%;padding:14px;background:#00d165;color:#080c14;border:none;border-radius:8px;font-weight:700;font-size:15px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;margin-top:8px;transition:background .15s;}}
+.submit-btn:hover{{background:#04e270;}}
+select:focus{{border-color:#00d165;background:white;outline:none;}}
 
 </style>
 </head>
 <body>
 <div class="topbar">
     <div>
-        <div class="topbar-logo">Occupado</div>
+        <div class="topbar-logo">Occup<span>ado</span></div>
         <div class="topbar-hotel">{hotel_name} · Map Your Data</div>
     </div>
     <div style="display:flex;gap:10px;">
@@ -4956,28 +4958,28 @@ def shiji_upload():
     return f"""<!DOCTYPE html>
 <html>
 <head><title>Occupado — Shiji Import</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
-body {{ background:#f5faf5; font-family:'DM Sans',sans-serif; color:#0a1a0a; }}
+body {{ background:#f5faf5; font-family:'Plus Jakarta Sans',sans-serif; color:#0a1a0a; }}
 .topbar {{ background:#008000; padding:16px 40px; display:flex; align-items:center; justify-content:space-between; }}
 .topbar-logo {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:22px; font-weight:800; color:#ffffff; }}
-.topbar-hotel {{ font-family:'DM Mono',monospace; font-size:12px; color:rgba(255,255,255,0.8); }}
+.topbar-hotel {{ font-family:'JetBrains Mono',monospace; font-size:12px; color:rgba(255,255,255,0.8); }}
 .btn-nav {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; }}
 .btn-nav:hover {{ background:rgba(255,255,255,0.25); }}
 .content {{ max-width:700px; margin:0 auto; padding:48px 24px; }}
 .page-title {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:32px; font-weight:800; margin-bottom:6px; }}
-.page-sub {{ font-size:13px; color:#4a6648; font-family:'DM Mono',monospace; margin-bottom:32px; }}
+.page-sub {{ font-size:13px; color:#4a6648; font-family:'JetBrains Mono',monospace; margin-bottom:32px; }}
 .card {{ background:#ffffff; border:1px solid rgba(0,128,0,0.15); border-radius:16px; padding:32px; margin-bottom:20px; }}
 .card-title {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:18px; font-weight:700; margin-bottom:12px; }}
 .card-sub {{ font-size:13px; color:#4a6648; margin-bottom:24px; line-height:1.6; }}
 .file-row {{ margin-bottom:20px; }}
-.file-label {{ font-size:12px; font-family:'DM Mono',monospace; color:#4a6648; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; display:block; margin-bottom:8px; }}
+.file-label {{ font-size:12px; font-family:'JetBrains Mono',monospace; color:#4a6648; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; display:block; margin-bottom:8px; }}
 .req-badge {{ background:rgba(0,128,0,0.1);color:#008000;border-radius:4px;padding:2px 6px;font-size:10px;margin-left:6px; }}
 .opt-badge {{ background:rgba(0,0,0,0.06);color:#4a6648;border-radius:4px;padding:2px 6px;font-size:10px;margin-left:6px; }}
-input[type=file] {{ width:100%; padding:12px; background:#f5faf5; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:13px; font-family:'DM Sans',sans-serif; cursor:pointer; }}
+input[type=file] {{ width:100%; padding:12px; background:#f5faf5; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:13px; font-family:'Plus Jakarta Sans',sans-serif; cursor:pointer; }}
 input[type=file]:hover {{ border-color:#008000; }}
-.submit-btn {{ width:100%; padding:16px; background:#008000; color:white; border:none; border-radius:12px; font-weight:700; font-size:16px; cursor:pointer; font-family:'DM Sans',sans-serif; }}
+.submit-btn {{ width:100%; padding:16px; background:#008000; color:white; border:none; border-radius:12px; font-weight:700; font-size:16px; cursor:pointer; font-family:'Plus Jakarta Sans',sans-serif; }}
 .submit-btn:hover {{ background:#006600; }}
 .info-row {{ display:flex; gap:8px; margin-bottom:10px; font-size:13px; color:#4a6648; line-height:1.5; }}
 .info-icon {{ color:#008000; }}
@@ -5040,7 +5042,7 @@ def send_verification_email(to_email, hotel_name, token):
         return False
     try:
         html = f"""
-        <div style="font-family:'DM Sans',sans-serif;max-width:480px;margin:0 auto;">
+        <div style="font-family:'Plus Jakarta Sans',sans-serif;max-width:480px;margin:0 auto;">
           <div style="background:#008000;padding:24px 32px;border-radius:12px 12px 0 0;">
             <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:24px;font-weight:800;color:#fff;">Occupado</span>
           </div>
@@ -5071,7 +5073,7 @@ def send_reset_email(to_email, hotel_name, token):
         return False
     try:
         html = f"""
-        <div style="font-family:'DM Sans',sans-serif;max-width:480px;margin:0 auto;">
+        <div style="font-family:'Plus Jakarta Sans',sans-serif;max-width:480px;margin:0 auto;">
           <div style="background:#008000;padding:24px 32px;border-radius:12px 12px 0 0;">
             <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:24px;font-weight:800;color:#fff;">Occupado</span>
           </div>
@@ -5130,17 +5132,17 @@ def forgot_password():
     return f"""<!DOCTYPE html>
 <html>
 <head><title>Occupado — Forgot Password</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
-body {{ background:#f5faf5; font-family:'DM Sans',sans-serif; min-height:100vh; display:flex; align-items:center; justify-content:center; }}
+body {{ background:#f5faf5; font-family:'Plus Jakarta Sans',sans-serif; min-height:100vh; display:flex; align-items:center; justify-content:center; }}
 .box {{ background:#ffffff; padding:48px; border-radius:20px; width:100%; max-width:400px; border:1px solid rgba(0,128,0,0.15); }}
 .logo {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:28px; font-weight:800; color:#008000; margin-bottom:8px; }}
-.subtitle {{ font-size:13px; color:#4a6648; margin-bottom:28px; font-family:'DM Mono',monospace; }}
-label {{ font-size:12px; color:#4a6648; display:block; margin-bottom:6px; font-family:'DM Mono',monospace; font-weight:600; }}
+.subtitle {{ font-size:13px; color:#4a6648; margin-bottom:28px; font-family:'JetBrains Mono',monospace; }}
+label {{ font-size:12px; color:#4a6648; display:block; margin-bottom:6px; font-family:'JetBrains Mono',monospace; font-weight:600; }}
 input {{ width:100%; padding:12px; background:#f5faf5; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; margin-bottom:16px; outline:none; }}
 input:focus {{ border-color:#008000; background:white; }}
-button {{ width:100%; padding:14px; background:#008000; color:white; border:none; border-radius:10px; font-weight:700; cursor:pointer; font-size:15px; font-family:'DM Sans',sans-serif; }}
+button {{ width:100%; padding:14px; background:#008000; color:white; border:none; border-radius:10px; font-weight:700; cursor:pointer; font-size:15px; font-family:'Plus Jakarta Sans',sans-serif; }}
 button:hover {{ background:#006600; }}
 .switch-link {{ text-align:center; margin-top:20px; font-size:13px; color:#4a6648; }}
 .switch-link a {{ color:#008000; font-weight:700; text-decoration:none; }}
@@ -5178,7 +5180,7 @@ def reset_password(token):
 <html>
 <head><title>Occupado — Reset Failed</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
-<style>* {{margin:0;padding:0;box-sizing:border-box;}} body {{background:#f5faf5;font-family:'DM Sans',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;}} .box {{background:#fff;padding:48px;border-radius:20px;max-width:400px;text-align:center;border:1px solid rgba(0,128,0,0.15);}}
+<style>* {{margin:0;padding:0;box-sizing:border-box;}} body {{background:#f5faf5;font-family:'Plus Jakarta Sans',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;}} .box {{background:#fff;padding:48px;border-radius:20px;max-width:400px;text-align:center;border:1px solid rgba(0,128,0,0.15);}}
 </style>
 </head>
 <body><div class="box">
@@ -5228,17 +5230,17 @@ def reset_password(token):
     return f"""<!DOCTYPE html>
 <html>
 <head><title>Occupado — Reset Password</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
-body {{ background:#f5faf5; font-family:'DM Sans',sans-serif; min-height:100vh; display:flex; align-items:center; justify-content:center; }}
+body {{ background:#f5faf5; font-family:'Plus Jakarta Sans',sans-serif; min-height:100vh; display:flex; align-items:center; justify-content:center; }}
 .box {{ background:#ffffff; padding:48px; border-radius:20px; width:100%; max-width:400px; border:1px solid rgba(0,128,0,0.15); }}
 .logo {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:28px; font-weight:800; color:#008000; margin-bottom:8px; }}
-.subtitle {{ font-size:13px; color:#4a6648; margin-bottom:28px; font-family:'DM Mono',monospace; }}
-label {{ font-size:12px; color:#4a6648; display:block; margin-bottom:6px; font-family:'DM Mono',monospace; font-weight:600; }}
+.subtitle {{ font-size:13px; color:#4a6648; margin-bottom:28px; font-family:'JetBrains Mono',monospace; }}
+label {{ font-size:12px; color:#4a6648; display:block; margin-bottom:6px; font-family:'JetBrains Mono',monospace; font-weight:600; }}
 input {{ width:100%; padding:12px; background:#f5faf5; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; margin-bottom:16px; outline:none; }}
 input:focus {{ border-color:#008000; background:white; }}
-button {{ width:100%; padding:14px; background:#008000; color:white; border:none; border-radius:10px; font-weight:700; cursor:pointer; font-size:15px; font-family:'DM Sans',sans-serif; }}
+button {{ width:100%; padding:14px; background:#008000; color:white; border:none; border-radius:10px; font-weight:700; cursor:pointer; font-size:15px; font-family:'Plus Jakarta Sans',sans-serif; }}
 button:hover {{ background:#006600; }}
 .switch-link {{ text-align:center; margin-top:20px; font-size:13px; color:#4a6648; }}
 .switch-link a {{ color:#008000; font-weight:700; text-decoration:none; }}
@@ -5332,12 +5334,12 @@ def register():
 <head><title>Occupado — Start free pilot</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{{margin:0;padding:0;box-sizing:border-box;}}
 body{{background:#f5f7fb;font-family:'Plus Jakarta Sans',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;-webkit-font-smoothing:antialiased;}}
 .card{{background:#ffffff;border:1px solid #e4e8f0;border-radius:20px;width:100%;max-width:460px;padding:48px;box-shadow:0 4px 32px rgba(0,0,0,0.06);}}
-.brand{{font-family:'Plus Jakarta Sans',sans-serif;font-size:22px;font-weight:800;color:#0d1120;letter-spacing:-0.5px;margin-bottom:28px;}}
+.brand{{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#0d1120;letter-spacing:-0.5px;margin-bottom:28px;}}
 .brand span{{color:#00d165;}}
 .pilot-badge{{display:inline-flex;align-items:center;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:99px;padding:5px 12px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#16a34a;letter-spacing:1px;margin-bottom:20px;}}
 .card-title{{font-family:'Plus Jakarta Sans',sans-serif;font-size:22px;font-weight:800;color:#0d1120;letter-spacing:-0.6px;margin-bottom:6px;}}
@@ -5401,7 +5403,7 @@ def verify_email(token):
 <html>
 <head><title>Occupado — Verification Failed</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
-<style>* {{margin:0;padding:0;box-sizing:border-box;}} body {{background:#f5faf5;font-family:'DM Sans',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;}} .box {{background:#fff;padding:48px;border-radius:20px;max-width:400px;text-align:center;border:1px solid rgba(0,128,0,0.15);}}
+<style>* {{margin:0;padding:0;box-sizing:border-box;}} body {{background:#f5faf5;font-family:'Plus Jakarta Sans',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;}} .box {{background:#fff;padding:48px;border-radius:20px;max-width:400px;text-align:center;border:1px solid rgba(0,128,0,0.15);}}
 </style>
 </head>
 <body><div class="box">
@@ -5426,7 +5428,7 @@ def verify_email(token):
 <html>
 <head><title>Occupado — Link Expired</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
-<style>* {{margin:0;padding:0;box-sizing:border-box;}} body {{background:#f5faf5;font-family:'DM Sans',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;}} .box {{background:#fff;padding:48px;border-radius:20px;max-width:400px;text-align:center;border:1px solid rgba(0,128,0,0.15);}}
+<style>* {{margin:0;padding:0;box-sizing:border-box;}} body {{background:#f5faf5;font-family:'Plus Jakarta Sans',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;}} .box {{background:#fff;padding:48px;border-radius:20px;max-width:400px;text-align:center;border:1px solid rgba(0,128,0,0.15);}}
 </style>
 </head>
 <body><div class="box">
@@ -5477,17 +5479,17 @@ def admin_login():
     return f"""<!DOCTYPE html>
 <html>
 <head><title>Occupado — Admin</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
-body {{ background:#f5faf5; font-family:'DM Sans',sans-serif; min-height:100vh; display:flex; align-items:center; justify-content:center; }}
+body {{ background:#f5faf5; font-family:'Plus Jakarta Sans',sans-serif; min-height:100vh; display:flex; align-items:center; justify-content:center; }}
 .box {{ background:#fff; padding:48px; border-radius:20px; width:100%; max-width:380px; border:1px solid rgba(0,128,0,0.15); }}
 .logo {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:26px; font-weight:800; color:#008000; margin-bottom:4px; }}
-.subtitle {{ font-size:12px; color:#4a6648; font-family:'DM Mono',monospace; margin-bottom:28px; }}
-label {{ font-size:12px; color:#4a6648; display:block; margin-bottom:6px; font-family:'DM Mono',monospace; font-weight:600; text-transform:uppercase; }}
+.subtitle {{ font-size:12px; color:#4a6648; font-family:'JetBrains Mono',monospace; margin-bottom:28px; }}
+label {{ font-size:12px; color:#4a6648; display:block; margin-bottom:6px; font-family:'JetBrains Mono',monospace; font-weight:600; text-transform:uppercase; }}
 input {{ width:100%; padding:12px; background:#f5faf5; border:1px solid rgba(0,128,0,0.2); border-radius:10px; font-size:14px; margin-bottom:16px; outline:none; }}
 input:focus {{ border-color:#008000; background:#fff; }}
-button {{ width:100%; padding:14px; background:#008000; color:#fff; border:none; border-radius:10px; font-weight:700; font-size:15px; cursor:pointer; font-family:'DM Sans',sans-serif; }}
+button {{ width:100%; padding:14px; background:#008000; color:#fff; border:none; border-radius:10px; font-weight:700; font-size:15px; cursor:pointer; font-family:'Plus Jakarta Sans',sans-serif; }}
 button:hover {{ background:#006600; }}
 
 </style>
@@ -5523,9 +5525,9 @@ def admin_panel():
 
     rows_html = ""
     for u in users:
-        verified_badge = '<span style="background:#e8f5e9;color:#2e7d32;border-radius:6px;padding:3px 10px;font-size:11px;font-family:DM Mono,monospace;font-weight:600;">✓ Verified</span>' \
+        verified_badge = '<span style="background:#e8f5e9;color:#2e7d32;border-radius:6px;padding:3px 10px;font-size:11px;font-family:JetBrains Mono,monospace;font-weight:600;">✓ Verified</span>' \
                        if u["verified"] else \
-                       '<span style="background:#fff3e0;color:#e65100;border-radius:6px;padding:3px 10px;font-size:11px;font-family:DM Mono,monospace;font-weight:600;">Pending</span>'
+                       '<span style="background:#fff3e0;color:#e65100;border-radius:6px;padding:3px 10px;font-size:11px;font-family:JetBrains Mono,monospace;font-weight:600;">Pending</span>'
         uname = u["username"]
         confirm_verify = "Manually verify " + uname + "?"
         confirm_delete = "Delete " + uname + "? This cannot be undone."
@@ -5540,10 +5542,10 @@ def admin_panel():
         signed_up  = u["signed_up"] or "—"
 
         rows_html += f"""<tr>
-            <td style="padding:14px 16px;font-size:14px;font-family:'DM Mono',monospace;color:#0a1a0a;border-bottom:1px solid rgba(0,128,0,0.08);">{u['username']}</td>
+            <td style="padding:14px 16px;font-size:14px;font-family:'JetBrains Mono',monospace;color:#0a1a0a;border-bottom:1px solid rgba(0,128,0,0.08);">{u['username']}</td>
             <td style="padding:14px 16px;font-size:14px;color:#0a1a0a;border-bottom:1px solid rgba(0,128,0,0.08);">{u['name']}</td>
             <td style="padding:14px 16px;font-size:14px;color:#4a6648;border-bottom:1px solid rgba(0,128,0,0.08);">{u['email']}</td>
-            <td style="padding:14px 16px;font-size:13px;color:#4a6648;border-bottom:1px solid rgba(0,128,0,0.08);font-family:'DM Mono',monospace;">{signed_up}</td>
+            <td style="padding:14px 16px;font-size:13px;color:#4a6648;border-bottom:1px solid rgba(0,128,0,0.08);font-family:'JetBrains Mono',monospace;">{signed_up}</td>
             <td style="padding:14px 16px;border-bottom:1px solid rgba(0,128,0,0.08);">{verified_badge}</td>
             <td style="padding:14px 16px;border-bottom:1px solid rgba(0,128,0,0.08);">{verify_btn}{delete_btn}</td>
         </tr>"""
@@ -5554,27 +5556,27 @@ def admin_panel():
     return f"""<!DOCTYPE html>
 <html>
 <head><title>Occupado — Admin Panel</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
-body {{ background:#f5faf5; font-family:'DM Sans',sans-serif; color:#0a1a0a; }}
+body {{ background:#f5faf5; font-family:'Plus Jakarta Sans',sans-serif; color:#0a1a0a; }}
 .topbar {{ background:#008000; padding:16px 40px; display:flex; align-items:center; justify-content:space-between; }}
 .topbar-logo {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:22px; font-weight:800; color:#ffffff; }}
-.topbar-sub {{ font-family:'DM Mono',monospace; font-size:12px; color:rgba(255,255,255,0.8); }}
+.topbar-sub {{ font-family:'JetBrains Mono',monospace; font-size:12px; color:rgba(255,255,255,0.8); }}
 .btn-nav {{ padding:8px 18px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); border-radius:8px; color:#ffffff; font-size:13px; font-weight:600; text-decoration:none; }}
 .btn-nav:hover {{ background:rgba(255,255,255,0.25); }}
 .content {{ max-width:1000px; margin:0 auto; padding:48px 24px; }}
 .page-title {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:32px; font-weight:800; margin-bottom:6px; }}
-.page-sub {{ font-size:13px; color:#4a6648; font-family:'DM Mono',monospace; margin-bottom:32px; }}
+.page-sub {{ font-size:13px; color:#4a6648; font-family:'JetBrains Mono',monospace; margin-bottom:32px; }}
 .stats {{ display:flex; gap:16px; margin-bottom:28px; flex-wrap:wrap; }}
 .stat-card {{ background:#fff; border:1px solid rgba(0,128,0,0.15); border-radius:12px; padding:20px 28px; flex:1; min-width:140px; }}
 .stat-num {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:32px; font-weight:800; color:#008000; line-height:1; }}
-.stat-label {{ font-size:12px; color:#4a6648; font-family:'DM Mono',monospace; margin-top:6px; }}
+.stat-label {{ font-size:12px; color:#4a6648; font-family:'JetBrains Mono',monospace; margin-top:6px; }}
 .card {{ background:#fff; border:1px solid rgba(0,128,0,0.15); border-radius:16px; overflow:hidden; }}
 .card-header {{ padding:20px 24px; border-bottom:1px solid rgba(0,128,0,0.08); }}
 .card-title {{ font-family:'Plus Jakarta Sans',sans-serif; font-size:18px; font-weight:700; }}
 table {{ width:100%; border-collapse:collapse; }}
-th {{ padding:12px 16px; text-align:left; font-size:11px; font-family:'DM Mono',monospace; color:#4a6648; text-transform:uppercase; letter-spacing:0.5px; border-bottom:2px solid rgba(0,128,0,0.1); background:#f5faf5; }}
+th {{ padding:12px 16px; text-align:left; font-size:11px; font-family:'JetBrains Mono',monospace; color:#4a6648; text-transform:uppercase; letter-spacing:0.5px; border-bottom:2px solid rgba(0,128,0,0.1); background:#f5faf5; }}
 tr:hover td {{ background:rgba(0,128,0,0.02); }}
 
 </style>
