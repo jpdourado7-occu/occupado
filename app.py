@@ -1663,7 +1663,7 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
 </div>
 
 <!-- FUTURE BOOKINGS RISK ─────────────────────────────────────────────── -->
-<div class="sh"><span class="sh-title">Upcoming Bookings — Risk Forecast</span><span class="sh-line"></span><span class="sh-sub">Apr – Dec 2026 · {fut_total:,} reservations scored</span></div>
+<div class="sh"><span class="sh-title">Upcoming Bookings — Risk Forecast</span><span class="sh-line"></span><span class="sh-sub">Apr – Dec 2026 · {fut_total:,} reservations scored</span><a href="/vdv/export-highrisk" style="margin-left:auto;display:inline-flex;align-items:center;gap:5px;padding:6px 14px;background:#111827;color:#fff;border-radius:7px;font-size:11px;font-weight:600;font-family:'Plus Jakarta Sans',sans-serif;text-decoration:none;white-space:nowrap;">↓ Export Excel</a></div>
 
 <div class="alert-card" style="margin-bottom:14px;">
   <div class="alert-icon">&#9888;</div>
@@ -6045,8 +6045,20 @@ def vdv_export_highrisk():
         return "Not authorized", 403
     bookings = VDV_FUTURE_BOOKINGS
     scores   = VDV_FUTURE_SCORES
-    if not bookings:
-        return "No data available", 404
+    if not bookings or not scores:
+        # Fallback: export the pre-computed top risk constants as a simple sheet
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "High-Risk Bookings"
+        ws.append(["Note"])
+        ws.append(["Live booking data not available on this deployment."])
+        ws.append(["Upload VDV-Data files locally to export the full list."])
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return send_file(buf, as_attachment=True,
+                         download_name="occupado_highrisk_no_data.xlsx",
+                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     indexed = sorted(enumerate(scores), key=lambda x: -x[1])[:20]
     wb = openpyxl.Workbook()
     ws = wb.active
