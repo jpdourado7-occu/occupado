@@ -18,6 +18,8 @@ warnings.filterwarnings('ignore')
 VDV_DIR = 'VDV-Data'
 FEATURES = [
     'arrival_date_week_number',
+    'arrival_month',
+    'arrival_day_of_week',
     'stays_in_weekend_nights', 'stays_in_week_nights',
     'is_repeated_guest'
 ]
@@ -107,6 +109,8 @@ def parse_cancellations():
                 'arrival': arr, 'nights': nights, 'adults': adults,
                 'lead_time': lead,
                 'arrival_date_week_number': int(arr.isocalendar()[1]),
+                'arrival_month': arr.month,
+                'arrival_day_of_week': arr.weekday(),
                 'stays_in_weekend_nights': wknd,
                 'stays_in_week_nights': wkday,
                 'adr': adr,
@@ -193,6 +197,8 @@ def parse_stays():
                 'arrival': arr, 'nights': nights, 'adults': adults,
                 'lead_time': 25,  # median — not available in RES_001
                 'arrival_date_week_number': int(arr.isocalendar()[1]),
+                'arrival_month': arr.month,
+                'arrival_day_of_week': arr.weekday(),
                 'stays_in_weekend_nights': wknd,
                 'stays_in_week_nights': wkday,
                 'adr': adr,
