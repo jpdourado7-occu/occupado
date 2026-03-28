@@ -821,7 +821,9 @@ def _score_vdv_future(bookings):
         return 1 if b['name'].strip().lower() in all_repeats else 0
 
     def normalise_within_channel(raw_scores, bookings_list):
-        """Map raw scores to realistic range per channel, preserving rank order."""
+        """Map raw scores to realistic range per channel using rank order.
+        Uses percentile rank (not raw value) so scores always spread across
+        the full range even when the model assigns similar values to everyone."""
         from collections import defaultdict
         ch_idx = defaultdict(list)
         for i, b in enumerate(bookings_list):
@@ -829,14 +831,13 @@ def _score_vdv_future(bookings):
         result = [0.0] * len(bookings_list)
         for ch, indices in ch_idx.items():
             lo, hi = CHANNEL_RANGE.get(ch, (10, 65))
-            ch_scores = [raw_scores[i] for i in indices]
-            s_min, s_max = min(ch_scores), max(ch_scores)
-            span = s_max - s_min if s_max > s_min else 1.0
-            for idx in indices:
-                norm = (raw_scores[idx] - s_min) / span  # 0..1
-                # Repeat guests get a further 10-point reduction
+            # Sort by raw score → assign rank-based percentile
+            sorted_by_score = sorted(indices, key=lambda i: raw_scores[i])
+            n = len(sorted_by_score)
+            for rank, idx in enumerate(sorted_by_score):
+                percentile = rank / (n - 1) if n > 1 else 0.5
                 reduction = 10 if is_repeat(bookings_list[idx]) else 0
-                result[idx] = max(lo, lo + norm * (hi - lo) - reduction)
+                result[idx] = round(max(lo, lo + percentile * (hi - lo) - reduction), 1)
         return result
 
     if model_vdv is not None:
