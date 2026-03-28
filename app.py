@@ -94,6 +94,25 @@ def init_db():
             expires_at TIMESTAMP NOT NULL DEFAULT (NOW() + INTERVAL '1 hour')
         )
     """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS hotel_uploads (
+            id SERIAL PRIMARY KEY,
+            hotel_username TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            uploaded_at TIMESTAMP DEFAULT NOW(),
+            records_json TEXT
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS roi_actions (
+            id SERIAL PRIMARY KEY,
+            hotel_username TEXT NOT NULL,
+            guest_name TEXT NOT NULL,
+            action_type TEXT NOT NULL,
+            sent_at TIMESTAMP DEFAULT NOW(),
+            booking_ref TEXT DEFAULT ''
+        )
+    """)
     conn.commit()
     cur.close()
     conn.close()
@@ -1193,6 +1212,36 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False):
     med_count  = sum(1 for s in scores if 40<=s<70)
     low_count  = sum(1 for s in scores if s<40)
 
+    # ── Overbooking recommendation ─────────────────────────────────────────
+    from math import ceil
+    if fut_bookings:
+        tonight_high_risk = sum(
+            1 for b, s in zip(fut_bookings, fut_scores)
+            if b['arr_date'].date() == today.date() and s >= 70
+        )
+    else:
+        tonight_high_risk = sum(1 for g, s in zip(guests, scores)
+                                if g['status'] == 'Arriving Today' and s >= 70)
+    overbook_rec = ceil(tonight_high_risk * 0.15) if tonight_high_risk else 0
+
+    # ── ROI tracking stats ─────────────────────────────────────────────────
+    roi_emails_sent = 0
+    roi_recovered   = 0
+    try:
+        _conn_roi = get_db()
+        _cur_roi  = _conn_roi.cursor()
+        _cur_roi.execute("SELECT COUNT(*) FROM roi_actions WHERE hotel_username=%s",
+                         (VDV_HOTEL_KEY,))
+        roi_emails_sent = _cur_roi.fetchone()[0]
+        _cur_roi.execute("SELECT COUNT(*) FROM roi_actions WHERE hotel_username=%s AND booking_ref='RECOVERED'",
+                         (VDV_HOTEL_KEY,))
+        roi_recovered = _cur_roi.fetchone()[0]
+        _cur_roi.close()
+        _conn_roi.close()
+    except:
+        pass
+    roi_rev_saved = roi_recovered * int(avg_adr * avg_nights)
+
     # ── Guest table rows ───────────────────────────────────────────────────
     def st_badge(s):
         if s=='Arriving Today': return '<span class="stb stb-a">Arriving Today</span>'
@@ -1543,6 +1592,26 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
   </div>
 </div>
 
+<!-- OVERBOOKING + ROI STRIP ─────────────────────────────────────────── -->
+{f'''<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px;margin-bottom:8px;">
+  <div style="border:1px solid #fef3c7;background:#fffbeb;border-radius:12px;padding:20px 24px;display:flex;align-items:center;gap:16px;">
+    <div style="font-size:28px;line-height:1;">⚡</div>
+    <div>
+      <div style="font-size:11px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;color:#92400e;margin-bottom:4px;">Overbooking Recommendation</div>
+      <div style="font-size:20px;font-weight:700;color:#92400e;">{f"Sell +{overbook_rec} extra room{'s' if overbook_rec!=1 else ''} tonight" if overbook_rec > 0 else "No overbooking needed tonight"}</div>
+      <div style="font-size:12px;color:#a16207;margin-top:4px;">{tonight_high_risk} high-risk arrival{'s' if tonight_high_risk!=1 else ''} tonight · 15% walk rate assumed</div>
+    </div>
+  </div>
+  <div style="border:1px solid #d1fae5;background:#f0fdf4;border-radius:12px;padding:20px 24px;display:flex;align-items:center;gap:16px;">
+    <div style="font-size:28px;line-height:1;">📈</div>
+    <div>
+      <div style="font-size:11px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;color:#166534;margin-bottom:4px;">ROI Tracking</div>
+      <div style="font-size:20px;font-weight:700;color:#166534;">€{roi_rev_saved:,} saved</div>
+      <div style="font-size:12px;color:#15803d;margin-top:4px;">{roi_emails_sent} emails sent · {roi_recovered} recoveries confirmed</div>
+    </div>
+  </div>
+</div>''' if True else ''}
+
 <!-- CHARTS ───────────────────────────────────────────────────────────── -->
 <div class="sh"><span class="sh-title">Trends</span><span class="sh-line"></span><span class="sh-sub">Monthly breakdown — click bars or points to filter</span></div>
 <div class="row row-2">
@@ -1633,6 +1702,11 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
 </tr></thead>
 <tbody>{fut_table_html}</tbody>
 </table>
+<div style="margin-top:12px;text-align:right;">
+  <a href="/vdv/export-highrisk" style="display:inline-flex;align-items:center;gap:6px;padding:8px 18px;background:#111827;color:#fff;border-radius:8px;font-size:12px;font-weight:600;font-family:\'Plus Jakarta Sans\',sans-serif;text-decoration:none;">
+    ↓ Export High-Risk to Excel
+  </a>
+</div>
 '''}
 
 <!-- OCCUPANCY & REVENUE TREND ──────────────────────────────────────────── -->
@@ -5018,6 +5092,18 @@ def send_guest_email():
     success = send_email_to_guest(guest_email, guest_name, hotel_name, subject, body)
 
     if success:
+        try:
+            _conn = get_db()
+            _cur  = _conn.cursor()
+            _cur.execute(
+                "INSERT INTO roi_actions (hotel_username, guest_name, action_type) VALUES (%s, %s, %s)",
+                (session.get("hotel", ""), guest_name, "email")
+            )
+            _conn.commit()
+            _cur.close()
+            _conn.close()
+        except:
+            pass
         return {"status": "success", "message": f"Email sent to {guest_email}"}
     else:
         return {"status": "error", "message": "Failed to send email"}, 500
@@ -5175,13 +5261,33 @@ def shiji_upload():
                 def read_upload(key):
                     f = request.files.get(key)
                     if f and f.filename:
-                        content = f.read().decode("utf-8", errors="replace")
-                        return pd.read_csv(io.StringIO(content))
+                        raw = f.read()
+                        name = f.filename.lower()
+                        if name.endswith(".xlsx") or name.endswith(".xls"):
+                            return pd.read_excel(io.BytesIO(raw))
+                        else:
+                            return pd.read_csv(io.StringIO(raw.decode("utf-8", errors="replace")))
                     return None
 
                 df_res = read_upload("res_file")
                 df_cxl = read_upload("cxl_file")
                 df_ns  = read_upload("ns_file")
+
+                # Persist upload record
+                try:
+                    _upf = request.files.get("res_file")
+                    _fn  = _upf.filename if _upf else "upload"
+                    _conn_up = get_db()
+                    _cur_up  = _conn_up.cursor()
+                    _cur_up.execute(
+                        "INSERT INTO hotel_uploads (hotel_username, filename) VALUES (%s, %s)",
+                        (hotel_username, _fn)
+                    )
+                    _conn_up.commit()
+                    _cur_up.close()
+                    _conn_up.close()
+                except:
+                    pass
 
                 df_transformed = transform_shiji(df_res, df_cxl, df_ns)
                 csv_data = df_transformed.to_dict(orient="records")
@@ -5261,15 +5367,15 @@ input[type=file]:hover {{ border-color:#008000; }}
         <form method="POST" enctype="multipart/form-data">
             <div class="file-row">
                 <label class="file-label">Reservations <span class="req-badge">REQUIRED</span></label>
-                <input type="file" name="res_file" accept=".csv" required>
+                <input type="file" name="res_file" accept=".csv,.xlsx,.xls" required>
             </div>
             <div class="file-row">
                 <label class="file-label">Cancelled Reservations <span class="opt-badge">OPTIONAL</span></label>
-                <input type="file" name="cxl_file" accept=".csv">
+                <input type="file" name="cxl_file" accept=".csv,.xlsx,.xls">
             </div>
             <div class="file-row" style="margin-bottom:28px;">
                 <label class="file-label">No-Shows <span class="opt-badge">OPTIONAL</span></label>
-                <input type="file" name="ns_file" accept=".csv">
+                <input type="file" name="ns_file" accept=".csv,.xlsx,.xls">
             </div>
             <button type="submit" class="submit-btn">🚀 Run Predictions →</button>
         </form>
@@ -5924,6 +6030,182 @@ def admin_clear_test_data():
 def admin_logout():
     session.pop("is_admin", None)
     return redirect(url_for("admin_login"))
+
+
+# ─────────────────────────────────────────────
+#  FEATURE 1 — Excel export of high-risk bookings
+# ─────────────────────────────────────────────
+
+@app.route("/vdv/export-highrisk")
+@login_required
+def vdv_export_highrisk():
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    if session.get("hotel") != VDV_HOTEL_KEY:
+        return "Not authorized", 403
+    bookings = VDV_FUTURE_BOOKINGS
+    scores   = VDV_FUTURE_SCORES
+    if not bookings:
+        return "No data available", 404
+    indexed = sorted(enumerate(scores), key=lambda x: -x[1])[:20]
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "High-Risk Bookings"
+    header_fill = PatternFill("solid", fgColor="111827")
+    header_font = Font(bold=True, color="FFFFFF", size=11)
+    headers = ["#", "Guest", "Arrival", "Nights", "Lead (days)", "Channel", "Guarantee", "Risk %"]
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.fill  = header_fill
+        cell.font  = header_font
+        cell.alignment = Alignment(horizontal="center")
+    high_fill = PatternFill("solid", fgColor="FEE2E2")
+    med_fill  = PatternFill("solid", fgColor="FEF3C7")
+    for rank, (idx, sc) in enumerate(indexed):
+        b = bookings[idx]
+        row = [rank+1, b["name"], b["arrival"], b["nights"], b["lead"],
+               b["channel"], b["gtd"], round(sc, 1)]
+        ws.append(row)
+        risk_cell = ws.cell(row=rank+2, column=8)
+        risk_cell.fill = high_fill if sc >= 70 else med_fill
+        risk_cell.font = Font(bold=True)
+    for col in ws.columns:
+        max_len = max(len(str(cell.value or "")) for cell in col)
+        ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 40)
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=f"occupado_highrisk_{datetime.now().strftime('%Y%m%d')}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+
+# ─────────────────────────────────────────────
+#  FEATURE 2 — Weekly email digest
+# ─────────────────────────────────────────────
+
+def send_weekly_digest():
+    """Build and send Monday morning digest to VdV alert email."""
+    alert_email = os.environ.get("VDV_ALERT_EMAIL", "")
+    if not alert_email:
+        return False
+    bookings = VDV_FUTURE_BOOKINGS
+    scores   = VDV_FUTURE_SCORES
+    fut_high = sum(1 for s in scores if s >= 70) if scores else 735
+    fut_med  = sum(1 for s in scores if 40 <= s < 70) if scores else 1484
+    fut_low  = sum(1 for s in scores if s < 40) if scores else 576
+    fut_total = len(bookings) if bookings else 2795
+    roi_emails = 0
+    roi_recovered = 0
+    try:
+        _c = get_db(); _cu = _c.cursor()
+        _cu.execute("SELECT COUNT(*) FROM roi_actions WHERE hotel_username=%s", (VDV_HOTEL_KEY,))
+        roi_emails = _cu.fetchone()[0]
+        _cu.execute("SELECT COUNT(*) FROM roi_actions WHERE hotel_username=%s AND booking_ref='RECOVERED'", (VDV_HOTEL_KEY,))
+        roi_recovered = _cu.fetchone()[0]
+        _cu.close(); _c.close()
+    except:
+        pass
+    week_label = datetime.now().strftime("Week of %d %b %Y")
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:680px;margin:0 auto;">
+      <div style="background:#111827;color:#fff;padding:28px 32px;border-radius:12px 12px 0 0;">
+        <h2 style="margin:0;font-size:22px;font-weight:700;">Occupado Weekly Digest</h2>
+        <p style="margin:6px 0 0;font-size:13px;opacity:.7;">Van der Valk Hotel Mechelen · {week_label}</p>
+      </div>
+      <div style="background:#f9fafb;padding:28px 32px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;">
+        <h3 style="font-size:15px;font-weight:600;color:#111827;margin:0 0 16px;">Future Booking Risk</h3>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
+          <tr style="border-bottom:1px solid #e5e7eb;">
+            <td style="padding:10px 0;color:#374151;">Total upcoming bookings</td>
+            <td style="padding:10px 0;text-align:right;font-weight:600;">{fut_total:,}</td>
+          </tr>
+          <tr style="border-bottom:1px solid #e5e7eb;">
+            <td style="padding:10px 0;color:#dc2626;">&#x25CF; High risk (≥70%)</td>
+            <td style="padding:10px 0;text-align:right;font-weight:600;color:#dc2626;">{fut_high:,}</td>
+          </tr>
+          <tr style="border-bottom:1px solid #e5e7eb;">
+            <td style="padding:10px 0;color:#d97706;">&#x25CF; Medium risk (40–69%)</td>
+            <td style="padding:10px 0;text-align:right;font-weight:600;color:#d97706;">{fut_med:,}</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 0;color:#16a34a;">&#x25CF; Low risk (&lt;40%)</td>
+            <td style="padding:10px 0;text-align:right;font-weight:600;color:#16a34a;">{fut_low:,}</td>
+          </tr>
+        </table>
+        <h3 style="font-size:15px;font-weight:600;color:#111827;margin:0 0 16px;">Recovery Actions This Week</h3>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:28px;">
+          <tr style="border-bottom:1px solid #e5e7eb;">
+            <td style="padding:10px 0;color:#374151;">Retention emails sent</td>
+            <td style="padding:10px 0;text-align:right;font-weight:600;">{roi_emails}</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 0;color:#374151;">Bookings recovered</td>
+            <td style="padding:10px 0;text-align:right;font-weight:600;color:#16a34a;">{roi_recovered}</td>
+          </tr>
+        </table>
+        <center>
+          <a href="https://occupado.up.railway.app/dashboard" style="background:#111827;color:#fff;padding:12px 32px;text-decoration:none;border-radius:8px;display:inline-block;font-weight:600;font-size:14px;">View Full Dashboard →</a>
+        </center>
+      </div>
+    </div>"""
+    message = Mail(
+        from_email=os.environ.get("ALERT_FROM_EMAIL", "team@occupado.co"),
+        to_emails=alert_email,
+        subject=f"Occupado Weekly Digest — {week_label}",
+        html_content=html
+    )
+    try:
+        sg = SendGridAPIClient(os.environ.get("SENDGRID_API_KEY"))
+        sg.send(message)
+        print(f"[DIGEST] Sent to {alert_email}")
+        return True
+    except Exception as e:
+        print(f"[DIGEST ERROR] {e}")
+        return False
+
+
+@app.route("/internal/weekly-digest", methods=["POST"])
+def internal_weekly_digest():
+    token = request.headers.get("X-Internal-Token", "")
+    expected = os.environ.get("INTERNAL_TOKEN", "")
+    if not expected or token != expected:
+        return {"status": "error", "message": "Unauthorized"}, 401
+    ok = send_weekly_digest()
+    return {"status": "ok" if ok else "error"}
+
+
+# ─────────────────────────────────────────────
+#  FEATURE 5 — ROI recovery marking
+# ─────────────────────────────────────────────
+
+@app.route("/internal/mark-recoveries", methods=["POST"])
+def internal_mark_recoveries():
+    token = request.headers.get("X-Internal-Token", "")
+    expected = os.environ.get("INTERNAL_TOKEN", "")
+    if not expected or token != expected:
+        return {"status": "error", "message": "Unauthorized"}, 401
+    data     = request.get_json() or {}
+    guest_name = data.get("guest_name", "")
+    if not guest_name:
+        return {"status": "error", "message": "guest_name required"}, 400
+    try:
+        conn = get_db()
+        cur  = conn.cursor()
+        cur.execute(
+            "UPDATE roi_actions SET booking_ref='RECOVERED' WHERE hotel_username=%s AND guest_name=%s AND booking_ref=''",
+            (VDV_HOTEL_KEY, guest_name)
+        )
+        updated = cur.rowcount
+        conn.commit()
+        cur.close()
+        conn.close()
+        return {"status": "ok", "marked": updated}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}, 500
 
 
 if __name__ == "__main__":
