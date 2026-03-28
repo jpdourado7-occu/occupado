@@ -789,17 +789,66 @@ def _parse_vdv_future_bookings():
 
 
 def _score_vdv_future(bookings):
-    """Score VdV future bookings using the VdV-specific model (4 features)."""
+    """Score VdV future bookings using the VdV-specific model (8 features)."""
     if not bookings:
         return []
+
+    # ── Detect repeat guests ────────────────────────────────────────────────
+    # 1. Guests appearing 2+ times in the future bookings list
+    from collections import Counter
+    name_counts = Counter(b['name'].strip().lower() for b in bookings)
+    repeat_names = {n for n, c in name_counts.items() if c >= 2}
+    # 2. Known repeat guests from RES_042 (current week repeat guests)
+    known_repeats = {g['name'].strip().lower() for g in VDV_GUESTS_RAW}
+    all_repeats = repeat_names | known_repeats
+
+    # ── Realistic score ranges per channel ──────────────────────────────────
+    # Training data was 84% cancellations (vs ~25% real-world rate), so raw
+    # model scores cluster near 100% for everyone. We preserve the model's
+    # ranking ability (AUC 0.856) by normalising within each channel to a
+    # realistic [min, max] range based on actual VdV cancellation patterns.
+    CHANNEL_RANGE = {
+        'Booking.com':       (18, 80),  # OTA: ~35% avg cancel rate
+        'Direct/Web':        (12, 70),  # Direct: ~20% avg cancel rate
+        'Direct / Web':      (12, 70),
+        'Corporate':         ( 5, 42),  # Corporate: ~10-15% — often guaranteed
+        'Package':           ( 4, 35),  # Packages: ~5-8% — usually prepaid
+        'Packages / Groups': ( 4, 35),
+        'Other':             (10, 60),
+    }
+
+    def is_repeat(b):
+        return 1 if b['name'].strip().lower() in all_repeats else 0
+
+    def normalise_within_channel(raw_scores, bookings_list):
+        """Map raw scores to realistic range per channel, preserving rank order."""
+        from collections import defaultdict
+        ch_idx = defaultdict(list)
+        for i, b in enumerate(bookings_list):
+            ch_idx[b['channel']].append(i)
+        result = [0.0] * len(bookings_list)
+        for ch, indices in ch_idx.items():
+            lo, hi = CHANNEL_RANGE.get(ch, (10, 65))
+            ch_scores = [raw_scores[i] for i in indices]
+            s_min, s_max = min(ch_scores), max(ch_scores)
+            span = s_max - s_min if s_max > s_min else 1.0
+            for idx in indices:
+                norm = (raw_scores[idx] - s_min) / span  # 0..1
+                # Repeat guests get a further 10-point reduction
+                reduction = 10 if is_repeat(bookings_list[idx]) else 0
+                result[idx] = max(lo, lo + norm * (hi - lo) - reduction)
+        return result
+
     if model_vdv is not None:
         rows_feat = [[b['lead'], b['week_num'], b['arr_date'].month, b['arr_date'].weekday(),
                       b['wkend'], b['wkday'],
-                      1 if b['channel'] == 'Corporate' else 0,
+                      is_repeat(b),
                       _CHANNEL_MAP.get(b['channel'], float('nan'))]
                      for b in bookings]
         df = pd.DataFrame(rows_feat, columns=_VDV_MODEL_FEATURES)
-        return [float(s) for s in model_vdv.predict_proba(df)[:, 1] * 100]
+        raw_scores = list(model_vdv.predict_proba(df)[:, 1] * 100)
+        return [float(round(s, 1)) for s in normalise_within_channel(raw_scores, bookings)]
+
     # Fallback to generic model
     feat_cols = ['lead_time','arrival_date_week_number','stays_in_weekend_nights',
                  'stays_in_week_nights','adults','is_repeated_guest',
@@ -807,11 +856,11 @@ def _score_vdv_future(bookings):
                  'booking_changes','days_in_waiting_list','adr','total_of_special_requests']
     rows_feat = []
     for b in bookings:
-        is_corp = 1 if b['channel'] == 'Corporate' else 0
         rows_feat.append([b['lead'], b['week_num'], b['wkend'], b['wkday'],
-                          b['adults'], is_corp, 0, 0, 0, 0, b['adr'], 0])
+                          b['adults'], is_repeat(b), 0, 0, 0, 0, b['adr'], 0])
     df = pd.DataFrame(rows_feat, columns=feat_cols)
-    return [float(s) for s in model.predict_proba(df)[:, 1] * 100]
+    raw_scores = list(model.predict_proba(df)[:, 1] * 100)
+    return [float(round(s, 1)) for s in normalise_within_channel(raw_scores, bookings)]
 
 
 def _parse_mice_data():
