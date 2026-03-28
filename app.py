@@ -1222,35 +1222,48 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False):
         fut_med   = sum(1 for s in fut_scores if 40 <= s < 70)
         fut_low   = sum(1 for s in fut_scores if s < 40)
         fut_no_gtd = sum(1 for b in fut_bookings if b['gtd'] == 'NONE')
-        # Top 20 at-risk bookings table
-        indexed = sorted(enumerate(fut_scores), key=lambda x: -x[1])[:20]
+        # Top 10 per channel at-risk bookings table
+        from collections import defaultdict as _dd
+        _ch_buckets = _dd(list)
+        for _i, (_b, _s) in enumerate(zip(fut_bookings, fut_scores)):
+            _ch_buckets[_b['channel']].append((_i, _s))
+        # Order channels by their highest score descending
+        _ch_order = sorted(_ch_buckets.keys(),
+                           key=lambda c: max(s for _, s in _ch_buckets[c]),
+                           reverse=True)
         fut_table_html = ''
-        for rank, (idx, sc) in enumerate(indexed):
-            b = fut_bookings[idx]
-            ch = b['channel']
-            gtd = b['gtd']
-            if sc >= 70:
-                bdg = f'<span class="badge high">{sc:.0f}%</span>'
-                act = '<span class="abtn dep">Deposit</span>'
-            elif sc >= 40:
-                bdg = f'<span class="badge med">{sc:.0f}%</span>'
-                act = '<span class="abtn rem">Reminder</span>'
-            else:
-                bdg = f'<span class="badge low">{sc:.0f}%</span>'
-                act = '<span class="abtn mon">Monitor</span>'
-            gtd_badge = ('<span class="gtd-none">No GTD</span>' if gtd == 'NONE'
-                         else f'<span class="gtd-ok">{gtd}</span>')
+        for _ch in _ch_order:
+            _top10 = sorted(_ch_buckets[_ch], key=lambda x: -x[1])[:10]
             fut_table_html += (
-                f'<tr><td>{rank+1}</td>'
-                f'<td class="gn">{b["name"]}</td>'
-                f'<td>{b["arrival"]}</td>'
-                f'<td>{b["nights"]}n</td>'
-                f'<td>{b["lead"]}d</td>'
-                f'<td>{ch}</td>'
-                f'<td>{gtd_badge}</td>'
-                f'<td>{bdg}</td>'
-                f'<td>{act}</td></tr>'
+                f'<tr class="ch-header-row">'
+                f'<td colspan="9"><strong>{_ch}</strong> — Top 10</td></tr>'
             )
+            for _rank, (_idx, sc) in enumerate(_top10):
+                b = fut_bookings[_idx]
+                ch = b['channel']
+                gtd = b['gtd']
+                if sc >= 70:
+                    bdg = f'<span class="badge high">{sc:.0f}%</span>'
+                    act = '<span class="abtn dep">Deposit</span>'
+                elif sc >= 40:
+                    bdg = f'<span class="badge med">{sc:.0f}%</span>'
+                    act = '<span class="abtn rem">Reminder</span>'
+                else:
+                    bdg = f'<span class="badge low">{sc:.0f}%</span>'
+                    act = '<span class="abtn mon">Monitor</span>'
+                gtd_badge = ('<span class="gtd-none">No GTD</span>' if gtd == 'NONE'
+                             else f'<span class="gtd-ok">{gtd}</span>')
+                fut_table_html += (
+                    f'<tr><td>{_rank+1}</td>'
+                    f'<td class="gn">{b["name"]}</td>'
+                    f'<td>{b["arrival"]}</td>'
+                    f'<td>{b["nights"]}n</td>'
+                    f'<td>{b["lead"]}d</td>'
+                    f'<td>{ch}</td>'
+                    f'<td>{gtd_badge}</td>'
+                    f'<td>{bdg}</td>'
+                    f'<td>{act}</td></tr>'
+                )
         # Channel risk breakdown
         from collections import defaultdict
         ch_risk = defaultdict(lambda: {'high': 0, 'total': 0})
@@ -1522,6 +1535,7 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
 .ap-btn.ghost{{background:#fff;border:1px solid #e5e7eb;color:#111827;}}
 .ap-btn.ghost:hover{{background:#f9fafb;}}
 .ap-grid{{display:grid;grid-template-columns:1fr 1fr;gap:16px;}}
+.ch-header-row td{{background:#f1f5f9;font-size:11px;font-weight:600;color:#475569;padding:7px 10px;letter-spacing:.04em;text-transform:uppercase;}}
 .gtd-none{{background:#fef2f2;color:#ef4444;border:1px solid #fecaca;padding:1px 7px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;white-space:nowrap;}}
 .gtd-ok{{background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;padding:1px 7px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;white-space:nowrap;}}
 .alert-card{{border:1px solid #fed7aa;background:#fff7ed;border-radius:10px;padding:14px 18px;display:flex;align-items:center;gap:12px;}}
@@ -1770,7 +1784,7 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
 </div>
 
 {"" if not fut_table_html else f'''
-<div class="sh"><span class="sh-title">Top 20 Highest-Risk Future Bookings</span><span class="sh-line"></span><span class="sh-sub">Act now to prevent cancellation</span></div>
+<div class="sh"><span class="sh-title">Top 10 at Risk — Per Channel</span><span class="sh-line"></span><span class="sh-sub">Act now to prevent cancellation</span></div>
 <table class="tbl">
 <thead><tr>
   <th>#</th><th>Guest</th><th>Arrival</th><th>Nights</th><th>Lead</th><th>Channel</th><th>GTD</th><th>Risk</th><th>Action</th>
