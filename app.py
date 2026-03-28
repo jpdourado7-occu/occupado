@@ -113,6 +113,14 @@ def init_db():
             booking_ref TEXT DEFAULT ''
         )
     """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS vdv_bookings_cache (
+            id SERIAL PRIMARY KEY,
+            cached_at TIMESTAMP DEFAULT NOW(),
+            bookings_json TEXT NOT NULL,
+            scores_json TEXT NOT NULL
+        )
+    """)
     conn.commit()
     cur.close()
     conn.close()
@@ -1016,6 +1024,23 @@ try:
     VDV_GROUP_PIPELINE  = _parse_group_pipeline()
     if VDV_FUTURE_BOOKINGS:
         VDV_FUTURE_SCORES = _score_vdv_future(VDV_FUTURE_BOOKINGS)
+        # Persist to DB so Railway can serve the export even without local files
+        try:
+            _cache_conn = get_db()
+            _cache_cur  = _cache_conn.cursor()
+            # Store arr_date as string since datetime isn't JSON serialisable
+            _b_serialisable = [{**b, 'arr_date': b['arr_date'].isoformat()} for b in VDV_FUTURE_BOOKINGS]
+            _cache_cur.execute("DELETE FROM vdv_bookings_cache")
+            _cache_cur.execute(
+                "INSERT INTO vdv_bookings_cache (bookings_json, scores_json) VALUES (%s, %s)",
+                (json.dumps(_b_serialisable), json.dumps(VDV_FUTURE_SCORES))
+            )
+            _cache_conn.commit()
+            _cache_cur.close()
+            _cache_conn.close()
+            print(f"[VDV] Cached {len(VDV_FUTURE_BOOKINGS)} bookings to DB")
+        except Exception as _ce:
+            print(f"[VDV] Cache warning: {_ce}")
     print(f"[VDV] Loaded {len(VDV_GUESTS_RAW)} repeat guests, "
           f"{len(VDV_FORECAST_DATA['history'])}h/{len(VDV_FORECAST_DATA['forecast'])}f forecast days, "
           f"{len(VDV_GROUP_PIPELINE)} upcoming groups, ",
@@ -6046,19 +6071,23 @@ def vdv_export_highrisk():
     bookings = VDV_FUTURE_BOOKINGS
     scores   = VDV_FUTURE_SCORES
     if not bookings or not scores:
-        # Fallback: export the pre-computed top risk constants as a simple sheet
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "High-Risk Bookings"
-        ws.append(["Note"])
-        ws.append(["Live booking data not available on this deployment."])
-        ws.append(["Upload VDV-Data files locally to export the full list."])
-        buf = io.BytesIO()
-        wb.save(buf)
-        buf.seek(0)
-        return send_file(buf, as_attachment=True,
-                         download_name="occupado_highrisk_no_data.xlsx",
-                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        # Load from DB cache (populated when local app runs with VDV-Data files)
+        try:
+            _c = get_db(); _cu = _c.cursor()
+            _cu.execute("SELECT bookings_json, scores_json FROM vdv_bookings_cache ORDER BY cached_at DESC LIMIT 1")
+            row = _cu.fetchone()
+            _cu.close(); _c.close()
+            if row:
+                from datetime import datetime as _dt
+                _raw = json.loads(row[0])
+                for b in _raw:
+                    b['arr_date'] = _dt.fromisoformat(b['arr_date'])
+                bookings = _raw
+                scores   = json.loads(row[1])
+        except Exception as _ce:
+            pass
+    if not bookings or not scores:
+        return "No booking data available. Run the app locally with VDV-Data files to populate the cache.", 404
     indexed = sorted(enumerate(scores), key=lambda x: -x[1])[:20]
     wb = openpyxl.Workbook()
     ws = wb.active
