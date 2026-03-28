@@ -518,15 +518,20 @@ HOTELS = {
 with open("occupado_model.pkl", "rb") as f:
     model = pickle.load(f)
 
-# VdV-specific model trained on Shiji data (6 features, no data leakage)
+# VdV-specific model trained on Shiji data (8 features)
+# channel_encoded: 0=OTA/Web, 1=Direct, 2=Corporate, 3=Group/Package, NaN=Unknown
 _VDV_MODEL_FEATURES = [
-    'arrival_date_week_number', 'arrival_month', 'arrival_day_of_week',
-    'stays_in_weekend_nights', 'stays_in_week_nights', 'is_repeated_guest'
+    'lead_time', 'arrival_date_week_number', 'arrival_month', 'arrival_day_of_week',
+    'stays_in_weekend_nights', 'stays_in_week_nights', 'is_repeated_guest',
+    'channel_encoded'
 ]
+_CHANNEL_MAP = {
+    'Booking.com': 0.0, 'Direct/Web': 1.0, 'Corporate': 2.0, 'Package': 3.0,
+}
 try:
     with open("occupado_model_vdv.pkl", "rb") as f:
         model_vdv = pickle.load(f)
-    print("[VdV] VdV-specific model loaded (6 features)")
+    print("[VdV] VdV-specific model loaded (8 features, AUC 0.856)")
 except Exception:
     model_vdv = None
     print("[VdV] VdV-specific model not found, falling back to generic")
@@ -655,7 +660,8 @@ def _score_vdv_guests(guests):
                 d += timedelta(days=1)
         week_num = int(arr.isocalendar()[1])
         is_repeat = 1  # all guests in this table are repeat guests by definition
-        feat_rows.append([week_num, arr.month, arr.weekday(), wkend, wkday, is_repeat])
+        lead = max(0, (arr - datetime.now()).days)  # days until arrival as proxy
+        feat_rows.append([lead, week_num, arr.month, arr.weekday(), wkend, wkday, is_repeat, float('nan')])
     df_feat = pd.DataFrame(feat_rows, columns=_VDV_MODEL_FEATURES)
     m = model_vdv if model_vdv is not None else model
     if model_vdv is None:
@@ -760,9 +766,10 @@ def _score_vdv_future(bookings):
     if not bookings:
         return []
     if model_vdv is not None:
-        rows_feat = [[b['week_num'], b['arr_date'].month, b['arr_date'].weekday(),
+        rows_feat = [[b['lead'], b['week_num'], b['arr_date'].month, b['arr_date'].weekday(),
                       b['wkend'], b['wkday'],
-                      1 if b['channel'] == 'Corporate' else 0]
+                      1 if b['channel'] == 'Corporate' else 0,
+                      _CHANNEL_MAP.get(b['channel'], float('nan'))]
                      for b in bookings]
         df = pd.DataFrame(rows_feat, columns=_VDV_MODEL_FEATURES)
         return [float(s) for s in model_vdv.predict_proba(df)[:, 1] * 100]

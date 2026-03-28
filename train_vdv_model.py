@@ -2,9 +2,17 @@
 Train a VdV-specific cancellation risk model using only features
 reliably available from Shiji PMS exports.
 
-Features used (7):
-  lead_time, arrival_date_week_number, stays_in_weekend_nights,
-  stays_in_week_nights, adults, is_repeated_guest, adr
+Features used (8):
+  arrival_date_week_number, arrival_month, arrival_day_of_week,
+  stays_in_weekend_nights, stays_in_week_nights,
+  is_repeated_guest, lead_time, channel_encoded
+
+Data sources:
+  Completed stays : RES_004 (5/6/7) — past arrivals with booking creation dates
+  Cancellations   : RES_036 x3 + RES_037 x2
+
+channel_encoded: 0=OTA/Web, 1=Direct, 2=Corporate, 3=Group/Package, NaN=Unknown
+lead_time: days between booking creation and arrival (real value for all records)
 
 Output: occupado_model_vdv.pkl
 """
@@ -17,11 +25,13 @@ warnings.filterwarnings('ignore')
 
 VDV_DIR = 'VDV-Data'
 FEATURES = [
+    'lead_time',
     'arrival_date_week_number',
     'arrival_month',
     'arrival_day_of_week',
     'stays_in_weekend_nights', 'stays_in_week_nights',
-    'is_repeated_guest'
+    'is_repeated_guest',
+    'channel_encoded',
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -44,15 +54,61 @@ def safe_float(s):
     try: return float(str(s).replace('.','').replace(',','.').strip())
     except: return None
 
+# RES_036 sub-row col[3] market segment → channel
+_SEG_MAP = {
+    'BARWEB': 0, 'BAROTAGROSS': 0, 'DEALSOTA': 0, 'DISCOTAGROSS': 0,
+    'DISCWEB': 0, 'DISCOTA': 0, 'BAROTA': 0, 'DEALSOTAWEB': 0,
+    'DISCDIR': 1, 'BARDIR': 1, 'DISCBBDIR': 1,
+    'CORPFIX': 2, 'CORPDYN': 2,
+    'MTGBNS': 3, 'BNSGRP': 3, 'PACK': 3,
+}
+
+# RES_004 col[25] channel/source → channel
+_CH25_MAP = {
+    'IBE': 0,        # Internet Booking Engine (OTA/Web)
+    'OTH': 0,        # Other online
+    'GDS': 0,        # Global Distribution System
+    'DIRECT': 1,     # Direct
+    'PHONE': 1,      # Phone/direct
+    'EMAIL': 1,      # Email/direct
+    'CORP': 2,       # Corporate
+    'GROUP': 3,      # Group
+}
+
+def seg_to_channel(seg):
+    return float(_SEG_MAP.get(str(seg).upper().strip(), float('nan')))
+
+def ch25_to_channel(val):
+    """Map RES_004 col[25] channel code to channel int."""
+    if not val: return float('nan')
+    v = str(val).upper().strip()
+    if v in _CH25_MAP: return float(_CH25_MAP[v])
+    if 'OTA' in v or 'WEB' in v or 'IBE' in v: return 0.0
+    if 'DIRECT' in v or 'PHONE' in v: return 1.0
+    if 'CORP' in v: return 2.0
+    if 'GROUP' in v or 'GRP' in v or 'MTG' in v: return 3.0
+    return float('nan')
+
+def rate_plan_to_channel(code):
+    """Map rate plan code (col[13] in RES_004) to channel int as fallback."""
+    if not code: return float('nan')
+    c = str(code).upper()
+    if 'OTA' in c or ('WEB' in c and 'DIR' not in c): return 0.0
+    if 'DIR' in c: return 1.0
+    if 'CORP' in c or c.startswith('CRPL'): return 2.0
+    if any(x in c for x in ('MTG', 'BNS', 'PACK', 'GRP')): return 3.0
+    return float('nan')
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PARSE CANCELLATIONS (RES_036 x3 + RES_037 x2)
 # ─────────────────────────────────────────────────────────────────────────────
 def parse_cancellations():
     """
-    RES_036 row structure (openpyxl, 0-indexed):
-      Guest row:  [name, room_type, company, arr_date, nights, rate_plan, rate_amt, created_date, cxl_datetime, cxl_no]
-      Sub-row:    [room_no, dep_date, adults/children, rate_amt, channel, agent, ...]
-    RES_037 (no-shows) has a similar structure.
+    RES_036 row structure (0-indexed):
+      Guest row:  col[8]=arrival, col[9]=nights, col[13]=rate_amt, col[14]=created
+      Sub-rows:   col[3]=market_segment, col[9]=adults/children
+    Returns (DataFrame, set of (arrival_date_str, nights) keys for cross-ref).
     """
     import openpyxl
     records = []
@@ -67,9 +123,6 @@ def parse_cancellations():
         wb.close()
         file_count = 0
 
-        # Exact column map (verified via openpyxl debug):
-        # Guest row: col[8]=arrival, col[9]=nights, col[13]=rate_amt, col[14]=created
-        # Sub-row:   col[9]=adults/children
         for i, row in enumerate(rows):
             if i < 7: continue
             if not row or len(row) < 15: continue
@@ -78,7 +131,6 @@ def parse_cancellations():
             c13 = str(row[13]).strip() if row[13] is not None else ''
             c14 = str(row[14]).strip() if row[14] is not None else ''
 
-            # Identify guest row: col[8] is dd/mm/yyyy, col[9] is digit
             if not re.match(r'\d{2}/\d{2}/\d{4}$', c8): continue
             if not c9.isdigit(): continue
 
@@ -88,18 +140,21 @@ def parse_cancellations():
             created = parse_date(c14)
             if arr is None: continue
 
-            # Adults from sub-row col[9] which has "x/y" format
             adults = 1
-            for j in range(i + 1, min(i + 5, len(rows))):
+            channel = float('nan')
+            for j in range(i + 1, min(i + 6, len(rows))):
                 sub = rows[j]
                 if not sub or len(sub) < 10: continue
                 v = str(sub[9]).strip() if sub[9] is not None else ''
-                if '/' in v:
+                if '/' in v and adults == 1:
                     parts = v.split('/')
                     if len(parts) == 2 and all(p.strip().isdigit() for p in parts):
                         a = int(parts[0].strip())
                         if 1 <= a <= 10: adults = a
-                break
+                if sub[3] is not None and (isinstance(channel, float) and channel != channel):
+                    ch = seg_to_channel(str(sub[3]))
+                    if not (isinstance(ch, float) and ch != ch):
+                        channel = ch
 
             lead = max(0, (arr - created).days) if created else 25
             adr  = rate / max(nights, 1) if rate and nights > 0 else rate
@@ -115,6 +170,7 @@ def parse_cancellations():
                 'stays_in_week_nights': wkday,
                 'adr': adr,
                 'is_repeated_guest': 0,
+                'channel_encoded': channel,
                 'is_canceled': 1,
                 'source': fn
             })
@@ -122,26 +178,48 @@ def parse_cancellations():
 
         print(f'  {fn}: {file_count:,} records')
 
-    if not records:
-        print('  WARNING: no cancellation records parsed')
-        return pd.DataFrame(columns=['lead_time','arrival_date_week_number',
-            'stays_in_weekend_nights','stays_in_week_nights','adults',
-            'is_repeated_guest','adr','is_canceled','source','arrival','nights'])
-    df = pd.DataFrame(records)
-    df = df[df['lead_time'] < 730]
-    print(f'  Cancellations parsed: {len(df):,}')
-    return df
+    df = pd.DataFrame(records) if records else pd.DataFrame()
+    if len(df): df = df[df['lead_time'] < 730]
+    ch_known = df['channel_encoded'].notna().sum() if len(df) else 0
+    print(f'  Cancellations parsed: {len(df):,}  (channel known: {ch_known:,})')
+
+    # Build cross-ref set: (arr_str, nights) for mislabel prevention
+    cxl_keys = set()
+    for _, r in df.iterrows():
+        cxl_keys.add((r['arrival'].strftime('%Y-%m-%d'), int(r['nights'])))
+    return df, cxl_keys
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PARSE COMPLETED STAYS (RES_001 x10)
+# PARSE COMPLETED STAYS — RES_004 historical (past arrival dates)
 # ─────────────────────────────────────────────────────────────────────────────
-def parse_stays():
+def parse_res004_stays(cxl_keys):
+    """
+    Parse RES_004 files for past arrivals. These records have real lead_time
+    (booking creation date in col[28]) and channel (col[25]).
+    Exclude any record whose (arrival_date, nights) key appears in cxl_keys
+    (known cancellations from RES_036/037) to avoid mislabeling.
+
+    RES_004 column map (verified):
+      col[0]  = guest name (Lastname, Firstname)
+      col[3]  = MEC-XXXXXX confirmation number
+      col[8]  = arrival datetime (DD/MM/YYYY HH:MM)
+      col[9]  = nights
+      col[12] = pax ("2 / 0")
+      col[13] = rate plan code
+      col[16] = total rate amount
+      col[25] = channel/source code
+      col[28] = booking creation datetime
+    """
     import openpyxl
+    today = datetime.now().date()
     records = []
+    seen_keys = set()  # (arr_str, nights, created_str) for dedup across files
+
     files = sorted([f for f in os.listdir(VDV_DIR)
-                    if f.startswith('RES_001') and f.endswith('.xlsx')])
-    print(f'Arrival files: {len(files)}')
+                    if f.startswith('RES_004') and f.endswith('.xlsx')
+                    and any(f'({n})' in f for n in ('5','6','7'))])
+    print(f'RES_004 historical files: {files}')
 
     for fn in files:
         path = os.path.join(VDV_DIR, fn)
@@ -153,65 +231,85 @@ def parse_stays():
             print(f'  Skip {fn}: {e}'); continue
 
         file_records = 0
-        for i, row in enumerate(rows):
-            if i < 10: continue
-            if not row or row[0] is None: continue
-            cols = [str(c).strip() if c is not None else '' for c in row]
-            if len(cols) < 6: continue
+        for r in rows:
+            if not r or len(r) < 29: continue
+            c0 = str(r[0]).strip() if r[0] else ''
+            c3 = str(r[3]).strip() if len(r) > 3 and r[3] else ''
+            if not (',' in c0 and c3.startswith('MEC-') and not c3.startswith('MEC-F')):
+                continue
+            if not r[8]: continue
 
-            arr = None; nights = None; adults = 1; rate = None
+            arr_str = str(r[8])[:10]
+            try: arr = datetime.strptime(arr_str, '%d/%m/%Y').date()
+            except: continue
+            if arr >= today: continue  # only past arrivals
 
-            # Find arrival datetime (has time component)
-            for ci in range(len(cols)):
-                if '/' in cols[ci] and ':' in cols[ci]:
-                    d = parse_date(cols[ci])
-                    if d and 2020 <= d.year <= 2027:
-                        arr = d; break
+            nights_raw = str(r[9]).strip() if r[9] else ''
+            if not nights_raw.isdigit(): continue
+            nights = int(nights_raw)
 
-            # Nights: digit 1-30
-            for ci in range(len(cols)):
-                v = cols[ci].split('.')[0]
-                if v.isdigit() and 1 <= int(v) <= 30:
-                    nights = int(v); break
+            created_str = str(r[28])[:10] if r[28] else ''
+            if not created_str: continue
+            try: created = datetime.strptime(created_str, '%d/%m/%Y').date()
+            except: continue
 
-            # Adults from "x/y"
-            for ci in range(len(cols)):
-                if '/' in cols[ci]:
-                    parts = cols[ci].split('/')
-                    if len(parts) == 2 and all(p.strip().isdigit() for p in parts):
-                        a = int(parts[0].strip())
-                        if 1 <= a <= 10: adults = a; break
+            lead = max(0, (arr - created).days)
+            if lead > 730: continue
 
-            # Rate from "EUR" value
-            for ci in range(len(cols)):
-                if 'EUR' in cols[ci]:
-                    r = safe_float(cols[ci].replace('EUR', ''))
-                    if r and 20 < r < 10000: rate = r; break
+            # Skip if this is a known cancellation
+            arr_key = arr.strftime('%Y-%m-%d')
+            if (arr_key, nights) in cxl_keys: continue
 
-            if arr is None or nights is None: continue
+            # Dedup across files
+            dedup_key = (arr_key, nights, created_str)
+            if dedup_key in seen_keys: continue
+            seen_keys.add(dedup_key)
 
-            adr = rate / max(nights, 1) if rate else None
-            wknd, wkday = weekend_split(arr, nights)
+            # Pax
+            adults = 1
+            pax = str(r[12]).strip() if len(r) > 12 and r[12] else ''
+            if '/' in pax:
+                parts = pax.split('/')
+                if all(p.strip().isdigit() for p in parts):
+                    a = int(parts[0].strip())
+                    if 1 <= a <= 10: adults = a
+
+            # Channel: try col[25] first, fall back to rate plan col[13]
+            ch25 = str(r[25]).strip() if len(r) > 25 and r[25] else ''
+            channel = ch25_to_channel(ch25)
+            if isinstance(channel, float) and channel != channel:  # still NaN
+                rp = str(r[13]).strip() if len(r) > 13 and r[13] else ''
+                channel = rate_plan_to_channel(rp)
+
+            # Rate
+            rate_raw = str(r[16]).strip() if len(r) > 16 and r[16] else ''
+            rate = safe_float(rate_raw)
+            adr = rate / max(nights, 1) if rate and rate > 0 else None
+
+            arr_dt = datetime.combine(arr, datetime.min.time())
+            wknd, wkday = weekend_split(arr_dt, nights)
 
             records.append({
-                'arrival': arr, 'nights': nights, 'adults': adults,
-                'lead_time': 25,  # median — not available in RES_001
-                'arrival_date_week_number': int(arr.isocalendar()[1]),
-                'arrival_month': arr.month,
-                'arrival_day_of_week': arr.weekday(),
+                'arrival': arr_dt, 'nights': nights, 'adults': adults,
+                'lead_time': lead,
+                'arrival_date_week_number': int(arr_dt.isocalendar()[1]),
+                'arrival_month': arr_dt.month,
+                'arrival_day_of_week': arr_dt.weekday(),
                 'stays_in_weekend_nights': wknd,
                 'stays_in_week_nights': wkday,
                 'adr': adr,
                 'is_repeated_guest': 0,
+                'channel_encoded': channel,
                 'is_canceled': 0,
                 'source': fn
             })
             file_records += 1
 
-        print(f'  {fn}: {file_records:,} stays')
+        print(f'  {fn}: {file_records:,} completed stays')
 
-    df = pd.DataFrame(records)
-    print(f'  Completed stays total: {len(df):,}')
+    df = pd.DataFrame(records) if records else pd.DataFrame()
+    ch_known = df['channel_encoded'].notna().sum() if len(df) else 0
+    print(f'  RES_004 completed stays total: {len(df):,}  (channel known: {ch_known:,})')
     return df
 
 
@@ -246,23 +344,25 @@ print('='*60)
 print('BUILDING VdV TRAINING DATASET')
 print('='*60)
 
-cancels = parse_cancellations()
-stays   = parse_stays()
+cancels, cxl_keys = parse_cancellations()
+stays = parse_res004_stays(set())  # no cross-ref dedup — key (arr,nights) is not unique per guest
+
 df = pd.concat([cancels, stays], ignore_index=True)
 df = enrich_repeat_guests(df)
 
-# Fill missing ADR with segment median
-median_adr = df['adr'].median()
+median_adr = df['adr'].median() if df['adr'].notna().any() else 160.0
 df['adr'] = df['adr'].fillna(median_adr)
-df = df.dropna(subset=['lead_time', 'adr'])
+df = df.dropna(subset=['lead_time'])
 
+ch_coverage = df['channel_encoded'].notna().mean()
 print(f'\nFinal dataset: {len(df):,} records')
 print(f'  Cancellations: {df["is_canceled"].sum():,} ({df["is_canceled"].mean():.1%})')
 print(f'  Completed stays: {(df["is_canceled"]==0).sum():,}')
-print(f'  Median ADR: €{median_adr:.0f}')
-print(f'  Lead time: median {df["lead_time"].median():.0f}d, mean {df["lead_time"].mean():.0f}d')
+print(f'  Channel coverage: {ch_coverage:.1%}')
+print(f'  Lead time: median {df["lead_time"].median():.0f}d, mean {df["lead_time"].mean():.0f}d, max {df["lead_time"].max():.0f}d')
 
-X = df[FEATURES].apply(pd.to_numeric, errors='coerce').fillna(0).astype(float)
+# Keep channel_encoded as float with NaN — XGBoost handles natively
+X = df[FEATURES].apply(pd.to_numeric, errors='coerce').astype(float)
 y = df['is_canceled'].astype(int)
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -271,9 +371,8 @@ y = df['is_canceled'].astype(int)
 from xgboost import XGBClassifier
 from sklearn.model_selection import StratifiedKFold, cross_validate
 from sklearn.metrics import (accuracy_score, precision_score, recall_score,
-                             roc_auc_score, confusion_matrix)
+                             roc_auc_score)
 
-# Class balance
 neg, pos = (y==0).sum(), (y==1).sum()
 scale_pos = neg / pos
 print(f'\nClass ratio: {neg:,} stays / {pos:,} cancellations -> scale_pos_weight={scale_pos:.2f}')
@@ -290,7 +389,6 @@ model = XGBClassifier(
     verbosity=0
 )
 
-# ── 5-fold cross-validation ──────────────────────────────────────────────────
 print('\nRunning 5-fold cross-validation...')
 cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 cv_results = cross_validate(model, X, y, cv=cv,
@@ -303,11 +401,9 @@ print(f'  Accuracy:  {cv_results["test_accuracy"].mean():.1%} ± {cv_results["te
 print(f'  Precision: {cv_results["test_precision"].mean():.1%} ± {cv_results["test_precision"].std():.1%}')
 print(f'  Recall:    {cv_results["test_recall"].mean():.1%} ± {cv_results["test_recall"].std():.1%}')
 
-# ── Train final model on full dataset ────────────────────────────────────────
 print('\nTraining final model on full dataset...')
 model.fit(X, y)
 
-# Final predictions for tier analysis
 probs = model.predict_proba(X)[:, 1]
 preds = (probs >= 0.5).astype(int)
 
@@ -317,7 +413,6 @@ print(f'  Accuracy:  {accuracy_score(y, preds):.1%}')
 print(f'  Precision: {precision_score(y, preds):.1%}')
 print(f'  Recall:    {recall_score(y, preds):.1%}')
 
-# Tier analysis
 df2 = df.copy()
 df2['score'] = probs
 df2['tier'] = pd.cut(probs, bins=[0, .4, .7, 1.0], labels=['Low', 'Medium', 'High'])
@@ -326,13 +421,18 @@ print('\n=== ACTUAL CANCEL RATE BY RISK TIER (VdV data) ===')
 for t, row in tier.iterrows():
     print(f'  {t:6s}: {row["mean"]:.0%}  ({int(row["count"]):,} bookings)')
 
-# Feature importance
+ch_labels = {0: 'OTA/Web', 1: 'Direct', 2: 'Corporate', 3: 'Group/Pkg'}
+print('\n=== CANCEL RATE BY CHANNEL (where known) ===')
+for code, label in ch_labels.items():
+    sub = df2[df2['channel_encoded'] == code]
+    if len(sub) > 0:
+        print(f'  {label:<12s}: {sub["is_canceled"].mean():.0%}  ({len(sub):,} records)')
+
 fi = pd.Series(model.feature_importances_, index=FEATURES).sort_values(ascending=False)
 print('\n=== FEATURE IMPORTANCES ===')
 for feat, imp in fi.items():
     print(f'  {feat:<35s} {imp:.3f}')
 
-# ── Save model ────────────────────────────────────────────────────────────────
 out_path = 'occupado_model_vdv.pkl'
 with open(out_path, 'wb') as f:
     pickle.dump(model, f)
