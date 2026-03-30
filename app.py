@@ -6152,13 +6152,49 @@ def vdv_export_highrisk():
             pass
     if not bookings or not scores:
         return "No booking data available. Run the app locally with VDV-Data files to populate the cache.", 404
-    indexed = sorted(enumerate(scores), key=lambda x: -x[1])[:20]
+    def _export_reason(b, sc):
+        parts = []
+        if b["lead"] > 90:
+            parts.append(f"Long lead time ({b['lead']}d)")
+        elif b["lead"] > 30:
+            parts.append(f"Moderate lead ({b['lead']}d)")
+        else:
+            parts.append(f"Short lead ({b['lead']}d, close to arrival)")
+        ch = b["channel"]
+        if ch == "Booking.com":
+            parts.append("OTA booking (Booking.com)")
+        elif ch in ("Direct/Web", "Direct / Web"):
+            parts.append("Direct/Web channel")
+        elif ch == "Corporate":
+            parts.append("Corporate channel (lower risk)")
+        elif ch in ("Package", "Packages / Groups"):
+            parts.append("Package/Group (typically prepaid)")
+        else:
+            parts.append(f"{ch} channel")
+        if b["gtd"] == "NONE":
+            parts.append("No guarantee on file")
+        if b["nights"] == 1:
+            parts.append("1-night stay (high no-show rate)")
+        elif b["nights"] >= 4:
+            parts.append(f"{b['nights']}-night stay (longer stays rarely cancel last-minute)")
+        if b.get("adr", 0) > 200:
+            parts.append(f"High ADR (€{b['adr']:.0f})")
+        return " · ".join(parts)
+
+    all_indexed = sorted(enumerate(scores), key=lambda x: -x[1])
+    high_risk = [(i, s) for i, s in all_indexed if s >= 70]
+    med_risk_all = [(i, s) for i, s in all_indexed if 40 <= s < 70]
+    import math
+    med_sample_n = max(1, math.ceil(len(med_risk_all) * 0.10))
+    med_risk = med_risk_all[:med_sample_n]
+    indexed = high_risk + med_risk
+
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "High-Risk Bookings"
+    ws.title = "Risk Bookings"
     header_fill = PatternFill("solid", fgColor="111827")
     header_font = Font(bold=True, color="FFFFFF", size=11)
-    headers = ["#", "Guest", "Arrival", "Nights", "Lead (days)", "Channel", "Guarantee", "Risk %"]
+    headers = ["#", "Guest", "Arrival", "Nights", "Lead (days)", "Channel", "Guarantee", "ADR (€)", "Risk %", "Risk Level", "Reason"]
     ws.append(headers)
     for cell in ws[1]:
         cell.fill  = header_fill
@@ -6168,12 +6204,15 @@ def vdv_export_highrisk():
     med_fill  = PatternFill("solid", fgColor="FEF3C7")
     for rank, (idx, sc) in enumerate(indexed):
         b = bookings[idx]
+        risk_level = "High Risk" if sc >= 70 else "Medium Risk"
+        reason = _export_reason(b, sc)
         row = [rank+1, b["name"], b["arrival"], b["nights"], b["lead"],
-               b["channel"], b["gtd"], round(sc, 1)]
+               b["channel"], b["gtd"], b.get("adr", ""), round(sc, 1), risk_level, reason]
         ws.append(row)
-        risk_cell = ws.cell(row=rank+2, column=8)
-        risk_cell.fill = high_fill if sc >= 70 else med_fill
-        risk_cell.font = Font(bold=True)
+        fill = high_fill if sc >= 70 else med_fill
+        for col_idx in (9, 10):
+            ws.cell(row=rank+2, column=col_idx).fill = fill
+            ws.cell(row=rank+2, column=col_idx).font = Font(bold=True)
     for col in ws.columns:
         max_len = max(len(str(cell.value or "")) for cell in col)
         ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 40)
