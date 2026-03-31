@@ -1,1 +1,6 @@
 .env
+_check_scores.py
+_push_cache.py
+_add_forecast.py
+_dynamics.py
+_font_fix.py
