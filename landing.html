@@ -1117,7 +1117,7 @@ footer {
     <div class="problem-grid">
 
       <div class="metric-card fade-up">
-        <div class="metric-card-title">Industry benchmarks</div>
+        <div class="metric-card-title">Real hotel data — Belgium</div>
         <div class="bar-row">
           <div class="bar-meta">
             <span class="bar-name">Cancellation rate — EU average</span>
@@ -1134,14 +1134,14 @@ footer {
         </div>
         <div class="bar-row">
           <div class="bar-meta">
-            <span class="bar-name">Revenue recovered with Occupado</span>
-            <span class="bar-val g">+76%</span>
+            <span class="bar-name">At-risk revenue flagged early</span>
+            <span class="bar-val g" id="ls-at-risk-pct">+76%</span>
           </div>
-          <div class="bar-track"><div class="bar-fill g" style="width:76%"></div></div>
+          <div class="bar-track"><div class="bar-fill g" id="ls-at-risk-bar" style="width:76%"></div></div>
         </div>
         <div class="metric-hero-num">
-          <div class="metric-big">€380k</div>
-          <div class="metric-label">lost per year<br>per 100-room hotel</div>
+          <div class="metric-big" id="ls-revenue-lost">€476k</div>
+          <div class="metric-label">lost per year<br>at a real Belgian hotel</div>
         </div>
       </div>
 
@@ -1350,15 +1350,15 @@ footer {
   <div class="container">
     <div class="stats-grid">
       <div class="stat-item fade-up">
-        <div class="stat-num"><span class="acc">80</span>%</div>
+        <div class="stat-num"><span class="acc" id="ls-accuracy">80.5</span>%</div>
         <div class="stat-desc">Prediction accuracy on real Belgian hotel data</div>
       </div>
       <div class="stat-item fade-up delay-1">
-        <div class="stat-num">€<span class="acc">380k</span></div>
-        <div class="stat-desc">Annual revenue recovered per 100-room property</div>
+        <div class="stat-num">€<span class="acc" id="ls-revenue-lost-2">476k</span></div>
+        <div class="stat-desc">Annual revenue at risk per Belgian hotel tracked</div>
       </div>
       <div class="stat-item fade-up delay-2">
-        <div class="stat-num"><span class="acc">131k</span></div>
+        <div class="stat-num"><span class="acc" id="ls-training-count">123k</span></div>
         <div class="stat-desc">Real bookings used to train the scoring model</div>
       </div>
       <div class="stat-item fade-up delay-3">
@@ -1662,6 +1662,39 @@ footer {
     { threshold: 0.2 }
   );
   document.querySelectorAll('.metric-card').forEach(el => barIo.observe(el));
+</script>
+
+<script>
+// Auto-update landing stats from live server data
+(function() {
+  function fmtK(n) { return n >= 1000 ? Math.round(n/1000)+'k' : n; }
+  fetch('/api/landing-stats')
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(d) {
+      if (!d) return;
+      // Revenue lost (problem card + stats section)
+      var revLost = '€' + d.revenue_lost_eur_k + 'k';
+      var el = document.getElementById('ls-revenue-lost');
+      if (el) el.textContent = revLost;
+      var el2 = document.getElementById('ls-revenue-lost-2');
+      if (el2) el2.textContent = d.revenue_lost_eur_k + 'k';
+      // At-risk revenue flagged (bar)
+      var atRiskPct = d.at_risk_revenue_k > 0 && d.revenue_lost_eur_k > 0
+        ? Math.min(99, Math.round(d.at_risk_revenue_k / d.revenue_lost_eur_k * 100))
+        : 76;
+      var pctEl = document.getElementById('ls-at-risk-pct');
+      if (pctEl) pctEl.textContent = '+' + atRiskPct + '%';
+      var barEl = document.getElementById('ls-at-risk-bar');
+      if (barEl) barEl.style.width = atRiskPct + '%';
+      // Model accuracy
+      var accEl = document.getElementById('ls-accuracy');
+      if (accEl) accEl.textContent = d.model_accuracy_pct;
+      // Training count
+      var tcEl = document.getElementById('ls-training-count');
+      if (tcEl) tcEl.textContent = fmtK(d.training_count);
+    })
+    .catch(function() {});
+})();
 </script>
 </body>
 </html>

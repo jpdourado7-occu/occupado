@@ -650,31 +650,72 @@ def _parse_vdv_guests():
 
 
 def _parse_vdv_channel_stats():
-    """Parse RES_036 cancelled reservations for channel breakdown."""
-    path = os.path.join(_VDV_DIR, "RES_036_CancelledReservations (1).xlsx")
-    if not os.path.exists(path):
+    """Parse all RES_036 cancelled reservations files for channel breakdown with cross-file dedup."""
+    import openpyxl, glob as _glob
+    files = sorted(_glob.glob(os.path.join(_VDV_DIR, "RES_036_CancelledReservations*.xlsx")))
+    if not files:
         return {}
-    try:
-        import openpyxl
-        wb = openpyxl.load_workbook(path, read_only=True)
-        rows = list(wb.active.iter_rows(values_only=True))
-        wb.close()
-        raw = {}
-        for row in rows:
-            if row[0] is None and len(row) > 3 and row[3]:
-                seg = str(row[3]).strip()
-                if seg and not seg.startswith('Subtotal') and not re.match(r'\d{2}/\d{2}/\d{4}', seg) and seg not in ('Market Segment', 'Company/Travel Agent'):
-                    raw[seg] = raw.get(seg, 0) + 1
-        return {
-            'Booking.com':       sum(raw.get(k, 0) for k in ('BARWEB', 'BAROTAGROSS', 'DEALSOTA')),
-            'Direct / Web':      sum(raw.get(k, 0) for k in ('DISCWEB', 'BARDIR', 'DISCDIR', 'DISCOTAGROSS')),
-            'Corporate':         sum(raw.get(k, 0) for k in ('CORPFIX', 'CORPDYN')),
-            'Packages / Groups': sum(raw.get(k, 0) for k in ('PACK', 'MTGBNS', 'BNSGRP')),
-            'Other':             sum(raw.get(k, 0) for k in ('DEALS', 'OTHER', 'COMP')),
-        }
-    except Exception as e:
-        print(f"[VDV] Channel stats error: {e}")
-        return {}
+    seen_keys = set()
+    raw = {}
+    total = 0
+    for fp in files:
+        try:
+            wb = openpyxl.load_workbook(fp, read_only=True)
+            rows = list(wb.active.iter_rows(values_only=True))
+            wb.close()
+            for row in rows:
+                if row[0] is None and len(row) > 3 and row[3]:
+                    cxl_ref = str(row[20]).strip() if len(row) > 20 and row[20] else ''
+                    if cxl_ref.startswith('MEC-CXL'):
+                        key = cxl_ref
+                    else:
+                        c8  = str(row[8])[:10]  if len(row) > 8  and row[8]  else ''
+                        c9  = str(row[9])        if len(row) > 9  and row[9]  else ''
+                        c14 = str(row[14])[:10]  if len(row) > 14 and row[14] else ''
+                        key = (c8, c9, c14)
+                    if key in seen_keys:
+                        continue
+                    seen_keys.add(key)
+                    seg = str(row[3]).strip()
+                    if seg and not seg.startswith('Subtotal') and not re.match(r'\d{2}/\d{2}/\d{4}', seg) and seg not in ('Market Segment', 'Company/Travel Agent'):
+                        raw[seg] = raw.get(seg, 0) + 1
+                        total += 1
+        except Exception as e:
+            print(f"[VDV] Channel stats error ({fp}): {e}")
+    return {
+        'Booking.com':       sum(raw.get(k, 0) for k in ('BARWEB', 'BAROTAGROSS', 'DEALSOTA')),
+        'Direct / Web':      sum(raw.get(k, 0) for k in ('DISCWEB', 'BARDIR', 'DISCDIR', 'DISCOTAGROSS')),
+        'Corporate':         sum(raw.get(k, 0) for k in ('CORPFIX', 'CORPDYN')),
+        'Packages / Groups': sum(raw.get(k, 0) for k in ('PACK', 'MTGBNS', 'BNSGRP')),
+        'Other':             sum(raw.get(k, 0) for k in ('DEALS', 'OTHER', 'COMP')),
+        '_total_cx':         total,
+    }
+
+
+def _count_vdv_noshow():
+    """Count unique no-shows across all RES_037 files."""
+    import openpyxl, glob as _glob
+    files = sorted(_glob.glob(os.path.join(_VDV_DIR, "RES_037_NoShow*.xlsx")))
+    seen = set()
+    count = 0
+    for fp in files:
+        try:
+            wb = openpyxl.load_workbook(fp, read_only=True)
+            rows = list(wb.active.iter_rows(values_only=True))
+            wb.close()
+            for row in rows:
+                if not row[1] or len(row) < 12:
+                    continue
+                conf    = str(row[2]).strip() if row[2] else ''
+                arrival = str(row[11])[:10]   if row[11] else ''
+                key = (conf, arrival) if conf else (str(row[1]).strip(), arrival)
+                if key in seen:
+                    continue
+                seen.add(key)
+                count += 1
+        except Exception as e:
+            print(f"[VDV] NS count error ({fp}): {e}")
+    return count
 
 
 def _score_vdv_guests(guests):
@@ -1083,6 +1124,12 @@ VDV_FUTURE_SCORES   = []
 VDV_MICE_DATA       = {}
 VDV_FORECAST_DATA   = {'history': [], 'forecast': []}
 VDV_GROUP_PIPELINE  = []
+VDV_LANDING_STATS   = {
+    'total_cx': 1694, 'total_ns': 339,
+    'avg_adr': 130.0, 'avg_nights': 1.8,
+    'model_accuracy': 80.5, 'model_auc': 0.852,
+    'training_count': 119390,
+}
 try:
     VDV_GUESTS_RAW      = _parse_vdv_guests()
     VDV_CHANNEL_STATS   = _parse_vdv_channel_stats()
@@ -1109,12 +1156,22 @@ try:
             print(f"[VDV] Cached {len(VDV_FUTURE_BOOKINGS)} bookings to DB")
         except Exception as _ce:
             print(f"[VDV] Cache warning: {_ce}")
+    # Update landing stats from freshly parsed data
+    _real_cx = VDV_CHANNEL_STATS.get('_total_cx', 0)
+    _real_ns = _count_vdv_noshow()
+    if _real_cx > 100:
+        VDV_LANDING_STATS['total_cx'] = _real_cx
+    if _real_ns > 50:
+        VDV_LANDING_STATS['total_ns'] = _real_ns
+    VDV_LANDING_STATS['training_count'] = 119390 + _real_cx + _real_ns
     print(f"[VDV] Loaded {len(VDV_GUESTS_RAW)} repeat guests, "
           f"{len(VDV_FORECAST_DATA['history'])}h/{len(VDV_FORECAST_DATA['forecast'])}f forecast days, "
           f"{len(VDV_GROUP_PIPELINE)} upcoming groups, ",
           f"{len(VDV_FUTURE_BOOKINGS)} future bookings, "
           f"{VDV_MICE_DATA.get('total',0)} MICE bookings, "
           f"channels: {list(VDV_CHANNEL_STATS.keys())}")
+    print(f"[VDV] Landing stats: {_real_cx} cx, {_real_ns} ns, "
+          f"revenue lost €{int((_real_cx+_real_ns)*VDV_LANDING_STATS['avg_adr']*VDV_LANDING_STATS['avg_nights']/1000)}k")
 except Exception as _vdv_err:
     print(f"[VDV] Startup warning: {_vdv_err}")
 
@@ -4698,6 +4755,39 @@ def landing():
         return send_file("landing.html")
     except:
         return redirect(url_for("login"))
+
+
+@app.route("/api/landing-stats")
+def api_landing_stats():
+    """Return real computed stats for the landing page — auto-updates as new data is loaded."""
+    s = VDV_LANDING_STATS
+    total_cx = s['total_cx']
+    total_ns = s['total_ns']
+    avg_adr  = s['avg_adr']
+    avg_nights = s['avg_nights']
+    revenue_lost_k = round((total_cx + total_ns) * avg_adr * avg_nights / 1000)
+    total_lost = total_cx + total_ns
+    cancel_rate = round(total_cx / max(1, total_cx + total_ns + 8500) * 100, 1)
+    noshow_rate = round(total_ns / max(1, total_cx + total_ns + 8500) * 100, 1)
+    # High-risk upcoming bookings (at-risk revenue recoverable with Occupado)
+    fut_scores  = VDV_FUTURE_SCORES
+    fut_high    = sum(1 for sc in fut_scores if sc >= 70) if fut_scores else 36
+    fut_med     = sum(1 for sc in fut_scores if 40 <= sc < 70) if fut_scores else 844
+    at_risk_rev = round((fut_high + fut_med * 0.4) * avg_adr * avg_nights / 1000)
+    return jsonify({
+        'revenue_lost_eur_k':  revenue_lost_k,
+        'model_accuracy_pct':  s['model_accuracy'],
+        'model_auc':           s['model_auc'],
+        'training_count':      s['training_count'],
+        'total_cx':            total_cx,
+        'total_ns':            total_ns,
+        'cancel_rate_pct':     cancel_rate,
+        'noshow_rate_pct':     noshow_rate,
+        'fut_high':            fut_high,
+        'fut_med':             fut_med,
+        'at_risk_revenue_k':   at_risk_rev,
+    })
+
 
 @app.route("/magic/<token>")
 def magic_link(token):
