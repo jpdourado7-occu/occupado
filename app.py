@@ -558,7 +558,7 @@ _CHANNEL_MAP = {
 try:
     with open("occupado_model_vdv.pkl", "rb") as f:
         model_vdv = pickle.load(f)
-    print("[VdV] VdV-specific model loaded (8 features, AUC 0.856)")
+    print("[VdV] VdV-specific model loaded (8 features, AUC 0.852)")
 except Exception:
     model_vdv = None
     print("[VdV] VdV-specific model not found, falling back to generic")
@@ -821,13 +821,13 @@ def _score_vdv_future(bookings):
     all_repeats = repeat_names | known_repeats
 
     # ── Realistic score ranges per channel ──────────────────────────────────
-    # Training data was 84% cancellations (vs ~25% real-world rate), so raw
+    # Training data was 68.9% cancellations (vs ~25% real-world rate), so raw
     # model scores cluster near 100% for everyone. We preserve the model's
-    # ranking ability (AUC 0.856) by normalising within each channel to a
+    # ranking ability (AUC 0.852) by normalising within each channel to a
     # realistic [min, max] range based on actual VdV cancellation patterns.
     CHANNEL_RANGE = {
-        'Booking.com':       (18, 80),  # OTA: ~35% avg cancel rate
-        'Direct/Web':        (12, 70),  # Direct: ~20% avg cancel rate
+        'Booking.com':       (18, 80),  # OTA: ~50% avg cancel rate
+        'Direct/Web':        (12, 70),  # Direct: ~25% avg cancel rate
         'Direct / Web':      (12, 70),
         'Corporate':         ( 5, 42),  # Corporate: ~10-15% — often guaranteed
         'Package':           ( 4, 35),  # Packages: ~5-8% — usually prepaid
@@ -1154,8 +1154,8 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False):
 
     # ── MICE data ────────────────────────────────────────────────────────────
     mice = VDV_MICE_DATA if VDV_MICE_DATA else {
-        'total': 993, 'total_nights': 2163,
-        'by_segment': {'BNSGRP': 179, 'CORPFIX': 443, 'CORPDYN': 173, 'MTGBNS': 198},
+        'total': 11107, 'total_nights': 22338,
+        'by_segment': {'BNSGRP': 1887, 'CORPFIX': 4254, 'CORPDYN': 1562, 'MTGBNS': 3404},
         'top_clients': [], 'groups': []
     }
     mice_total   = mice.get('total', 0)
@@ -1203,7 +1203,7 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False):
 
     # ── Historical numbers (real Shiji data) ───────────────────────────────
     MONTHS       = ['Oct 2025','Nov 2025','Dec 2025','Jan 2026','Feb 2026','Mar 2026']
-    CX_MONTHLY   = [167, 315, 335, 255, 296, 318]   # cancellations per month
+    CX_MONTHLY   = [167, 315, 335, 255, 296, 326]   # cancellations per month
     NS_MONTHLY   = [43,  61,  75,  64,  58,  38]    # no-shows per month (verified from RES_037)
     LOST_MONTHLY = [c+n for c,n in zip(CX_MONTHLY, NS_MONTHLY)]
 
@@ -1755,7 +1755,7 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
     <div class="stat-row"><span class="sr-label">Best month</span><span class="sr-val">Oct 2025 (167 cx)</span></div>
     <div class="stat-row"><span class="sr-label">Top channel risk</span><span class="sr-val">Booking.com — {ch_pcts.get('Booking.com',0)}%</span></div>
     <div class="stat-row"><span class="sr-label">No-show rate</span><span class="sr-val">{round(total_ns/total_lost*100,1)}% of total</span></div>
-    <div class="stat-row"><span class="sr-label">Model accuracy</span><span class="sr-val" style="color:#00d165">80.3%</span></div>
+    <div class="stat-row"><span class="sr-label">Model accuracy</span><span class="sr-val" style="color:#00d165">80.5%</span></div>
   </div>
 </div>
 
@@ -2769,7 +2769,7 @@ td{{padding:12px 14px;font-size:12.5px;border-bottom:1px solid #f1f5f9;color:#37
   <div class="hero-title">Van der Valk Hotel Mechelen</div>
   <div class="hero-sub">{today_str} · {len(guests)} repeat guests tracked · Powered by Occupado AI</div>
   <div class="hero-badges">
-    <span class="hero-badge">✓ Model accuracy 80.3%</span>
+    <span class="hero-badge">✓ Model accuracy 80.5%</span>
     <span class="hero-badge">✓ {len(arriving_today)} arriving today</span>
     <span class="hero-badge">✓ {len(in_house)} in house</span>
     <span class="hero-badge {'warn' if high_count > 0 else ''}">{'⚠ ' + str(high_count) + ' high risk' if high_count > 0 else '✓ 0 high risk today'}</span>
@@ -2817,17 +2817,17 @@ td{{padding:12px 14px;font-size:12.5px;border-bottom:1px solid #f1f5f9;color:#37
 <!-- KPI ROW 2: Historical intelligence -->
 <div class="kpi-grid" style="margin-top:12px;margin-bottom:28px;">
   <div class="kpi-card">
-    <div class="kpi-num neutral" style="font-size:28px;">15.2%</div>
+    <div class="kpi-num neutral" style="font-size:28px;">15.7%</div>
     <div class="kpi-label">Historical Cancellation Rate</div>
-    <div class="kpi-trend" style="color:#64748b">Based on 1,638 events</div>
+    <div class="kpi-trend" style="color:#64748b">Based on 1,694 cancellations</div>
   </div>
   <div class="kpi-card">
-    <div class="kpi-num neutral" style="font-size:28px;">4.7%</div>
+    <div class="kpi-num neutral" style="font-size:28px;">5.0%</div>
     <div class="kpi-label">Historical No-show Rate</div>
-    <div class="kpi-trend" style="color:#64748b">300 no-shows tracked</div>
+    <div class="kpi-trend" style="color:#64748b">339 no-shows tracked</div>
   </div>
   <div class="kpi-card highlight-green">
-    <div class="kpi-num green" style="font-size:28px;">80.3%</div>
+    <div class="kpi-num green" style="font-size:28px;">80.5%</div>
     <div class="kpi-label">AI Model Accuracy</div>
     <div class="kpi-trend" style="color:#16a34a">Kaggle + Shiji data</div>
   </div>
@@ -2983,7 +2983,7 @@ td{{padding:12px 14px;font-size:12.5px;border-bottom:1px solid #f1f5f9;color:#37
       </div>
     </div>
     <div style="margin-top:10px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px;font-size:12px;color:#92400e;line-height:1.5;">
-      <strong>💡 Insight:</strong> Booking.com is your #1 cancellation source (518 cancellations tracked).
+      <strong>💡 Insight:</strong> Booking.com is your #1 cancellation source (1,147 cancellations tracked).
       Consider requiring prepayment on OTA bookings with high lead times.
     </div>
   </div>
