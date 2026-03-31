@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(python anonymize_vdv.py)",
+      "Bash(python -c \":*)",
+      "Bash(python:*)",
+      "Bash(timeout 30 tail -f C:UsersjpdouAppDataLocalTempclaudeC--Users-jpdou-Desktop-Occupado5588b9f0-f417-4228-b3ed-65ac52eb180ftasksb3y0cwxek.output)",
+      "Bash(find /tmp -name *.output -type f)",
+      "Bash(xargs cat:*)",
+      "Bash(grep -v \"#\\\\|//\")",
+      "Bash(grep -n \"Know which bookings\\\\|landing\\\\|def index\\\\|@app.route.*/$\" app.py)",
+      "Bash(python3 -c \":*)",
+      "Bash(ls:*)",
+      "WebSearch",
+      "Bash(grep -v \"^$\")",
+      "Bash(gh run:*)",
+      "Bash(grep -E \"^\\\\s*[0-9]+:''''.*'''':.*[^\\(]$|append\\\\|=.*{\")",
+      "Bash(mv \"VDV-Data\" \"VDV-MEC\")",
+      "Bash(mkdir \"VDV-BRU\")",
+      "Bash(cd:*)"
+    ]
+  }
+}

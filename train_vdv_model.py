@@ -24,7 +24,7 @@ from datetime import datetime
 
 warnings.filterwarnings('ignore')
 
-VDV_DIR = 'VDV-Data'
+VDV_DIR = 'VDV-MEC'
 FEATURES = [
     'lead_time',
     'arrival_date_week_number',

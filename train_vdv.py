@@ -12,7 +12,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, classification_report
 
 BASE_DIR = r'C:\Users\jpdou\Desktop\Occupado'
-ANON_DIR = rf'{BASE_DIR}\VDV-Data\anonymized'
+ANON_DIR = rf'{BASE_DIR}\VDV-MEC\anonymized'
 
 KAGGLE_CSV     = rf'{BASE_DIR}\hotel_bookings.csv'
 ARRIVAL_FILE   = rf'{ANON_DIR}\RES_001_ArrivalDetailed.xlsx'

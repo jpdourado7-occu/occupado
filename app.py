@@ -567,7 +567,7 @@ df = pd.read_csv("hotel_bookings.csv")
 
 # ── VAN DER VALK MECHELEN — Pre-loaded data & enhanced dashboard ──────────────
 VDV_HOTEL_KEY = "van der valk mechelen"
-_VDV_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "VDV-Data")
+_VDV_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "VDV-MEC")
 
 def _parse_vdv_guests():
     """Parse all RES_042 repeat reservations reports for current/upcoming repeat guests."""
@@ -1900,7 +1900,7 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
           f'{c.get("risk","—")}</span></td>'
           f'</tr>'
           for i, c in enumerate(mice_clients)
-        ) if mice_clients else "<tr><td colspan='7' style='color:#94a3b8;text-align:center;padding:20px'>No data — local VDV-Data files required</td></tr>"}
+        ) if mice_clients else "<tr><td colspan='7' style='color:#94a3b8;text-align:center;padding:20px'>No data — local VDV-MEC files required</td></tr>"}
       </tbody>
     </table>
   </div>
@@ -6153,7 +6153,7 @@ def vdv_export_highrisk():
     bookings = VDV_FUTURE_BOOKINGS
     scores   = VDV_FUTURE_SCORES
     if not bookings or not scores:
-        # Load from DB cache (populated when local app runs with VDV-Data files)
+        # Load from DB cache (populated when local app runs with VDV-MEC files)
         try:
             _c = get_db(); _cu = _c.cursor()
             _cu.execute("SELECT bookings_json, scores_json FROM vdv_bookings_cache ORDER BY cached_at DESC LIMIT 1")
@@ -6169,7 +6169,7 @@ def vdv_export_highrisk():
         except Exception as _ce:
             pass
     if not bookings or not scores:
-        return "No booking data available. Run the app locally with VDV-Data files to populate the cache.", 404
+        return "No booking data available. Run the app locally with VDV-MEC files to populate the cache.", 404
     # Build repeat guest name set for export flagging
     from collections import Counter as _Ctr
     _name_counts = _Ctr(b["name"].strip().lower() for b in bookings)
