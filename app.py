@@ -1321,15 +1321,17 @@ def _parse_bru_future_bookings():
                 c8 = r[8] if len(r) > 8 else None
                 if not (',' in c0 and c3 and c8):
                     continue
-                # Parse arrival — openpyxl may return datetime directly
+                # Parse arrival — openpyxl may return datetime directly; store as datetime
                 try:
-                    if hasattr(c8, 'date'):
-                        arr = c8.date()
+                    if isinstance(c8, datetime):
+                        arr = c8.replace(tzinfo=None)
+                    elif hasattr(c8, 'date'):
+                        arr = datetime.combine(c8, datetime.min.time())
                     else:
-                        arr = datetime.strptime(str(c8)[:10], '%d/%m/%Y').date()
+                        arr = datetime.strptime(str(c8)[:10], '%d/%m/%Y')
                 except Exception:
                     continue
-                if arr < today or c3 in seen_confs:
+                if arr.date() < today or c3 in seen_confs:
                     continue
                 seen_confs.add(c3)
                 nights = 1
@@ -1346,16 +1348,19 @@ def _parse_bru_future_bookings():
                 lead = 0
                 try:
                     if created_raw:
-                        cd = created_raw.date() if hasattr(created_raw, 'date') else datetime.strptime(str(created_raw)[:10], '%d/%m/%Y').date()
-                        lead = max(0, (arr - cd).days)
+                        if hasattr(created_raw, 'date'):
+                            cd = created_raw.date()
+                        else:
+                            cd = datetime.strptime(str(created_raw)[:10], '%d/%m/%Y').date()
+                        lead = max(0, (arr.date() - cd).days)
                 except: pass
                 wkend = wkday = 0
-                d = datetime.combine(arr, datetime.min.time())
+                d = arr.replace(hour=0, minute=0, second=0, microsecond=0)
                 for _ in range(nights):
                     if d.weekday() >= 5: wkend += 1
                     else: wkday += 1
                     d += timedelta(days=1)
-                week_num = int(datetime.combine(arr, datetime.min.time()).isocalendar()[1])
+                week_num = int(arr.isocalendar()[1])
                 ch_label = _BRU_CHANNEL_MAP.get(channel_raw, 'Other')
                 bookings.append({
                     'name': c0, 'arrival': arr.strftime('%d/%m/%Y'),
@@ -1874,7 +1879,7 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False, _data=None):
     if fut_bookings:
         tonight_high_risk = sum(
             1 for b, s in zip(fut_bookings, fut_scores)
-            if b['arr_date'].date() == today.date() and s >= 70
+            if (b['arr_date'].date() if isinstance(b['arr_date'], datetime) else b['arr_date']) == today.date() and s >= 70
         )
     else:
         tonight_high_risk = sum(1 for g, s in zip(guests, scores)
@@ -2306,7 +2311,7 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
     <div class="stat-row"><span class="sr-label">Peak month</span><span class="sr-val">Dec 2025 (335 cx)</span></div>
     <div class="stat-row"><span class="sr-label">Best month</span><span class="sr-val">Oct 2025 (167 cx)</span></div>
     <div class="stat-row"><span class="sr-label">Top channel risk</span><span class="sr-val">Booking.com — {ch_pcts.get('Booking.com',0)}%</span></div>
-    <div class="stat-row"><span class="sr-label">No-show rate</span><span class="sr-val">{round(total_ns/total_lost*100,1)}% of total</span></div>
+    <div class="stat-row"><span class="sr-label">No-show rate</span><span class="sr-val">{round(total_ns/total_lost*100,1) if total_lost else 0}% of total</span></div>
     <div class="stat-row"><span class="sr-label">Model accuracy</span><span class="sr-val" style="color:#00d165">80.5%</span></div>
   </div>
 </div>
