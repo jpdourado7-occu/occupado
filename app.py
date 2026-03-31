@@ -1213,9 +1213,11 @@ def _parse_bru_guests():
                 col4 = row[4] if len(row) > 4 else None
                 col5 = row[5] if len(row) > 5 else None
                 if ',' in col0 and col4:
-                    arr_str = str(col4)[:10]
                     try:
-                        arr = datetime.strptime(arr_str, '%d/%m/%Y')
+                        if hasattr(col4, 'date'):
+                            arr = datetime.combine(col4.date(), datetime.min.time())
+                        else:
+                            arr = datetime.strptime(str(col4)[:10], '%d/%m/%Y')
                     except Exception:
                         i += 1; continue
                     arr_key = (col0.lower(), arr.strftime('%Y-%m-%d'))
