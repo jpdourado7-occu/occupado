@@ -1419,18 +1419,249 @@ def _score_bru_future(bookings):
     return [float(round(s, 1)) for s in normalise(raw_scores, bookings)]
 
 
+def _parse_bru_forecast():
+    """Parse FOR_042 in VDV-BRU — returns last 60d history + next 60d forecast."""
+    import glob as _glob
+    files = sorted(_glob.glob(os.path.join(_VDV_BRU_DIR, "FOR_042_HistoryAndForecast*.xlsx")))
+    if not files:
+        return {'history': [], 'forecast': []}
+    path = files[-1]
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(path, read_only=True)
+        rows = list(wb.active.iter_rows(values_only=True))
+        wb.close()
+        history, forecast, mode = [], [], None
+        for row in rows:
+            if not row or row[0] is None: continue
+            v0 = str(row[0]).strip()
+            if v0 == 'HISTORY':           mode = 'h'; continue
+            if v0.startswith('FORECAST'): mode = 'f'; continue
+            if v0 in ('Totals', '', 'Date', 'Sold'): continue
+            date_part = v0.split()[-1] if v0 else ''
+            if not re.match(r'\d{2}/\d{2}/\d{4}', date_part): continue
+            try:
+                dt = datetime.strptime(date_part, '%d/%m/%Y')
+                rooms_sold = int(str(row[1]).replace(',', '').split('.')[0]) if row[1] else 0
+                arrivals   = int(str(row[2]).replace(',', '').split('.')[0]) if row[2] else 0
+                departures = int(str(row[3]).replace(',', '').split('.')[0]) if row[3] else 0
+                # BRU FOR_042: col 5 = Occupancy % (MEC uses col 4)
+                occ_pct = float(str(row[5]).replace(',', '.')) if len(row) > 5 and row[5] else 0.0
+                # BRU FOR_042: col 17 = Res. Room Rev.
+                rev_raw = str(row[17]).replace('.', '').replace(',', '.').strip() if len(row) > 17 and row[17] else '0'
+                revenue = float(rev_raw) if rev_raw else 0.0
+                entry = {'date': dt.strftime('%d %b'), 'dt': dt.strftime('%Y-%m-%d'),
+                         'rooms': rooms_sold, 'arrivals': arrivals, 'departures': departures,
+                         'occ': round(occ_pct, 1), 'rev': round(revenue)}
+                if mode == 'h':   history.append(entry)
+                elif mode == 'f': forecast.append(entry)
+            except: continue
+        return {'history': history[-60:], 'forecast': forecast[:60]}
+    except Exception as e:
+        print(f"[BRU] Forecast parse error: {e}")
+        return {'history': [], 'forecast': []}
+
+
+def _parse_bru_group_pipeline():
+    """Parse GRP_017 in VDV-BRU for upcoming group bookings."""
+    import glob as _glob
+    files = sorted(_glob.glob(os.path.join(_VDV_BRU_DIR, "GRP_017_GroupAndMEBookingListWithRevenueCSVOnly*.xlsx")))
+    if not files:
+        return []
+    path = files[-1]
+    STATUS_LABELS = {'DEF': 'Definite', 'DEP': 'Deposit', 'TEN': 'Tentative',
+                     'LOS': 'Lost', 'CXL': 'Cancelled', 'PRO': 'Prospect'}
+    MARKET_LABELS = {'MTGBNS': 'Meeting', 'CORPFIX': 'Corporate', 'CORPDYN': 'Corporate Dyn',
+                     'BNSGRP': 'Business Group', 'LEISURE': 'Leisure', 'CHARBNS': 'Charter'}
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(path, read_only=True)
+        rows = list(wb.active.iter_rows(values_only=True))
+        wb.close()
+        groups = []
+        today = datetime.now()
+        for i, row in enumerate(rows):
+            if i < 6 or not row or row[0] is None: continue
+            cols = [str(c).strip() if c is not None else '' for c in row]
+            if len(cols) < 8: continue
+            code   = cols[1]
+            name   = cols[2]
+            arr_s  = cols[3]
+            dep_s  = cols[4]
+            # BRU GRP_017: status at col 6, market at col 7
+            status = cols[6]
+            market = cols[7]
+            if status in ('LOS', 'CXL', ''): continue
+            if not re.match(r'\d{2}/\d{2}/\d{4}', arr_s): continue
+            try:
+                arr_dt = datetime.strptime(arr_s, '%d/%m/%Y')
+                dep_dt = datetime.strptime(dep_s, '%d/%m/%Y') if re.match(r'\d{2}/\d{2}/\d{4}', dep_s) else arr_dt
+                if arr_dt.date() < today.date(): continue
+                nights = (dep_dt - arr_dt).days
+                groups.append({
+                    'code': code, 'name': name if name else code,
+                    'arrival': arr_dt.strftime('%d %b %Y'),
+                    'departure': dep_dt.strftime('%d %b %Y'),
+                    'arr_dt': arr_dt.strftime('%Y-%m-%d'),
+                    'nights': nights,
+                    'status': status,
+                    'status_label': STATUS_LABELS.get(status, status),
+                    'market': MARKET_LABELS.get(market, market),
+                })
+            except: continue
+        return sorted(groups, key=lambda x: x['arr_dt'])[:20]
+    except Exception as e:
+        print(f"[BRU] Group pipeline parse error: {e}")
+        return []
+
+
+def _parse_bru_mice_data():
+    """Parse all RES_001 files in VDV-BRU for MICE/corporate bookings."""
+    import openpyxl, glob as _glob
+    files = sorted(_glob.glob(os.path.join(_VDV_BRU_DIR, "RES_001_ArrivalDetailed*.xlsx")))
+    MICE_SEGS = {'BNSGRP', 'CORPFIX', 'CORPDYN', 'MTGBNS'}
+    SEG_LABELS = {'BNSGRP': 'Business Group', 'CORPFIX': 'Corporate Fixed',
+                  'CORPDYN': 'Corporate Dynamic', 'MTGBNS': 'Meeting Business'}
+    result = {'total': 0, 'total_nights': 0, 'by_segment': {k: 0 for k in MICE_SEGS},
+              'top_clients': [], 'groups': []}
+    companies = {}
+    for path in files:
+        try:
+            wb = openpyxl.load_workbook(path, read_only=True)
+            rows = list(wb.active.iter_rows(values_only=True))
+            wb.close()
+            for i in range(13, len(rows)):
+                row = rows[i]
+                if not row or len(row) < 18: continue
+                market = str(row[17]).strip() if row[17] else ''
+                if market not in MICE_SEGS: continue
+                company = str(row[13]).strip() if row[13] else ''
+                nights_raw = str(row[7]).strip() if row[7] else '0'
+                arr_raw = str(row[4]).strip() if row[4] else ''
+                arr_date = arr_raw[:10] if arr_raw else ''
+                try: nights = int(nights_raw) if nights_raw.isdigit() else 1
+                except: nights = 1
+                if company and company not in ('nan', 'Group', 'Company', 'Travel Agent', ''):
+                    if company not in companies:
+                        companies[company] = {'segment': SEG_LABELS.get(market, market),
+                                              'seg_code': market, 'bookings': 0,
+                                              'nights': 0, 'last_arrival': arr_date}
+                    companies[company]['bookings'] += 1
+                    companies[company]['nights']   += nights
+                    if arr_date and arr_date > companies[company]['last_arrival']:
+                        companies[company]['last_arrival'] = arr_date
+                result['by_segment'][market] = result['by_segment'].get(market, 0) + 1
+                result['total']        += 1
+                result['total_nights'] += nights
+        except Exception as e:
+            print(f"[BRU] MICE parse error ({path}): {e}")
+    result['top_clients'] = sorted(
+        [{'company': co, **data} for co, data in companies.items()],
+        key=lambda x: -x['bookings'])[:12]
+    return result
+
+
+def _parse_bru_monthly_cx():
+    """Extract monthly cancellation counts from BRU RES_036 (col 16 = CXL Date)."""
+    import openpyxl, glob as _glob
+    from collections import Counter
+    files = sorted(_glob.glob(os.path.join(_VDV_BRU_DIR, "RES_036_CancelledReservations*.xlsx")))
+    if not files:
+        return []
+    seen_keys = set()
+    month_cx = Counter()
+    for fp in files:
+        try:
+            wb = openpyxl.load_workbook(fp, read_only=True)
+            rows = list(wb.active.iter_rows(values_only=True))
+            wb.close()
+            for row in rows:
+                if row[0] is None and len(row) > 3 and row[3]:
+                    cxl_ref = str(row[19]).strip() if len(row) > 19 and row[19] else ''
+                    if cxl_ref and re.match(r'[A-Z]{2,5}-CXL', cxl_ref):
+                        key = cxl_ref
+                    else:
+                        c8  = str(row[8])[:10]  if len(row) > 8  and row[8]  else ''
+                        c9  = str(row[9])        if len(row) > 9  and row[9]  else ''
+                        c14 = str(row[14])[:10]  if len(row) > 14 and row[14] else ''
+                        key = (c8, c9, c14)
+                    if key in seen_keys: continue
+                    seen_keys.add(key)
+                    cxl_dt = row[16] if len(row) > 16 else None
+                    if cxl_dt:
+                        try:
+                            if hasattr(cxl_dt, 'strftime'):
+                                label = cxl_dt.strftime('%b %Y')
+                            else:
+                                d = datetime.strptime(str(cxl_dt)[:10], '%d/%m/%Y')
+                                label = d.strftime('%b %Y')
+                            month_cx[label] += 1
+                        except: pass
+        except Exception as e:
+            print(f"[BRU] Monthly CX parse error ({fp}): {e}")
+    try:
+        sorted_months = sorted(month_cx.keys(), key=lambda s: datetime.strptime(s, '%b %Y'))[-6:]
+        return [(m, month_cx[m]) for m in sorted_months]
+    except:
+        return list(month_cx.items())
+
+
+def _score_bru_guests(guests):
+    """Score BRU repeat guests using the generic model."""
+    if not guests:
+        return []
+    feat_cols = ['lead_time', 'arrival_date_week_number', 'stays_in_weekend_nights',
+                 'stays_in_week_nights', 'adults', 'is_repeated_guest',
+                 'previous_cancellations', 'previous_bookings_not_canceled',
+                 'booking_changes', 'days_in_waiting_list', 'adr', 'total_of_special_requests']
+    now = datetime.now()
+    rows_feat = []
+    for g in guests:
+        arr = g['arr_date']
+        dep = g['dep_date']
+        wkend = wkday = 0
+        if dep:
+            d = arr
+            while d < dep:
+                if d.weekday() >= 5: wkend += 1
+                else: wkday += 1
+                d += timedelta(days=1)
+        lead = max(0, (arr - now).days)
+        rows_feat.append([lead, int(arr.isocalendar()[1]), wkend, wkday,
+                          g['adults'], 1, 0, 3, 0, 0, 140.0, 0])
+    df = pd.DataFrame(rows_feat, columns=feat_cols)
+    raw = model.predict_proba(df)[:, 1] * 100
+    return [float(round(min(60, max(5, s)), 1)) for s in raw]
+
+
 VDV_BRU_GUESTS_RAW      = []
 VDV_BRU_CHANNEL_STATS   = {}
 VDV_BRU_FUTURE_BOOKINGS = []
 VDV_BRU_FUTURE_SCORES   = []
+VDV_BRU_FORECAST_DATA   = {'history': [], 'forecast': []}
+VDV_BRU_GROUP_PIPELINE  = []
+VDV_BRU_MICE_DATA       = {}
+VDV_BRU_MONTHS          = []
+VDV_BRU_CX_MONTHLY      = []
+VDV_BRU_NS_MONTHLY      = []
 try:
     VDV_BRU_GUESTS_RAW      = _parse_bru_guests()
     VDV_BRU_CHANNEL_STATS   = _parse_bru_channel_stats()
     VDV_BRU_FUTURE_BOOKINGS = _parse_bru_future_bookings()
+    VDV_BRU_FORECAST_DATA   = _parse_bru_forecast()
+    VDV_BRU_GROUP_PIPELINE  = _parse_bru_group_pipeline()
+    VDV_BRU_MICE_DATA       = _parse_bru_mice_data()
+    _bru_monthly = _parse_bru_monthly_cx()
+    if _bru_monthly:
+        VDV_BRU_MONTHS     = [m for m, _ in _bru_monthly]
+        VDV_BRU_CX_MONTHLY = [c for _, c in _bru_monthly]
+        VDV_BRU_NS_MONTHLY = [0] * len(_bru_monthly)
     if VDV_BRU_FUTURE_BOOKINGS:
         VDV_BRU_FUTURE_SCORES = _score_bru_future(VDV_BRU_FUTURE_BOOKINGS)
     print(f"[BRU] Loaded {len(VDV_BRU_GUESTS_RAW)} repeat guests, "
           f"{len(VDV_BRU_FUTURE_BOOKINGS)} future bookings, "
+          f"{len(VDV_BRU_FORECAST_DATA['history'])}h/{len(VDV_BRU_FORECAST_DATA['forecast'])}f forecast, "
+          f"{len(VDV_BRU_GROUP_PIPELINE)} groups, "
           f"cx channels: {list(VDV_BRU_CHANNEL_STATS.keys())}")
 except Exception as _bru_err:
     print(f"[BRU] Startup warning: {_bru_err}")
@@ -1460,16 +1691,19 @@ def _grp_pipe_html(groups, status_colors):
         '</tr></thead><tbody>' + rows + '</tbody></table></div>'
     )
 
-def build_vdv_dashboard(hotel_name, lang="en", first_login=False):
-    """VdV Mechelen dashboard — historical overview + current guests."""
-    guests = VDV_GUESTS_RAW
-    scores  = _score_vdv_guests(guests)
-    ch_data = VDV_CHANNEL_STATS
+def build_vdv_dashboard(hotel_name, lang="en", first_login=False, _data=None):
+    """VdV dashboard — parameterised for MEC and BRU via _data dict."""
+    _d = _data or {}
+    guests      = _d.get('guests', VDV_GUESTS_RAW)
+    score_fn    = _d.get('score_fn', _score_vdv_guests)
+    scores      = score_fn(guests)
+    ch_data     = _d.get('ch_stats', VDV_CHANNEL_STATS)
+    export_url  = _d.get('export_url', '/vdv/export-highrisk')
     today   = datetime.now()
     today_str = today.strftime('%d %b %Y')
 
     # ── MICE data ────────────────────────────────────────────────────────────
-    mice = VDV_MICE_DATA if VDV_MICE_DATA else {
+    mice = _d.get('mice') or VDV_MICE_DATA or {
         'total': 11107, 'total_nights': 22338,
         'by_segment': {'BNSGRP': 1887, 'CORPFIX': 4254, 'CORPDYN': 1562, 'MTGBNS': 3404},
         'top_clients': [], 'groups': []
@@ -1488,10 +1722,10 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False):
     ])
 
     # ── Forecast + group pipeline ────────────────────────────────────────────
-    fc_data     = VDV_FORECAST_DATA
+    fc_data     = _d.get('forecast', VDV_FORECAST_DATA)
     fc_hist     = fc_data.get('history', [])
     fc_fore     = fc_data.get('forecast', [])
-    grp_pipe    = VDV_GROUP_PIPELINE
+    grp_pipe    = _d.get('groups', VDV_GROUP_PIPELINE)
     # Build JS arrays for the occupancy chart
     fc_labels   = json.dumps([r['date'] for r in fc_hist] + [r['date'] for r in fc_fore])
     fc_occ_hist = json.dumps([r['occ'] for r in fc_hist] + [None] * len(fc_fore))
@@ -1517,25 +1751,25 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False):
         elif risk_pts >= 2: c['risk'] = 'MEDIUM'
         else:               c['risk'] = 'LOW'
 
-    # ── Historical numbers (real Shiji data) ───────────────────────────────
-    MONTHS       = ['Oct 2025','Nov 2025','Dec 2025','Jan 2026','Feb 2026','Mar 2026']
-    CX_MONTHLY   = [167, 315, 335, 255, 296, 326]   # cancellations per month
-    NS_MONTHLY   = [43,  61,  75,  64,  58,  38]    # no-shows per month (verified from RES_037)
+    # ── Historical numbers ──────────────────────────────────────────────────
+    MONTHS       = _d.get('months',     ['Oct 2025','Nov 2025','Dec 2025','Jan 2026','Feb 2026','Mar 2026'])
+    CX_MONTHLY   = _d.get('cx_monthly', [167, 315, 335, 255, 296, 326])
+    NS_MONTHLY   = _d.get('ns_monthly', [43,  61,  75,  64,  58,  38])
     LOST_MONTHLY = [c+n for c,n in zip(CX_MONTHLY, NS_MONTHLY)]
 
-    total_cx     = sum(CX_MONTHLY)   # 1686
-    total_ns     = sum(NS_MONTHLY)   # 339
-    total_lost   = total_cx + total_ns   # 2025
-    avg_adr      = 130.0
-    avg_nights   = 1.8
+    total_cx     = sum(CX_MONTHLY)
+    total_ns     = sum(NS_MONTHLY)
+    total_lost   = total_cx + total_ns
+    avg_adr      = _d.get('avg_adr', 130.0)
+    avg_nights   = _d.get('avg_nights', 1.8)
     rev_lost     = int(total_lost * avg_adr * avg_nights)
     # Recoverable: 30% of cancellations + 25% of no-shows
     recoverable  = int(total_cx * 0.30 * avg_adr * avg_nights
                        + total_ns * 0.25 * avg_adr)
 
     # ── Future bookings risk (from RES_004 + model scoring) ────────────────
-    fut_bookings = VDV_FUTURE_BOOKINGS
-    fut_scores   = VDV_FUTURE_SCORES
+    fut_bookings = _d.get('fut_bookings', VDV_FUTURE_BOOKINGS)
+    fut_scores   = _d.get('fut_scores',   VDV_FUTURE_SCORES)
     # Fallback pre-computed constants when files not loaded
     if not fut_bookings:
         fut_total     = 2768
@@ -1647,16 +1881,17 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False):
     overbook_rec = ceil(tonight_high_risk * 0.15) if tonight_high_risk else 0
 
     # ── ROI tracking stats ─────────────────────────────────────────────────
+    _hotel_key = _d.get('hotel_key', VDV_HOTEL_KEY)
     roi_emails_sent = 0
     roi_recovered   = 0
     try:
         _conn_roi = get_db()
         _cur_roi  = _conn_roi.cursor()
         _cur_roi.execute("SELECT COUNT(*) FROM roi_actions WHERE hotel_username=%s",
-                         (VDV_HOTEL_KEY,))
+                         (_hotel_key,))
         roi_emails_sent = _cur_roi.fetchone()[0]
         _cur_roi.execute("SELECT COUNT(*) FROM roi_actions WHERE hotel_username=%s AND booking_ref='RECOVERED'",
-                         (VDV_HOTEL_KEY,))
+                         (_hotel_key,))
         roi_recovered = _cur_roi.fetchone()[0]
         _cur_roi.close()
         _conn_roi.close()
@@ -2126,7 +2361,7 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
 <tbody>{fut_table_html}</tbody>
 </table>
 <div style="margin-top:12px;text-align:right;">
-  <a href="/vdv/export-highrisk" style="display:inline-flex;align-items:center;gap:6px;padding:8px 18px;background:#111827;color:#fff;border-radius:8px;font-size:12px;font-weight:600;font-family:\'Plus Jakarta Sans\',sans-serif;text-decoration:none;">
+  <a href="{export_url}" style="display:inline-flex;align-items:center;gap:6px;padding:8px 18px;background:#111827;color:#fff;border-radius:8px;font-size:12px;font-weight:600;font-family:\'Plus Jakarta Sans\',sans-serif;text-decoration:none;">
     ↓ Export High-Risk to Excel
   </a>
 </div>
@@ -3935,294 +4170,30 @@ h1 span{{color:#00d165;}}
 
 
 def build_vdv_bru_dashboard(hotel_name, lang="en", first_login=False):
-    """Dashboard for Van der Valk Hotel Brussels Airport."""
-    guests      = VDV_BRU_GUESTS_RAW
-    fut_bookings = VDV_BRU_FUTURE_BOOKINGS
-    fut_scores   = VDV_BRU_FUTURE_SCORES
-    ch_data      = VDV_BRU_CHANNEL_STATS
-    today        = datetime.now()
-    today_str    = today.strftime('%d %b %Y')
+    """Thin wrapper — renders full VdV dashboard using Brussels Airport data."""
+    # Build monthly stats: use real parsed data or sensible fallback
+    months     = VDV_BRU_MONTHS     or ['Oct 2025','Nov 2025','Dec 2025','Jan 2026','Feb 2026','Mar 2026']
+    cx_monthly = VDV_BRU_CX_MONTHLY or [0] * len(months)
+    ns_monthly = VDV_BRU_NS_MONTHLY or [0] * len(months)
 
-    # ── Guest status buckets ─────────────────────────────────────────────────
-    arriving_today = [g for g in guests if g['status'] == 'Arriving Today']
-    in_house       = [g for g in guests if g['status'] == 'In House']
-
-    # ── Score repeat guests ──────────────────────────────────────────────────
-    def _score_repeat(g):
-        lead = max(0, (g['arr_date'].date() - today.date()).days) if hasattr(g['arr_date'], 'date') else 0
-        arr  = g['arr_date'] if isinstance(g['arr_date'], datetime) else datetime.combine(g['arr_date'], datetime.min.time())
-        feats = [[lead, int(arr.isocalendar()[1]), g['nights'] - g.get('wkend', 0),
-                  g.get('wkend', 0) if isinstance(g.get('wkend'), int) else 0,
-                  g['adults'], 1, 0, 0, 0, 0, 140.0, 0]]
-        try:
-            sc = float(model.predict_proba(pd.DataFrame(feats, columns=[
-                'lead_time','arrival_date_week_number','stays_in_week_nights',
-                'stays_in_weekend_nights','adults','is_repeated_guest',
-                'previous_cancellations','previous_bookings_not_canceled',
-                'booking_changes','days_in_waiting_list','adr','total_of_special_requests'])
-            )[:, 1][0] * 100)
-        except: sc = 25.0
-        return round(min(60, max(5, sc)), 1)
-
-    guest_scores = [_score_repeat(g) for g in guests]
-
-    # ── Future bookings risk ─────────────────────────────────────────────────
-    if fut_scores:
-        fut_total = len(fut_bookings)
-        fut_high  = sum(1 for s in fut_scores if s >= 70)
-        fut_med   = sum(1 for s in fut_scores if 40 <= s < 70)
-        fut_low   = fut_total - fut_high - fut_med
-        fut_no_gtd = sum(1 for b in fut_bookings if b.get('gtd', 'NONE') == 'NONE')
-    else:
-        fut_total = len(fut_bookings) if fut_bookings else 0
-        fut_high = fut_med = fut_low = fut_no_gtd = 0
-
-    high_count = sum(1 for s in guest_scores if s >= 60)
-
-    # ── Top at-risk per channel ──────────────────────────────────────────────
-    if fut_bookings and fut_scores:
-        from collections import defaultdict
-        ch_top = defaultdict(list)
-        for b, s in zip(fut_bookings, fut_scores):
-            ch_top[b['channel']].append((s, b))
-        top_risk_rows = ''
-        for ch in ('Booking.com', 'Corporate', 'Direct/Web', 'Other'):
-            items = sorted(ch_top.get(ch, []), reverse=True)[:10]
-            for s, b in items:
-                sc = '#ef4444' if s >= 70 else '#f59e0b' if s >= 40 else '#22c55e'
-                badge = 'HIGH' if s >= 70 else 'MED' if s >= 40 else 'LOW'
-                bf = ' 🍳' if b.get('has_breakfast') else ''
-                top_risk_rows += f'''<tr>
-  <td style="padding:8px 10px;font-size:12px;font-weight:500">{b["name"][:28]}{bf}</td>
-  <td style="padding:8px 10px;font-size:12px;color:#64748b">{b["arrival"]}</td>
-  <td style="padding:8px 10px;font-size:12px">{b["nights"]}n</td>
-  <td style="padding:8px 10px;font-size:12px;color:#64748b">{b["channel"]}</td>
-  <td style="padding:8px 10px;font-size:12px">{b["lead"]}d</td>
-  <td style="padding:8px 10px;text-align:center"><span style="background:{sc}22;color:{sc};border:1px solid {sc}66;border-radius:99px;padding:2px 8px;font-size:11px;font-weight:600">{badge} {s:.0f}%</span></td>
-</tr>'''
-    else:
-        top_risk_rows = '<tr><td colspan="6" style="padding:20px;text-align:center;color:#94a3b8">No future booking data loaded</td></tr>'
-
-    # ── Cancellation channel breakdown ───────────────────────────────────────
-    total_cx = ch_data.get('_total_cx', 0)
-    ch_rows  = ''
-    for ch in ('Booking.com', 'Direct / Web', 'Corporate', 'Packages / Groups', 'Other'):
-        n = ch_data.get(ch, 0)
-        pct = round(n / max(1, total_cx) * 100)
-        ch_rows += f'<div class="bar-row"><div class="bar-meta"><span class="bar-name">{ch}</span><span class="bar-val">{n:,}</span></div><div class="bar-track"><div class="bar-fill r" style="width:{min(100,pct)}%"></div></div></div>'
-
-    # ── Repeat guests table ──────────────────────────────────────────────────
-    guest_rows = ''
-    for g, sc in sorted(zip(guests, guest_scores), key=lambda x: -x[1])[:30]:
-        sc_col = '#ef4444' if sc >= 50 else '#f59e0b' if sc >= 35 else '#22c55e'
-        status_col = {'Arriving Today': '#16a34a', 'In House': '#3b82f6',
-                      'Checked Out': '#94a3b8'}.get(g['status'], '#64748b')
-        guest_rows += f'''<tr>
-  <td style="padding:8px 10px;font-size:12px;font-weight:500">{g["name"][:28]}</td>
-  <td style="padding:8px 10px;font-size:12px;color:{status_col}">{g["status"]}</td>
-  <td style="padding:8px 10px;font-size:12px;color:#64748b">{g["arrival"]}</td>
-  <td style="padding:8px 10px;font-size:12px">{g["nights"]}n</td>
-  <td style="padding:8px 10px;text-align:center"><span style="background:{sc_col}22;color:{sc_col};border:1px solid {sc_col}66;border-radius:99px;padding:2px 8px;font-size:11px;font-weight:600">{sc:.0f}%</span></td>
-</tr>'''
-
-    if not guest_rows:
-        guest_rows = '<tr><td colspan="5" style="padding:20px;text-align:center;color:#94a3b8">No repeat guest data loaded</td></tr>'
-
-    # ── Future month distribution ────────────────────────────────────────────
-    from collections import defaultdict
-    month_counts = defaultdict(lambda: [0, 0, 0])
-    if fut_bookings and fut_scores:
-        for b, s in zip(fut_bookings, fut_scores):
-            mo = b['arr_date'].strftime('%b %Y')
-            if s >= 70:   month_counts[mo][0] += 1
-            elif s >= 40: month_counts[mo][1] += 1
-            else:         month_counts[mo][2] += 1
-    months_sorted = sorted(month_counts.keys(),
-                           key=lambda m: datetime.strptime(m, '%b %Y'))[:8]
-    mo_labels = json.dumps(months_sorted)
-    mo_high   = json.dumps([month_counts[m][0] for m in months_sorted])
-    mo_med    = json.dumps([month_counts[m][1] for m in months_sorted])
-
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Van der Valk Brussels Airport — Occupado</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<style>
-*{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:'Plus Jakarta Sans',sans-serif;background:#f8fafc;color:#0f172a;min-height:100vh}}
-.topbar{{background:#0f172a;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between}}
-.topbar-logo{{color:#fff;font-weight:800;font-size:16px;letter-spacing:-0.5px}}
-.topbar-sub{{color:#94a3b8;font-size:12px}}
-.topbar-right{{display:flex;gap:12px;align-items:center}}
-.topbar-btn{{color:#94a3b8;font-size:12px;text-decoration:none;padding:6px 12px;border:1px solid #334155;border-radius:6px}}
-.topbar-btn:hover{{color:#fff;border-color:#64748b}}
-.hero{{background:linear-gradient(135deg,#1e3a5f 0%,#2d6a9f 100%);padding:28px 32px;color:#fff}}
-.hero-eyebrow{{font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;opacity:0.7;margin-bottom:6px}}
-.hero-title{{font-size:26px;font-weight:800;letter-spacing:-0.5px}}
-.hero-sub{{font-size:13px;opacity:0.75;margin-top:4px}}
-.hero-badges{{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}}
-.hero-badge{{background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);border-radius:99px;padding:4px 12px;font-size:11px;font-weight:600}}
-.hero-badge.warn{{background:rgba(239,68,68,0.25);border-color:rgba(239,68,68,0.5)}}
-.hero-badge.info{{background:rgba(59,130,246,0.2);border-color:rgba(59,130,246,0.4)}}
-.content{{max-width:1300px;margin:0 auto;padding:24px 24px 48px}}
-.kpi-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px}}
-.kpi-card{{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px}}
-.kpi-card.highlight-green{{border-color:#bbf7d0;background:#f0fdf4}}
-.kpi-num{{font-size:32px;font-weight:800;letter-spacing:-1px;line-height:1}}
-.kpi-num.green{{color:#16a34a}} .kpi-num.blue{{color:#3b82f6}} .kpi-num.red{{color:#ef4444}} .kpi-num.amber{{color:#f59e0b}} .kpi-num.neutral{{color:#0f172a}}
-.kpi-label{{font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-top:4px}}
-.kpi-trend{{font-size:11px;color:#94a3b8;margin-top:2px}}
-.section-title{{font-size:13px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin:24px 0 12px}}
-.sh{{display:flex;align-items:center;gap:10px;margin:24px 0 14px}}
-.sh-title{{font-size:13px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;white-space:nowrap}}
-.sh-line{{flex:1;height:1px;background:#e2e8f0}}
-.sh-sub{{font-size:11px;color:#94a3b8;white-space:nowrap}}
-.card{{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px;margin-bottom:14px}}
-.card-title{{font-size:13px;font-weight:700;color:#0f172a;margin-bottom:4px}}
-.card-sub{{font-size:11px;color:#94a3b8;margin-bottom:12px}}
-.data-table{{width:100%;border-collapse:collapse;font-size:12px}}
-.data-table th{{padding:8px 10px;text-align:left;font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #e2e8f0}}
-.data-table td{{border-bottom:1px solid #f1f5f9}}
-.data-table tr:last-child td{{border-bottom:none}}
-.data-table tr:hover td{{background:#f8fafc}}
-.grid-2{{display:grid;grid-template-columns:1fr 1fr;gap:14px}}
-.bar-row{{margin-bottom:10px}}
-.bar-meta{{display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px}}
-.bar-name{{color:#374151}} .bar-val{{font-weight:700;color:#0f172a}}
-.bar-track{{background:#f1f5f9;border-radius:99px;height:6px}}
-.bar-fill{{height:6px;border-radius:99px;background:#ef4444;transition:width 1s ease}}
-.fstrip{{display:flex;gap:0;background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-bottom:14px}}
-.ts-item{{flex:1;padding:14px 16px;border-right:1px solid #f1f5f9;text-align:center}}
-.ts-item:last-child{{border-right:none}}
-.ts-num{{font-size:22px;font-weight:800;letter-spacing:-0.5px}}
-.ts-num.r{{color:#ef4444}} .ts-num.a{{color:#f59e0b}} .ts-num.g{{color:#22c55e}}
-.ts-label{{font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px}}
-@media(max-width:768px){{.grid-2{{grid-template-columns:1fr}}.fstrip{{flex-wrap:wrap}}}}
-</style>
-</head>
-<body>
-<div class="topbar">
-  <div>
-    <div class="topbar-logo">Occupado</div>
-    <div class="topbar-sub">Van der Valk Brussels Airport</div>
-  </div>
-  <div class="topbar-right">
-    <a href="/bru/export-highrisk" class="topbar-btn">⬇ Export High Risk</a>
-    <a href="/logout" class="topbar-btn">Log out</a>
-  </div>
-</div>
-
-<!-- HERO -->
-<div class="hero">
-  <div class="hero-eyebrow">Live Intelligence Dashboard</div>
-  <div class="hero-title">Van der Valk Hotel Brussels Airport</div>
-  <div class="hero-sub">{today_str} · {len(guests)} repeat guests tracked · Powered by Occupado AI</div>
-  <div class="hero-badges">
-    <span class="hero-badge">✓ AI Risk Scoring Active</span>
-    <span class="hero-badge">✓ {len(arriving_today)} arriving today</span>
-    <span class="hero-badge">✓ {len(in_house)} in house</span>
-    <span class="hero-badge {'warn' if fut_high > 0 else ''}">{'⚠ ' + str(fut_high) + ' high risk' if fut_high > 0 else '✓ 0 high risk'}</span>
-    <span class="hero-badge info">VDV Shiji · Data current</span>
-  </div>
-</div>
-
-<div class="content">
-
-<!-- KPI ROW -->
-<div class="section-title" style="margin-top:0">Today at a Glance</div>
-<div class="kpi-grid">
-  <div class="kpi-card highlight-green">
-    <div class="kpi-num green">{len(arriving_today)}</div>
-    <div class="kpi-label">Arriving Today</div>
-    <div class="kpi-trend" style="color:#16a34a">↑ Ready for check-in</div>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-num blue">{len(in_house)}</div>
-    <div class="kpi-label">Currently In House</div>
-    <div class="kpi-trend" style="color:#3b82f6">Repeat guests</div>
-  </div>
-  <div class="kpi-card {'highlight-green' if high_count == 0 else ''}">
-    <div class="kpi-num {'green' if high_count == 0 else 'red'}">{high_count}</div>
-    <div class="kpi-label">High Risk Today</div>
-    <div class="kpi-trend">Repeat guests ≥60%</div>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-num neutral" style="font-size:22px">{total_cx:,}</div>
-    <div class="kpi-label">Cancellations Tracked</div>
-    <div class="kpi-trend">Historical Shiji data</div>
-  </div>
-</div>
-
-<!-- FUTURE BOOKINGS -->
-<div class="sh"><span class="sh-title">Future Bookings Risk</span><span class="sh-line"></span><span class="sh-sub">{fut_total:,} upcoming reservations</span></div>
-<div class="fstrip">
-  <div class="ts-item"><div class="ts-num">{fut_total:,}</div><div class="ts-label">Total Upcoming</div></div>
-  <div class="ts-item"><div class="ts-num r">{fut_high:,}</div><div class="ts-label">High Risk ≥70%</div></div>
-  <div class="ts-item"><div class="ts-num a">{fut_med:,}</div><div class="ts-label">Medium 40–70%</div></div>
-  <div class="ts-item"><div class="ts-num g">{fut_low:,}</div><div class="ts-label">Low Risk &lt;40%</div></div>
-  <div class="ts-item"><div class="ts-num" style="color:#f97316">{fut_no_gtd:,}</div><div class="ts-label">No Guarantee</div></div>
-</div>
-
-<div class="card">
-  <div class="card-title">Top At-Risk Bookings by Channel</div>
-  <div class="card-sub">Top 10 per channel · sorted by risk score</div>
-  <div style="overflow-x:auto">
-    <table class="data-table">
-      <thead><tr>
-        <th>Guest</th><th>Arrival</th><th>Nights</th><th>Channel</th><th>Lead</th><th>Risk</th>
-      </tr></thead>
-      <tbody>{top_risk_rows}</tbody>
-    </table>
-  </div>
-</div>
-
-<!-- MONTH DISTRIBUTION -->
-<div class="card">
-  <div class="card-title">Risk Distribution by Month</div>
-  <div class="card-sub">Upcoming bookings — high vs medium risk over time</div>
-  <canvas id="bruMonthChart" style="max-height:220px"></canvas>
-</div>
-
-<!-- GRID: CHANNEL + REPEAT GUESTS -->
-<div class="grid-2">
-  <div class="card">
-    <div class="card-title">Cancellations by Channel</div>
-    <div class="card-sub">{total_cx:,} total cancellations tracked</div>
-    {ch_rows}
-  </div>
-  <div class="card">
-    <div class="card-title">Repeat Guests</div>
-    <div class="card-sub">{len(guests)} tracked · sorted by risk</div>
-    <div style="overflow-x:auto;max-height:320px">
-      <table class="data-table">
-        <thead><tr><th>Name</th><th>Status</th><th>Arrival</th><th>Nights</th><th>Risk</th></tr></thead>
-        <tbody>{guest_rows}</tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
-</div><!-- /content -->
-
-<script>
-new Chart(document.getElementById('bruMonthChart'), {{
-  type: 'bar',
-  data: {{
-    labels: {mo_labels},
-    datasets: [
-      {{label:'High Risk',data:{mo_high},backgroundColor:'#ef444488',borderColor:'#ef4444',borderWidth:1}},
-      {{label:'Medium Risk',data:{mo_med},backgroundColor:'#f59e0b55',borderColor:'#f59e0b',borderWidth:1}}
-    ]
-  }},
-  options:{{responsive:true,plugins:{{legend:{{position:'top'}}}},scales:{{x:{{stacked:false}},y:{{beginAtZero:true}}}}}}
-}});
-</script>
-</body>
-</html>"""
+    _bru_data = {
+        'guests':      VDV_BRU_GUESTS_RAW,
+        'score_fn':    _score_bru_guests,
+        'ch_stats':    VDV_BRU_CHANNEL_STATS,
+        'mice':        VDV_BRU_MICE_DATA if VDV_BRU_MICE_DATA else None,
+        'forecast':    VDV_BRU_FORECAST_DATA,
+        'groups':      VDV_BRU_GROUP_PIPELINE,
+        'months':      months,
+        'cx_monthly':  cx_monthly,
+        'ns_monthly':  ns_monthly,
+        'avg_adr':     140.0,
+        'avg_nights':  1.7,
+        'fut_bookings': VDV_BRU_FUTURE_BOOKINGS,
+        'fut_scores':  VDV_BRU_FUTURE_SCORES,
+        'hotel_key':   VDV_BRU_HOTEL_KEY,
+        'export_url':  '/bru/export-highrisk',
+    }
+    return build_vdv_dashboard(hotel_name, lang=lang, first_login=first_login, _data=_bru_data)
 
 
 def build_dashboard(hotel_name, sample, scores, tonight_scores, tonight_sample=None, uploaded=False, lang="en", first_login=False):
