@@ -1697,7 +1697,8 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False, _data=None):
     guests      = _d.get('guests', VDV_GUESTS_RAW)
     score_fn    = _d.get('score_fn', _score_vdv_guests)
     scores      = score_fn(guests)
-    ch_data     = _d.get('ch_stats', VDV_CHANNEL_STATS)
+    _ch_raw     = _d.get('ch_stats', VDV_CHANNEL_STATS)
+    ch_data     = {k: v for k, v in _ch_raw.items() if isinstance(v, (int, float)) and not k.startswith('_')}
     export_url  = _d.get('export_url', '/vdv/export-highrisk')
     today   = datetime.now()
     today_str = today.strftime('%d %b %Y')
