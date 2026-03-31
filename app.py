@@ -855,7 +855,6 @@ def _score_vdv_future(bookings):
             for rank, idx in enumerate(sorted_by_score):
                 percentile = rank / (n - 1) if n > 1 else 0.5
                 reduction = 10 if is_repeat(bookings_list[idx]) else 0
-                reduction += 5 if bookings_list[idx].get('has_breakfast') else 0
                 result[idx] = round(max(lo, lo + percentile * (hi - lo) - reduction), 1)
         return result
 
@@ -1223,18 +1222,18 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False):
     fut_scores   = VDV_FUTURE_SCORES
     # Fallback pre-computed constants when files not loaded
     if not fut_bookings:
-        fut_total     = 2795
-        fut_high      = 735
-        fut_med       = 1484
-        fut_low       = 576
-        fut_no_gtd    = 1149
+        fut_total     = 2768
+        fut_high      = 36
+        fut_med       = 844
+        fut_low       = 1888
+        fut_no_gtd    = 1220
         fut_table_html = ''
-        fut_by_channel = {'Booking.com': 780, 'Direct/Web': 424, 'Corporate': 416,
-                          'Package': 192, 'Other': 190}
-        fut_month_labels = ['Mar 2026','Apr 2026','May 2026','Jun 2026',
-                            'Jul 2026','Aug 2026','Sep 2026']
-        fut_month_high   = [190, 267, 141, 68, 65, 36, 26]
-        fut_month_med    = [148, 544, 297, 140, 136, 74, 58]
+        fut_by_channel = {'Booking.com': 1056, 'Direct/Web': 436, 'Corporate': 539,
+                          'Package': 470, 'Other': 267}
+        fut_month_labels = ['Apr 2026','May 2026','Jun 2026','Jul 2026',
+                            'Aug 2026','Sep 2026','Oct 2026']
+        fut_month_high   = [0, 2, 3, 28, 2, 1, 0]
+        fut_month_med    = [200, 191, 114, 151, 93, 51, 38]
     else:
         fut_total = len(fut_bookings)
         fut_high  = sum(1 for s in fut_scores if s >= 70)
@@ -6171,6 +6170,16 @@ def vdv_export_highrisk():
             pass
     if not bookings or not scores:
         return "No booking data available. Run the app locally with VDV-Data files to populate the cache.", 404
+    # Build repeat guest name set for export flagging
+    from collections import Counter as _Ctr
+    _name_counts = _Ctr(b["name"].strip().lower() for b in bookings)
+    _freq_repeats = {n for n, c in _name_counts.items() if c >= 2}
+    _known_repeats = {g['name'].strip().lower() for g in VDV_GUESTS_RAW}
+    _all_repeats = _freq_repeats | _known_repeats
+
+    def _is_repeat_export(b):
+        return b["name"].strip().lower() in _all_repeats
+
     def _export_reason(b, sc):
         parts = []
         if b["lead"] > 90:
@@ -6198,6 +6207,10 @@ def vdv_export_highrisk():
             parts.append(f"{b['nights']}-night stay (longer stays rarely cancel last-minute)")
         if b.get("adr", 0) > 200:
             parts.append(f"High ADR (€{b['adr']:.0f})")
+        if b.get("has_breakfast"):
+            parts.append("Breakfast included")
+        if _is_repeat_export(b):
+            parts.append("Known repeat guest")
         return " · ".join(parts)
 
     all_indexed = sorted(enumerate(scores), key=lambda x: -x[1])
@@ -6213,7 +6226,8 @@ def vdv_export_highrisk():
     ws.title = "Risk Bookings"
     header_fill = PatternFill("solid", fgColor="111827")
     header_font = Font(bold=True, color="FFFFFF", size=11)
-    headers = ["#", "Guest", "Arrival", "Nights", "Lead (days)", "Channel", "Guarantee", "ADR (€)", "Risk %", "Risk Level", "Reason"]
+    headers = ["#", "Guest", "Arrival", "Nights", "Lead (days)", "Channel", "Guarantee",
+               "ADR (€)", "Breakfast", "Repeat Guest", "Risk %", "Risk Level", "Reason"]
     ws.append(headers)
     for cell in ws[1]:
         cell.fill  = header_fill
@@ -6221,17 +6235,26 @@ def vdv_export_highrisk():
         cell.alignment = Alignment(horizontal="center")
     high_fill = PatternFill("solid", fgColor="FEE2E2")
     med_fill  = PatternFill("solid", fgColor="FEF3C7")
+    yes_fill  = PatternFill("solid", fgColor="DCFCE7")
     for rank, (idx, sc) in enumerate(indexed):
         b = bookings[idx]
         risk_level = "High Risk" if sc >= 70 else "Medium Risk"
         reason = _export_reason(b, sc)
+        has_bf = "Yes" if b.get("has_breakfast") else "No"
+        is_rep = "Yes" if _is_repeat_export(b) else "No"
         row = [rank+1, b["name"], b["arrival"], b["nights"], b["lead"],
-               b["channel"], b["gtd"], b.get("adr", ""), round(sc, 1), risk_level, reason]
+               b["channel"], b["gtd"], b.get("adr", ""),
+               has_bf, is_rep, round(sc, 1), risk_level, reason]
         ws.append(row)
         fill = high_fill if sc >= 70 else med_fill
-        for col_idx in (9, 10):
+        for col_idx in (11, 12):
             ws.cell(row=rank+2, column=col_idx).fill = fill
             ws.cell(row=rank+2, column=col_idx).font = Font(bold=True)
+        # Green highlight for breakfast/repeat Yes cells
+        if has_bf == "Yes":
+            ws.cell(row=rank+2, column=9).fill = yes_fill
+        if is_rep == "Yes":
+            ws.cell(row=rank+2, column=10).fill = yes_fill
     for col in ws.columns:
         max_len = max(len(str(cell.value or "")) for cell in col)
         ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 40)
@@ -6257,10 +6280,10 @@ def send_weekly_digest():
         return False
     bookings = VDV_FUTURE_BOOKINGS
     scores   = VDV_FUTURE_SCORES
-    fut_high = sum(1 for s in scores if s >= 70) if scores else 735
-    fut_med  = sum(1 for s in scores if 40 <= s < 70) if scores else 1484
-    fut_low  = sum(1 for s in scores if s < 40) if scores else 576
-    fut_total = len(bookings) if bookings else 2795
+    fut_high = sum(1 for s in scores if s >= 70) if scores else 36
+    fut_med  = sum(1 for s in scores if 40 <= s < 70) if scores else 844
+    fut_low  = sum(1 for s in scores if s < 40) if scores else 1888
+    fut_total = len(bookings) if bookings else 2768
     roi_emails = 0
     roi_recovered = 0
     try:
