@@ -8,8 +8,9 @@ Features used (8):
   is_repeated_guest, lead_time, channel_encoded
 
 Data sources:
-  Completed stays : RES_004 (5/6/7) — past arrivals with booking creation dates
-  Cancellations   : RES_036 x3 + RES_037 x2
+  Completed stays : RES_004 (5/6/7/8) — past arrivals with booking creation dates
+  Cancellations   : RES_036 (all) + RES_037 (all)
+  Repeat guests   : RES_042 (all) — marks known repeat guests in training data
 
 channel_encoded: 0=OTA/Web, 1=Direct, 2=Corporate, 3=Group/Package, NaN=Unknown
 lead_time: days between booking creation and arrival (real value for all records)
@@ -112,8 +113,9 @@ def parse_cancellations():
     """
     import openpyxl
     records = []
-    files = [f for f in os.listdir(VDV_DIR)
-             if f.startswith(('RES_036', 'RES_037')) and f.endswith('.xlsx')]
+    seen_keys = set()  # (arrival_str, nights_or_dep, created_str) — dedup across files
+    files = sorted([f for f in os.listdir(VDV_DIR)
+                    if f.startswith(('RES_036', 'RES_037')) and f.endswith('.xlsx')])
     print(f'Cancellation files: {files}')
 
     for fn in files:
@@ -123,58 +125,110 @@ def parse_cancellations():
         wb.close()
         file_count = 0
 
-        for i, row in enumerate(rows):
-            if i < 7: continue
-            if not row or len(row) < 15: continue
-            c8  = str(row[8]).strip()  if row[8]  is not None else ''
-            c9  = str(row[9]).strip()  if row[9]  is not None else ''
-            c13 = str(row[13]).strip() if row[13] is not None else ''
-            c14 = str(row[14]).strip() if row[14] is not None else ''
+        if fn.startswith('RES_037'):
+            # No-show layout: col[1]=name, col[2]=conf#, col[9]=market_seg,
+            #   col[11]=arrival, col[13]=departure, col[16]=created, col[24]=rate
+            for i, row in enumerate(rows):
+                if i < 7: continue
+                if not row or len(row) < 14: continue
+                c1  = str(row[1]).strip() if row[1]  is not None else ''
+                c2  = str(row[2]).strip() if row[2]  is not None else ''
+                c11 = str(row[11]).strip() if row[11] is not None else ''
+                c13 = str(row[13]).strip() if row[13] is not None else ''
+                c16 = str(row[16]).strip() if row[16] is not None else ''
+                # Guest row: name has comma, conf# starts with MEC- (not folio)
+                if ',' not in c1: continue
+                if not c2.startswith('MEC-') or c2.startswith('MEC-F'): continue
+                if not re.match(r'\d{2}/\d{2}/\d{4}$', c11): continue
+                dedup_key = (c2, c11)  # conf# + arrival date
+                if dedup_key in seen_keys: continue
+                seen_keys.add(dedup_key)
+                arr  = parse_date(c11)
+                dep  = parse_date(c13)
+                if arr is None: continue
+                nights = max(0, (dep - arr).days) if dep else 1
+                created = parse_date(c16) if re.match(r'\d{2}/\d{2}/\d{4}', c16) else None
+                rate = safe_float(str(row[24]).strip() if len(row) > 24 and row[24] else '')
+                seg  = str(row[9]).strip() if row[9] is not None else ''
+                channel = seg_to_channel(seg)
+                lead = max(0, (arr - created).days) if created else 25
+                adr  = rate / max(nights, 1) if rate and nights > 0 else rate
+                wknd, wkday = weekend_split(arr, nights)
+                records.append({
+                    'arrival': arr, 'nights': nights, 'adults': 1,
+                    'lead_time': lead,
+                    'arrival_date_week_number': int(arr.isocalendar()[1]),
+                    'arrival_month': arr.month,
+                    'arrival_day_of_week': arr.weekday(),
+                    'stays_in_weekend_nights': wknd,
+                    'stays_in_week_nights': wkday,
+                    'adr': adr,
+                    'is_repeated_guest': 0,
+                    'channel_encoded': channel,
+                    'is_canceled': 1,
+                    'source': fn
+                })
+                file_count += 1
+        else:
+            # RES_036 layout: col[8]=arrival, col[9]=nights, col[13]=rate, col[14]=created
+            for i, row in enumerate(rows):
+                if i < 7: continue
+                if not row or len(row) < 15: continue
+                c8  = str(row[8]).strip()  if row[8]  is not None else ''
+                c9  = str(row[9]).strip()  if row[9]  is not None else ''
+                c13 = str(row[13]).strip() if row[13] is not None else ''
+                c14 = str(row[14]).strip() if row[14] is not None else ''
 
-            if not re.match(r'\d{2}/\d{2}/\d{4}$', c8): continue
-            if not c9.isdigit(): continue
+                if not re.match(r'\d{2}/\d{2}/\d{4}$', c8): continue
+                if not c9.isdigit(): continue
 
-            arr     = parse_date(c8)
-            nights  = int(c9)
-            rate    = safe_float(c13)
-            created = parse_date(c14)
-            if arr is None: continue
+                # col[20] = MEC-CXL-XXXXXX (unique cancellation reference)
+                cxl_ref = str(row[20]).strip() if len(row) > 20 and row[20] is not None else ''
+                dedup_key = cxl_ref if cxl_ref.startswith('MEC-CXL') else (c8, c9, c14)
+                if dedup_key in seen_keys: continue
+                seen_keys.add(dedup_key)
 
-            adults = 1
-            channel = float('nan')
-            for j in range(i + 1, min(i + 6, len(rows))):
-                sub = rows[j]
-                if not sub or len(sub) < 10: continue
-                v = str(sub[9]).strip() if sub[9] is not None else ''
-                if '/' in v and adults == 1:
-                    parts = v.split('/')
-                    if len(parts) == 2 and all(p.strip().isdigit() for p in parts):
-                        a = int(parts[0].strip())
-                        if 1 <= a <= 10: adults = a
-                if sub[3] is not None and (isinstance(channel, float) and channel != channel):
-                    ch = seg_to_channel(str(sub[3]))
-                    if not (isinstance(ch, float) and ch != ch):
-                        channel = ch
+                arr     = parse_date(c8)
+                nights  = int(c9)
+                rate    = safe_float(c13)
+                created = parse_date(c14)
+                if arr is None: continue
 
-            lead = max(0, (arr - created).days) if created else 25
-            adr  = rate / max(nights, 1) if rate and nights > 0 else rate
-            wknd, wkday = weekend_split(arr, nights)
+                adults = 1
+                channel = float('nan')
+                for j in range(i + 1, min(i + 6, len(rows))):
+                    sub = rows[j]
+                    if not sub or len(sub) < 10: continue
+                    v = str(sub[9]).strip() if sub[9] is not None else ''
+                    if '/' in v and adults == 1:
+                        parts = v.split('/')
+                        if len(parts) == 2 and all(p.strip().isdigit() for p in parts):
+                            a = int(parts[0].strip())
+                            if 1 <= a <= 10: adults = a
+                    if sub[3] is not None and (isinstance(channel, float) and channel != channel):
+                        ch = seg_to_channel(str(sub[3]))
+                        if not (isinstance(ch, float) and ch != ch):
+                            channel = ch
 
-            records.append({
-                'arrival': arr, 'nights': nights, 'adults': adults,
-                'lead_time': lead,
-                'arrival_date_week_number': int(arr.isocalendar()[1]),
-                'arrival_month': arr.month,
-                'arrival_day_of_week': arr.weekday(),
-                'stays_in_weekend_nights': wknd,
-                'stays_in_week_nights': wkday,
-                'adr': adr,
-                'is_repeated_guest': 0,
-                'channel_encoded': channel,
-                'is_canceled': 1,
-                'source': fn
-            })
-            file_count += 1
+                lead = max(0, (arr - created).days) if created else 25
+                adr  = rate / max(nights, 1) if rate and nights > 0 else rate
+                wknd, wkday = weekend_split(arr, nights)
+
+                records.append({
+                    'arrival': arr, 'nights': nights, 'adults': adults,
+                    'lead_time': lead,
+                    'arrival_date_week_number': int(arr.isocalendar()[1]),
+                    'arrival_month': arr.month,
+                    'arrival_day_of_week': arr.weekday(),
+                    'stays_in_weekend_nights': wknd,
+                    'stays_in_week_nights': wkday,
+                    'adr': adr,
+                    'is_repeated_guest': 0,
+                    'channel_encoded': channel,
+                    'is_canceled': 1,
+                    'source': fn
+                })
+                file_count += 1
 
         print(f'  {fn}: {file_count:,} records')
 
@@ -218,7 +272,7 @@ def parse_res004_stays(cxl_keys):
 
     files = sorted([f for f in os.listdir(VDV_DIR)
                     if f.startswith('RES_004') and f.endswith('.xlsx')
-                    and any(f'({n})' in f for n in ('5','6','7'))])
+                    and any(f'({n})' in f for n in ('5','6','7','8'))])
     print(f'RES_004 historical files: {files}')
 
     for fn in files:
@@ -318,22 +372,28 @@ def parse_res004_stays(cxl_keys):
 # ─────────────────────────────────────────────────────────────────────────────
 def enrich_repeat_guests(df):
     import openpyxl
-    path = os.path.join(VDV_DIR, 'RES_042_RepeatReservationsReport (1).xlsx')
-    if not os.path.exists(path): return df
-    wb = openpyxl.load_workbook(path, read_only=True)
-    rows = list(wb.active.iter_rows(values_only=True))
-    wb.close()
     repeat_dates = set()
-    for row in rows:
-        if not row or row[0] is None: continue
-        col4 = row[4] if len(row) > 4 else None
-        if col4 and '/' in str(col4):
-            d = parse_date(str(col4))
-            if d: repeat_dates.add(d.strftime('%Y-%m-%d'))
+    files = sorted([f for f in os.listdir(VDV_DIR)
+                    if re.match(r'RES_042_RepeatReservationsReport.*\.xlsx$', f)])
+    if not files:
+        return df
+    print(f'  RES_042 files: {files}')
+    for fn in files:
+        path = os.path.join(VDV_DIR, fn)
+        wb = openpyxl.load_workbook(path, read_only=True)
+        rows = list(wb.active.iter_rows(values_only=True))
+        wb.close()
+        for row in rows:
+            if not row or row[0] is None: continue
+            col4 = row[4] if len(row) > 4 else None
+            if col4 and '/' in str(col4):
+                d = parse_date(str(col4))
+                if d: repeat_dates.add(d.strftime('%Y-%m-%d'))
     df['is_repeated_guest'] = df['arrival'].apply(
         lambda x: 1 if x.strftime('%Y-%m-%d') in repeat_dates else 0
     )
-    print(f'  Repeat guests marked: {df["is_repeated_guest"].sum():,}')
+    print(f'  Repeat guests marked: {df["is_repeated_guest"].sum():,} '
+          f'(from {len(files)} RES_042 file(s), {len(repeat_dates):,} repeat dates)')
     return df
 
 

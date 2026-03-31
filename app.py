@@ -570,72 +570,79 @@ VDV_HOTEL_KEY = "van der valk mechelen"
 _VDV_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "VDV-Data")
 
 def _parse_vdv_guests():
-    """Parse RES_042 repeat reservations report for current/upcoming repeat guests."""
-    path = os.path.join(_VDV_DIR, "RES_042_RepeatReservationsReport (1).xlsx")
-    if not os.path.exists(path):
+    """Parse all RES_042 repeat reservations reports for current/upcoming repeat guests."""
+    import openpyxl, glob as _glob
+    res042_files = sorted(_glob.glob(os.path.join(_VDV_DIR, "RES_042_RepeatReservationsReport*.xlsx")))
+    if not res042_files:
         return []
     try:
-        import openpyxl
-        wb = openpyxl.load_workbook(path, read_only=True)
-        rows = list(wb.active.iter_rows(values_only=True))
-        wb.close()
         today = datetime.now()
         guests = []
-        i = 0
-        while i < len(rows):
-            row = rows[i]
-            col0 = str(row[0]).strip() if row[0] else ''
-            col1 = str(row[1]).strip() if len(row) > 1 and row[1] else ''
-            col4 = row[4] if len(row) > 4 else None
-            col5 = row[5] if len(row) > 5 else None
-            if ',' in col0 and col4 and '/' in str(col4):
-                try:
-                    arr = datetime.strptime(str(col4)[:10], '%d/%m/%Y')
-                except Exception:
-                    i += 1
-                    continue
-                adults = 1
-                if col5:
-                    try: adults = int(str(col5).split('/')[0])
-                    except: pass
-                dep = None
-                for j in range(i + 1, min(i + 7, len(rows))):
-                    r = rows[j]
-                    r4 = r[4] if len(r) > 4 else None
-                    if r4 and r[0] is None and '/' in str(r4):
-                        try:
-                            dep = datetime.strptime(str(r4)[:10], '%d/%m/%Y')
-                            break
+        seen = set()  # (name_lower, arrival_date_str) dedup across files
+        for path in res042_files:
+            wb = openpyxl.load_workbook(path, read_only=True)
+            rows = list(wb.active.iter_rows(values_only=True))
+            wb.close()
+            i = 0
+            while i < len(rows):
+                row = rows[i]
+                col0 = str(row[0]).strip() if row[0] else ''
+                col1 = str(row[1]).strip() if len(row) > 1 and row[1] else ''
+                col4 = row[4] if len(row) > 4 else None
+                col5 = row[5] if len(row) > 5 else None
+                if ',' in col0 and col4 and '/' in str(col4):
+                    try:
+                        arr = datetime.strptime(str(col4)[:10], '%d/%m/%Y')
+                    except Exception:
+                        i += 1
+                        continue
+                    arr_key = (col0.strip().lower(), arr.strftime('%Y-%m-%d'))
+                    if arr_key in seen:
+                        i += 1
+                        continue
+                    seen.add(arr_key)
+                    adults = 1
+                    if col5:
+                        try: adults = int(str(col5).split('/')[0])
                         except: pass
-                # Collect guest notes
-                note_parts = []
-                _skip = {'Repeat Reservations Report', 'Van der Valk Hotel Mechelen'}
-                for j in range(i + 1, min(i + 22, len(rows))):
-                    r = rows[j]
-                    r6 = r[6] if len(r) > 6 else None
-                    if r6:
-                        n = str(r6).strip()
-                        if n and n not in _skip and 'MIGRATED' not in n and 'CORPORATE 2025' not in n and 'central ar' not in n.lower() and '\n' not in n:
-                            note_parts.append(n[:80])
-                note = '; '.join(note_parts[:2]) if note_parts else ''
-                nights = (dep - arr).days if dep else 1
-                if dep and dep.date() < today.date():
-                    status = 'Checked Out'
-                elif arr.date() == today.date():
-                    status = 'Arriving Today'
-                elif arr.date() < today.date():
-                    status = 'In House'
-                else:
-                    status = f'Arriving {arr.strftime("%d %b")}'
-                guests.append({
-                    'name': col0, 'membership': col1,
-                    'arrival': arr.strftime('%d/%m/%Y'),
-                    'departure': dep.strftime('%d/%m/%Y') if dep else '',
-                    'arr_date': arr, 'dep_date': dep,
-                    'adults': adults, 'nights': nights,
-                    'status': status, 'note': note,
-                })
-            i += 1
+                    dep = None
+                    for j in range(i + 1, min(i + 7, len(rows))):
+                        r = rows[j]
+                        r4 = r[4] if len(r) > 4 else None
+                        if r4 and r[0] is None and '/' in str(r4):
+                            try:
+                                dep = datetime.strptime(str(r4)[:10], '%d/%m/%Y')
+                                break
+                            except: pass
+                    # Collect guest notes
+                    note_parts = []
+                    _skip = {'Repeat Reservations Report', 'Van der Valk Hotel Mechelen'}
+                    for j in range(i + 1, min(i + 22, len(rows))):
+                        r = rows[j]
+                        r6 = r[6] if len(r) > 6 else None
+                        if r6:
+                            n = str(r6).strip()
+                            if n and n not in _skip and 'MIGRATED' not in n and 'CORPORATE 2025' not in n and 'central ar' not in n.lower() and '\n' not in n:
+                                note_parts.append(n[:80])
+                    note = '; '.join(note_parts[:2]) if note_parts else ''
+                    nights = (dep - arr).days if dep else 1
+                    if dep and dep.date() < today.date():
+                        status = 'Checked Out'
+                    elif arr.date() == today.date():
+                        status = 'Arriving Today'
+                    elif arr.date() < today.date():
+                        status = 'In House'
+                    else:
+                        status = f'Arriving {arr.strftime("%d %b")}'
+                    guests.append({
+                        'name': col0, 'membership': col1,
+                        'arrival': arr.strftime('%d/%m/%Y'),
+                        'departure': dep.strftime('%d/%m/%Y') if dep else '',
+                        'arr_date': arr, 'dep_date': dep,
+                        'adults': adults, 'nights': nights,
+                        'status': status, 'note': note,
+                    })
+                i += 1
         return guests
     except Exception as e:
         print(f"[VDV] Guest parse error: {e}")
@@ -706,86 +713,97 @@ def _score_vdv_guests(guests):
 
 
 def _parse_vdv_future_bookings():
-    """Parse RES_004 EnteredOnAndBy for all future bookings with lead times & channels."""
-    path = os.path.join(_VDV_DIR, "RES_004_EnteredOnAndBy (1).xlsx")
-    if not os.path.exists(path):
-        return []
-    try:
-        import openpyxl
-        wb = openpyxl.load_workbook(path, read_only=True)
-        rows = list(wb.active.iter_rows(values_only=True))
-        wb.close()
-        today = datetime.now().date()
-        bookings = []
-        i = 0
-        while i < len(rows):
-            r = rows[i]
-            c0 = str(r[0]).strip() if r[0] else ''
-            c3 = str(r[3]).strip() if len(r) > 3 and r[3] else ''
-            if (',' in c0 and c3.startswith('MEC-') and not c3.startswith('MEC-F')
-                    and len(r) > 8 and r[8]):
-                arr_str = str(r[8])[:10]
-                try:
-                    arr = datetime.strptime(arr_str, '%d/%m/%Y').date()
-                except Exception:
-                    i += 1
-                    continue
-                if arr < today:
-                    i += 1
-                    continue
-                nights = int(r[9]) if r[9] and str(r[9]).isdigit() else 1
-                adults_str = str(r[12]).split('/')[0].strip() if r[12] else '1'
-                try:   adults = int(adults_str)
-                except: adults = 1
-                channel = str(r[25]).strip() if len(r) > 25 and r[25] else 'OTHER'
-                rate_str = str(r[16]).strip() if len(r) > 16 and r[16] else ''
-                try:
-                    total_rate = float(rate_str.replace(',', '.'))
-                    adr = total_rate / max(1, nights)
-                except Exception:
-                    adr = 130.0
-                created = str(r[28])[:10] if len(r) > 28 and r[28] else ''
-                lead = 0
-                if created:
+    """Parse all RES_004 files for future bookings with lead times, channels & breakfast flag."""
+    import openpyxl
+    # Files known to contain future bookings; dedup by confirmation number
+    res004_candidates = ['RES_004_EnteredOnAndBy (1).xlsx',
+                         'RES_004_EnteredOnAndBy (2).xlsx',
+                         'RES_004_EnteredOnAndBy (12).xlsx']
+    today = datetime.now().date()
+    bookings = []
+    seen_confs = set()
+    ch_map = {
+        'BARWEB': 'Booking.com', 'BAROTAGROSS': 'Booking.com',
+        'DEALSOTA': 'Booking.com', 'DISCOTAGROSS': 'Booking.com',
+        'DISCWEB': 'Direct/Web', 'BARDIR': 'Direct/Web', 'DISCDIR': 'Direct/Web',
+        'CORPFIX': 'Corporate', 'CORPDYN': 'Corporate',
+        'PACK': 'Package', 'MTGBNS': 'Package', 'BNSGRP': 'Package',
+        'DEALS': 'Other',
+    }
+    for fn in res004_candidates:
+        path = os.path.join(_VDV_DIR, fn)
+        if not os.path.exists(path):
+            continue
+        try:
+            wb = openpyxl.load_workbook(path, read_only=True)
+            rows = list(wb.active.iter_rows(values_only=True))
+            wb.close()
+            i = 0
+            while i < len(rows):
+                r = rows[i]
+                c0 = str(r[0]).strip() if r[0] else ''
+                c3 = str(r[3]).strip() if len(r) > 3 and r[3] else ''
+                if (',' in c0 and c3.startswith('MEC-') and not c3.startswith('MEC-F')
+                        and len(r) > 8 and r[8]):
+                    arr_str = str(r[8])[:10]
                     try:
-                        cdate = datetime.strptime(created, '%d/%m/%Y').date()
-                        lead = max(0, (arr - cdate).days)
+                        arr = datetime.strptime(arr_str, '%d/%m/%Y').date()
                     except Exception:
-                        pass
-                gtd = 'NONE'
-                for j in range(i + 1, min(i + 5, len(rows))):
-                    rj = rows[j]
-                    if len(rj) > 12 and rj[12]:
-                        gtd = str(rj[12]).strip()
-                        break
-                wkend = wkday = 0
-                d = datetime.combine(arr, datetime.min.time())
-                for _ in range(nights):
-                    if d.weekday() >= 5: wkend += 1
-                    else: wkday += 1
-                    d += timedelta(days=1)
-                week_num = int(datetime.combine(arr, datetime.min.time()).isocalendar()[1])
-                ch_map = {
-                    'BARWEB': 'Booking.com', 'BAROTAGROSS': 'Booking.com',
-                    'DEALSOTA': 'Booking.com', 'DISCOTAGROSS': 'Booking.com',
-                    'DISCWEB': 'Direct/Web', 'BARDIR': 'Direct/Web', 'DISCDIR': 'Direct/Web',
-                    'CORPFIX': 'Corporate', 'CORPDYN': 'Corporate',
-                    'PACK': 'Package', 'MTGBNS': 'Package', 'BNSGRP': 'Package',
-                    'DEALS': 'Other',
-                }
-                ch_label = ch_map.get(channel, 'Other')
-                bookings.append({
-                    'name': c0, 'arrival': arr.strftime('%d/%m/%Y'),
-                    'arr_date': arr, 'nights': nights, 'adults': adults,
-                    'channel': ch_label, 'channel_raw': channel,
-                    'lead': lead, 'gtd': gtd, 'adr': round(adr, 2),
-                    'wkend': wkend, 'wkday': wkday, 'week_num': week_num,
-                })
-            i += 1
-        return bookings
-    except Exception as e:
-        print(f"[VDV] Future bookings parse error: {e}")
-        return []
+                        i += 1
+                        continue
+                    if arr < today or c3 in seen_confs:
+                        i += 1
+                        continue
+                    seen_confs.add(c3)
+                    nights = int(r[9]) if r[9] and str(r[9]).isdigit() else 1
+                    adults_str = str(r[12]).split('/')[0].strip() if r[12] else '1'
+                    try:   adults = int(adults_str)
+                    except: adults = 1
+                    channel = str(r[25]).strip() if len(r) > 25 and r[25] else 'OTHER'
+                    rate_plan = str(r[13]).strip() if len(r) > 13 and r[13] else ''
+                    purchase_elem = str(r[18]).strip() if len(r) > 18 and r[18] else ''
+                    has_breakfast = ('BB' in rate_plan.upper() or
+                                     'FBBF' in purchase_elem.upper())
+                    rate_str = str(r[16]).strip() if len(r) > 16 and r[16] else ''
+                    try:
+                        total_rate = float(rate_str.replace(',', '.'))
+                        adr = total_rate / max(1, nights)
+                    except Exception:
+                        adr = 130.0
+                    created = str(r[28])[:10] if len(r) > 28 and r[28] else ''
+                    lead = 0
+                    if created:
+                        try:
+                            cdate = datetime.strptime(created, '%d/%m/%Y').date()
+                            lead = max(0, (arr - cdate).days)
+                        except Exception:
+                            pass
+                    gtd = 'NONE'
+                    for j in range(i + 1, min(i + 5, len(rows))):
+                        rj = rows[j]
+                        if len(rj) > 12 and rj[12]:
+                            gtd = str(rj[12]).strip()
+                            break
+                    wkend = wkday = 0
+                    d = datetime.combine(arr, datetime.min.time())
+                    for _ in range(nights):
+                        if d.weekday() >= 5: wkend += 1
+                        else: wkday += 1
+                        d += timedelta(days=1)
+                    week_num = int(datetime.combine(arr, datetime.min.time()).isocalendar()[1])
+                    ch_label = ch_map.get(channel, 'Other')
+                    bookings.append({
+                        'name': c0, 'arrival': arr.strftime('%d/%m/%Y'),
+                        'arr_date': arr, 'nights': nights, 'adults': adults,
+                        'channel': ch_label, 'channel_raw': channel,
+                        'lead': lead, 'gtd': gtd, 'adr': round(adr, 2),
+                        'wkend': wkend, 'wkday': wkday, 'week_num': week_num,
+                        'has_breakfast': has_breakfast,
+                    })
+                i += 1
+        except Exception as e:
+            print(f"[VDV] Future bookings parse error ({fn}): {e}")
+    return bookings
 
 
 def _score_vdv_future(bookings):
@@ -837,6 +855,7 @@ def _score_vdv_future(bookings):
             for rank, idx in enumerate(sorted_by_score):
                 percentile = rank / (n - 1) if n > 1 else 0.5
                 reduction = 10 if is_repeat(bookings_list[idx]) else 0
+                reduction += 5 if bookings_list[idx].get('has_breakfast') else 0
                 result[idx] = round(max(lo, lo + percentile * (hi - lo) - reduction), 1)
         return result
 
