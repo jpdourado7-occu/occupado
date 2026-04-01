@@ -5734,12 +5734,22 @@ def dashboard():
     # ── Van der Valk Mechelen gets a dedicated enriched dashboard ──
     if hotel_username == VDV_HOTEL_KEY:
         first_login = session.pop("first_login", False)
-        return build_vdv_dashboard(hotel_name, lang=lang, first_login=first_login)
+        try:
+            return build_vdv_dashboard(hotel_name, lang=lang, first_login=first_login)
+        except Exception as _e:
+            import traceback
+            print(f"[MEC] Dashboard error: {_e}\n{traceback.format_exc()}")
+            raise
 
     # ── Van der Valk Brussels Airport gets its own dashboard ──
     if hotel_username == VDV_BRU_HOTEL_KEY:
         first_login = session.pop("first_login", False)
-        return build_vdv_bru_dashboard(hotel_name, lang=lang, first_login=first_login)
+        try:
+            return build_vdv_bru_dashboard(hotel_name, lang=lang, first_login=first_login)
+        except Exception as _e:
+            import traceback
+            print(f"[BRU] Dashboard error: {_e}\n{traceback.format_exc()}")
+            raise
 
     uploaded_data = session.get("uploaded_csv")
     first_login = session.pop("first_login", False)
