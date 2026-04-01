@@ -719,6 +719,57 @@ def _count_vdv_noshow():
     return count
 
 
+def _build_vdv_guest_history():
+    """Build per-guest history: total stays (RES_042) + cancellations (RES_036)."""
+    import openpyxl, glob as _glob
+    from collections import defaultdict
+    history = defaultdict(lambda: {'stays': 0, 'cancels': 0})
+
+    # Count all-time stays from RES_042 (no date filter)
+    seen_stays = set()
+    for path in sorted(_glob.glob(os.path.join(_VDV_DIR, "RES_042_RepeatReservationsReport*.xlsx"))):
+        try:
+            wb = openpyxl.load_workbook(path, read_only=True)
+            rows = list(wb.active.iter_rows(values_only=True))
+            wb.close()
+            for row in rows:
+                col0 = str(row[0]).strip() if row[0] else ''
+                col4 = row[4] if len(row) > 4 else None
+                if ',' in col0 and col4 and '/' in str(col4):
+                    key = (col0.lower(), str(col4)[:10])
+                    if key not in seen_stays:
+                        seen_stays.add(key)
+                        history[col0.lower()]['stays'] += 1
+        except Exception:
+            pass
+
+    # Count cancellations from RES_036 — main guest rows (col0 has comma)
+    seen_cx = set()
+    for path in sorted(_glob.glob(os.path.join(_VDV_DIR, "RES_036_CancelledReservations*.xlsx"))):
+        try:
+            wb = openpyxl.load_workbook(path, read_only=True)
+            rows = list(wb.active.iter_rows(values_only=True))
+            wb.close()
+            for i, row in enumerate(rows):
+                col0 = str(row[0]).strip() if row[0] else ''
+                if ',' not in col0:
+                    continue
+                # Dedup via MEC-CXL reference in the following detail row
+                cxl_ref = ''
+                if i + 1 < len(rows):
+                    nr = rows[i + 1]
+                    cxl_ref = str(nr[20]).strip() if len(nr) > 20 and nr[20] else ''
+                key = cxl_ref if cxl_ref.startswith('MEC-CXL') else \
+                      (col0.lower(), str(row[4])[:10] if len(row) > 4 and row[4] else col0.lower())
+                if key and key not in seen_cx:
+                    seen_cx.add(key)
+                    history[col0.lower()]['cancels'] += 1
+        except Exception:
+            pass
+
+    return dict(history)
+
+
 def _score_vdv_guests(guests):
     """Score VdV repeat guests using the VdV-specific model (4 features)."""
     if not guests:
@@ -751,7 +802,25 @@ def _score_vdv_guests(guests):
                       r[1], r[2], g['adults'], 1, 0, 3, 0, 0, 130.0, 0]
                      for g, r in zip(guests, feat_rows)]
         df_feat = pd.DataFrame(full_rows, columns=feat_cols)
-    return [float(s) for s in m.predict_proba(df_feat)[:, 1] * 100]
+    raw_scores = [float(s) for s in m.predict_proba(df_feat)[:, 1] * 100]
+
+    # ── Loyalty adjustment: blend model score with guest's actual cancel rate ──
+    # Trust grows with number of completed stays; Laplace-smoothed cancel rate
+    # prevents a single cancellation from dominating for new repeat guests.
+    adjusted = []
+    for g, raw_sc in zip(guests, raw_scores):
+        hist = VDV_GUEST_HISTORY.get(g['name'].strip().lower(), {'stays': 0, 'cancels': 0})
+        stays   = hist['stays']
+        cancels = hist['cancels']
+        if stays >= 2:
+            hist_rate = (cancels + 0.5) / (stays + 1)   # Laplace-smoothed cancel rate
+            trust     = min(1.0, stays / 10)             # 0→1 as stays 0→10+
+            blend     = 0.65                             # max 65% pull from history
+            sc = raw_sc * (1 - trust * blend) + hist_rate * 100 * trust * blend
+        else:
+            sc = raw_sc
+        adjusted.append(max(0.0, min(100.0, sc)))
+    return adjusted
 
 
 def _parse_vdv_future_bookings():
@@ -1119,6 +1188,7 @@ def _parse_group_pipeline():
 
 # Load VdV data once at startup
 VDV_GUESTS_RAW      = []
+VDV_GUEST_HISTORY   = {}
 VDV_CHANNEL_STATS   = {}
 VDV_FUTURE_BOOKINGS = []
 VDV_FUTURE_SCORES   = []
@@ -1133,6 +1203,7 @@ VDV_LANDING_STATS   = {
 }
 try:
     VDV_GUESTS_RAW      = _parse_vdv_guests()
+    VDV_GUEST_HISTORY   = _build_vdv_guest_history()
     VDV_CHANNEL_STATS   = _parse_vdv_channel_stats()
     VDV_FUTURE_BOOKINGS = _parse_vdv_future_bookings()
     VDV_MICE_DATA       = _parse_mice_data()
@@ -1165,6 +1236,9 @@ try:
     if _real_ns > 50:
         VDV_LANDING_STATS['total_ns'] = _real_ns
     VDV_LANDING_STATS['training_count'] = 119390 + _real_cx + _real_ns
+    _hist_tracked = sum(1 for v in VDV_GUEST_HISTORY.values() if v['stays'] >= 2)
+    _hist_cx      = sum(v['cancels'] for v in VDV_GUEST_HISTORY.values())
+    print(f"[VDV] Guest history: {len(VDV_GUEST_HISTORY)} guests, {_hist_tracked} with 2+ stays, {_hist_cx} total cancels tracked")
     print(f"[VDV] Loaded {len(VDV_GUESTS_RAW)} repeat guests, "
           f"{len(VDV_FORECAST_DATA['history'])}h/{len(VDV_FORECAST_DATA['forecast'])}f forecast days, "
           f"{len(VDV_GROUP_PIPELINE)} upcoming groups, ",
