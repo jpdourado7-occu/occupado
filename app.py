@@ -1759,7 +1759,7 @@ def _score_bru_guests(guests):
         rows_feat.append([lead, int(arr.isocalendar()[1]), wkend, wkday,
                           g['adults'], 1, 0, 3, 0, 0, 190.0, 0])
     df = pd.DataFrame(rows_feat, columns=feat_cols)
-    raw_scores = list(model.predict_proba(df)[:, 1] * 100)
+    raw_scores = [float(s) for s in model.predict_proba(df)[:, 1] * 100]
 
     # ── Loyalty adjustment: same Bayesian blend as MEC ───────────────────────
     adjusted = []
@@ -5748,9 +5748,8 @@ def dashboard():
             return build_vdv_bru_dashboard(hotel_name, lang=lang, first_login=first_login)
         except Exception as _e:
             import traceback
-            tb = traceback.format_exc()
-            print(f"[BRU] Dashboard error: {_e}\n{tb}")
-            return f"<pre style='color:red;padding:20px'><b>BRU Dashboard Error:</b>\n{tb}</pre>", 200
+            print(f"[BRU] Dashboard error: {_e}\n{traceback.format_exc()}")
+            raise
 
     uploaded_data = session.get("uploaded_csv")
     first_login = session.pop("first_login", False)
