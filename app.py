@@ -1694,8 +1694,55 @@ def _parse_bru_monthly_cx():
         return list(month_cx.items())
 
 
+def _build_bru_guest_history():
+    """Build per-guest history for BRU: total stays (RES_042) + cancellations (RES_036)."""
+    import openpyxl, glob as _glob
+    from collections import defaultdict
+    history = defaultdict(lambda: {'stays': 0, 'cancels': 0})
+
+    # Count all-time stays from RES_042 (no date filter)
+    seen_stays = set()
+    for path in sorted(_glob.glob(os.path.join(_VDV_BRU_DIR, "RES_042_RepeatReservationsReport*.xlsx"))):
+        try:
+            wb = openpyxl.load_workbook(path, read_only=True)
+            rows = list(wb.active.iter_rows(values_only=True))
+            wb.close()
+            for row in rows:
+                col0 = str(row[0]).strip() if row[0] else ''
+                col4 = row[4] if len(row) > 4 else None
+                if ',' in col0 and col4 and '/' in str(col4):
+                    key = (col0.lower(), str(col4)[:10])
+                    if key not in seen_stays:
+                        seen_stays.add(key)
+                        history[col0.lower()]['stays'] += 1
+        except Exception:
+            pass
+
+    # Count cancellations from RES_036 — main rows: col0=name, col1=room type, col16=CXL datetime
+    seen_cx = set()
+    for path in sorted(_glob.glob(os.path.join(_VDV_BRU_DIR, "RES_036_CancelledReservations*.xlsx"))):
+        try:
+            wb = openpyxl.load_workbook(path, read_only=True)
+            rows = list(wb.active.iter_rows(values_only=True))
+            wb.close()
+            for row in rows:
+                col0 = str(row[0]).strip() if row[0] else ''
+                col1 = row[1] if len(row) > 1 else None
+                col16 = row[16] if len(row) > 16 else None
+                if ',' not in col0 or col1 is None or col16 is None:
+                    continue
+                key = (col0.lower(), str(col16)[:19])
+                if key not in seen_cx:
+                    seen_cx.add(key)
+                    history[col0.lower()]['cancels'] += 1
+        except Exception:
+            pass
+
+    return dict(history)
+
+
 def _score_bru_guests(guests):
-    """Score BRU repeat guests using the generic model."""
+    """Score BRU repeat guests using the generic model + loyalty adjustment."""
     if not guests:
         return []
     feat_cols = ['lead_time', 'arrival_date_week_number', 'stays_in_weekend_nights',
@@ -1716,13 +1763,29 @@ def _score_bru_guests(guests):
                 d += timedelta(days=1)
         lead = max(0, (arr - now).days)
         rows_feat.append([lead, int(arr.isocalendar()[1]), wkend, wkday,
-                          g['adults'], 1, 0, 3, 0, 0, 140.0, 0])
+                          g['adults'], 1, 0, 3, 0, 0, 190.0, 0])
     df = pd.DataFrame(rows_feat, columns=feat_cols)
-    raw = model.predict_proba(df)[:, 1] * 100
-    return [float(round(min(60, max(5, s)), 1)) for s in raw]
+    raw_scores = list(model.predict_proba(df)[:, 1] * 100)
+
+    # ── Loyalty adjustment: same Bayesian blend as MEC ───────────────────────
+    adjusted = []
+    for g, raw_sc in zip(guests, raw_scores):
+        hist = VDV_BRU_GUEST_HISTORY.get(g['name'].strip().lower(), {'stays': 0, 'cancels': 0})
+        stays   = hist['stays']
+        cancels = hist['cancels']
+        if stays >= 2:
+            hist_rate = (cancels + 0.5) / (stays + 1)
+            trust     = min(1.0, stays / 10)
+            blend     = 0.65
+            sc = raw_sc * (1 - trust * blend) + hist_rate * 100 * trust * blend
+        else:
+            sc = raw_sc
+        adjusted.append(max(0.0, min(100.0, sc)))
+    return adjusted
 
 
 VDV_BRU_GUESTS_RAW      = []
+VDV_BRU_GUEST_HISTORY   = {}
 VDV_BRU_CHANNEL_STATS   = {}
 VDV_BRU_FUTURE_BOOKINGS = []
 VDV_BRU_FUTURE_SCORES   = []
@@ -1734,6 +1797,7 @@ VDV_BRU_CX_MONTHLY      = []
 VDV_BRU_NS_MONTHLY      = []
 try:
     VDV_BRU_GUESTS_RAW      = _parse_bru_guests()
+    VDV_BRU_GUEST_HISTORY   = _build_bru_guest_history()
     VDV_BRU_CHANNEL_STATS   = _parse_bru_channel_stats()
     VDV_BRU_FUTURE_BOOKINGS = _parse_bru_future_bookings()
     VDV_BRU_FORECAST_DATA   = _parse_bru_forecast()
@@ -1746,6 +1810,9 @@ try:
         VDV_BRU_NS_MONTHLY = [0] * len(_bru_monthly)
     if VDV_BRU_FUTURE_BOOKINGS:
         VDV_BRU_FUTURE_SCORES = _score_bru_future(VDV_BRU_FUTURE_BOOKINGS)
+    _bru_hist_tracked = sum(1 for v in VDV_BRU_GUEST_HISTORY.values() if v['stays'] >= 2)
+    _bru_hist_cx      = sum(v['cancels'] for v in VDV_BRU_GUEST_HISTORY.values())
+    print(f"[BRU] Guest history: {len(VDV_BRU_GUEST_HISTORY)} guests, {_bru_hist_tracked} with 2+ stays, {_bru_hist_cx} cancels tracked")
     print(f"[BRU] Loaded {len(VDV_BRU_GUESTS_RAW)} repeat guests, "
           f"{len(VDV_BRU_FUTURE_BOOKINGS)} future bookings, "
           f"{len(VDV_BRU_FORECAST_DATA['history'])}h/{len(VDV_BRU_FORECAST_DATA['forecast'])}f forecast, "
