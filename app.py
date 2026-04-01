@@ -719,39 +719,15 @@ def _count_vdv_noshow():
     return count
 
 
-def _count_bru_noshow():
-    """Count unique no-shows across all BRU RES_037 files."""
-    import openpyxl, glob as _glob
-    files = sorted(_glob.glob(os.path.join(_VDV_BRU_DIR, "RES_037_NoShow*.xlsx")))
-    seen = set()
-    count = 0
-    for fp in files:
-        try:
-            wb = openpyxl.load_workbook(fp, read_only=True)
-            rows = list(wb.active.iter_rows(values_only=True))
-            wb.close()
-            for row in rows:
-                if not row[1] or len(row) < 13:
-                    continue
-                conf    = str(row[2]).strip() if row[2] else ''
-                arrival = str(row[12])[:10]   if row[12] else ''
-                key = (conf, arrival) if conf else (str(row[1]).strip(), arrival)
-                if key in seen:
-                    continue
-                seen.add(key)
-                count += 1
-        except Exception as e:
-            print(f"[BRU] NS count error ({fp}): {e}")
-    return count
-
-
-def _parse_bru_ns_monthly(months_list):
-    """Return per-month no-show counts for BRU aligned with months_list (e.g. ['Oct 2025', ...])."""
+def _parse_bru_noshow(months_list=None):
+    """Parse BRU RES_037 in one pass. Returns (total_count, monthly_list).
+    monthly_list is aligned with months_list if provided, else empty list."""
     import openpyxl, glob as _glob
     from collections import defaultdict
     from datetime import datetime
     files = sorted(_glob.glob(os.path.join(_VDV_BRU_DIR, "RES_037_NoShow*.xlsx")))
     seen = set()
+    count = 0
     by_month = defaultdict(int)
     for fp in files:
         try:
@@ -773,15 +749,16 @@ def _parse_bru_ns_monthly(months_list):
                 if key in seen:
                     continue
                 seen.add(key)
+                count += 1
                 try:
-                    dt = datetime.strptime(arr_str, '%Y-%m-%d')
-                    label = dt.strftime('%b %Y')
+                    label = datetime.strptime(arr_str, '%Y-%m-%d').strftime('%b %Y')
                     by_month[label] += 1
                 except Exception:
                     pass
         except Exception as e:
-            print(f"[BRU] NS monthly error ({fp}): {e}")
-    return [by_month.get(m, 0) for m in months_list]
+            print(f"[BRU] NS parse error ({fp}): {e}")
+    monthly = [by_month.get(m, 0) for m in months_list] if months_list else []
+    return count, monthly
 
 
 def _build_vdv_guest_history():
@@ -1824,13 +1801,14 @@ try:
     if _bru_monthly:
         VDV_BRU_MONTHS     = [m for m, _ in _bru_monthly]
         VDV_BRU_CX_MONTHLY = [c for _, c in _bru_monthly]
-        VDV_BRU_NS_MONTHLY = _parse_bru_ns_monthly(VDV_BRU_MONTHS)
+        _bru_real_ns, VDV_BRU_NS_MONTHLY = _parse_bru_noshow(VDV_BRU_MONTHS)
+    else:
+        _bru_real_ns, VDV_BRU_NS_MONTHLY = _parse_bru_noshow()
     if VDV_BRU_FUTURE_BOOKINGS:
         VDV_BRU_FUTURE_SCORES = _score_bru_future(VDV_BRU_FUTURE_BOOKINGS)
     _bru_hist_tracked = sum(1 for v in VDV_BRU_GUEST_HISTORY.values() if v['stays'] >= 2)
     _bru_hist_cx      = sum(v['cancels'] for v in VDV_BRU_GUEST_HISTORY.values())
     print(f"[BRU] Guest history: {len(VDV_BRU_GUEST_HISTORY)} guests, {_bru_hist_tracked} with 2+ stays, {_bru_hist_cx} cancels tracked")
-    _bru_real_ns = _count_bru_noshow()
     print(f"[BRU] Loaded {len(VDV_BRU_GUESTS_RAW)} repeat guests, "
           f"{len(VDV_BRU_FUTURE_BOOKINGS)} future bookings, "
           f"{len(VDV_BRU_FORECAST_DATA['history'])}h/{len(VDV_BRU_FORECAST_DATA['forecast'])}f forecast, "
