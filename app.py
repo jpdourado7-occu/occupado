@@ -1567,7 +1567,13 @@ def _parse_bru_mice_data():
 
 
 def _parse_bru_monthly_cx():
-    """Extract monthly cancellation counts from BRU RES_036 (col 16 = CXL Date)."""
+    """Extract monthly cancellation counts from BRU RES_036 (col 16 = CXL Date).
+
+    BRU RES_036 has two row types per reservation:
+      - Main row:   row[0]=guest name, row[1]=room type, row[16]=CXL Date/Time, row[20]=CXL No.
+      - Detail row: row[0]=None, row[2]=VIP, row[3]=rate code, row[16]='CXL By' (text)
+    We must target main rows (row[0] and row[1] non-None, row[16] present) for dates.
+    """
     import openpyxl, glob as _glob
     from collections import Counter
     files = sorted(_glob.glob(os.path.join(_VDV_BRU_DIR, "RES_036_CancelledReservations*.xlsx")))
@@ -1581,8 +1587,12 @@ def _parse_bru_monthly_cx():
             rows = list(wb.active.iter_rows(values_only=True))
             wb.close()
             for row in rows:
-                if row[0] is None and len(row) > 3 and row[3]:
-                    cxl_ref = str(row[19]).strip() if len(row) > 19 and row[19] else ''
+                # Main guest rows: col 0 = guest name, col 1 = room type, col 16 = CXL datetime
+                if row[0] is not None and row[1] is not None and (len(row) > 16 and row[16] is not None):
+                    # CXL No. is at col 20 in BRU files (col 19 in header, shifted by 1 in data)
+                    cxl_ref = str(row[20]).strip() if len(row) > 20 and row[20] else ''
+                    if not cxl_ref:
+                        cxl_ref = str(row[19]).strip() if len(row) > 19 and row[19] else ''
                     if cxl_ref and re.match(r'[A-Z]{2,5}-CXL', cxl_ref):
                         key = cxl_ref
                     else:
@@ -1592,16 +1602,15 @@ def _parse_bru_monthly_cx():
                         key = (c8, c9, c14)
                     if key in seen_keys: continue
                     seen_keys.add(key)
-                    cxl_dt = row[16] if len(row) > 16 else None
-                    if cxl_dt:
-                        try:
-                            if hasattr(cxl_dt, 'strftime'):
-                                label = cxl_dt.strftime('%b %Y')
-                            else:
-                                d = datetime.strptime(str(cxl_dt)[:10], '%d/%m/%Y')
-                                label = d.strftime('%b %Y')
-                            month_cx[label] += 1
-                        except: pass
+                    cxl_dt = row[16]
+                    try:
+                        if hasattr(cxl_dt, 'strftime'):
+                            label = cxl_dt.strftime('%b %Y')
+                        else:
+                            d = datetime.strptime(str(cxl_dt)[:10], '%d/%m/%Y')
+                            label = d.strftime('%b %Y')
+                        month_cx[label] += 1
+                    except: pass
         except Exception as e:
             print(f"[BRU] Monthly CX parse error ({fp}): {e}")
     try:
