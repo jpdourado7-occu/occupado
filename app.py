@@ -1708,8 +1708,14 @@ def _grp_pipe_html(groups, status_colors):
 def build_vdv_dashboard(hotel_name, lang="en", first_login=False, _data=None):
     """VdV dashboard — parameterised for MEC and BRU via _data dict."""
     _d = _data or {}
-    guests      = _d.get('guests', VDV_GUESTS_RAW)
+    _all_guests = _d.get('guests', VDV_GUESTS_RAW)
     score_fn    = _d.get('score_fn', _score_vdv_guests)
+    _today_d    = datetime.now().date()
+    _window_end = _today_d + timedelta(days=15)
+    # Only show guests arriving today → today+15 days; drop past stays
+    guests = [g for g in _all_guests
+              if g['arr_date'].date() >= _today_d
+              and g['arr_date'].date() <= _window_end]
     scores      = score_fn(guests)
     _ch_raw     = _d.get('ch_stats', VDV_CHANNEL_STATS)
     ch_data     = {k: v for k, v in _ch_raw.items() if isinstance(v, (int, float)) and not k.startswith('_')}
@@ -1876,9 +1882,9 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False, _data=None):
     ch_total = sum(ch_data.values()) or 1
     ch_pcts  = {k: round(v/ch_total*100,1) for k,v in ch_data.items()}
 
-    # ── Current guests ─────────────────────────────────────────────────────
+    # ── Current guests (window = today … today+15d, no past stays) ─────────
     arriving   = [g for g in guests if g['status']=='Arriving Today']
-    in_house   = [g for g in guests if g['status']=='In House']
+    in_house   = []   # no in-house: all guests in window have arr >= today
     high_count = sum(1 for s in scores if s>=70)
     med_count  = sum(1 for s in scores if 40<=s<70)
     low_count  = sum(1 for s in scores if s<40)
@@ -1914,34 +1920,88 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False, _data=None):
         pass
     roi_rev_saved = roi_recovered * int(avg_adr * avg_nights)
 
-    # ── Guest table rows ───────────────────────────────────────────────────
+    # ── Guest table rows (grouped by name, today+15d window) ───────────────
     def st_badge(s):
         if s=='Arriving Today': return '<span class="stb stb-a">Arriving Today</span>'
         if s=='In House':       return '<span class="stb stb-h">In House</span>'
         if s=='Checked Out':    return '<span class="stb stb-o">Checked Out</span>'
         return f'<span class="stb stb-f">{s}</span>'
 
+    def _risk_badge(sc):
+        if sc>=70: return f'<span class="badge high">{sc:.1f}%</span>'
+        if sc>=40: return f'<span class="badge med">{sc:.1f}%</span>'
+        return f'<span class="badge low">{sc:.1f}%</span>'
+
+    def _act_btn(idx, sc):
+        if sc>=70: return f'<button class="abtn dep" onclick="event.stopPropagation();openEmail({idx},\'deposit\')">Deposit</button>'
+        if sc>=40: return f'<button class="abtn rem" onclick="event.stopPropagation();openEmail({idx},\'reminder\')">Reminder</button>'
+        return f'<button class="abtn mon" onclick="event.stopPropagation();openEmail({idx},\'contact\')">Contact</button>'
+
+    # Group stays by guest name (case-insensitive); preserve original index for openEmail
+    from collections import OrderedDict as _OD
+    _groups = _OD()
+    for _i, (g, sc) in enumerate(zip(guests, scores)):
+        _key = g['name'].strip().lower()
+        if _key not in _groups:
+            _groups[_key] = []
+        _groups[_key].append((_i, g, sc))
+
     rows_html = ''
-    for i,(g,sc) in enumerate(zip(guests,scores)):
-        if sc>=70:
-            bdg = f'<span class="badge high">{sc:.1f}%</span>'
-            act = f'<button class="abtn dep" onclick="event.stopPropagation();openEmail({i},\'deposit\')">Deposit</button>'
-        elif sc>=40:
-            bdg = f'<span class="badge med">{sc:.1f}%</span>'
-            act = f'<button class="abtn rem" onclick="event.stopPropagation();openEmail({i},\'reminder\')">Reminder</button>'
-        else:
-            bdg = f'<span class="badge low">{sc:.1f}%</span>'
-            act = f'<button class="abtn mon" onclick="event.stopPropagation();openEmail({i},\'contact\')">Contact</button>'
-        mb  = f' <span class="mb">{g["membership"]}</span>' if g.get('membership') else ''
-        _note = g.get('note','')
-        nt  = (f'<span class="nt" title="{_note}">{_note[:36]}{"..." if len(_note)>36 else ""}</span>' if _note else '&mdash;')
-        rows_html += f'''<tr class="cr" data-score="{sc:.1f}" data-lead="0" data-rate="0" onclick="toggleExpand(this, {i}, {sc:.1f})">
+    _row_idx = 0
+    for _key, _stays in _groups.items():
+        if len(_stays) == 1:
+            # Single stay — render normal expandable row
+            _i, g, sc = _stays[0]
+            mb = f' <span class="mb">{g["membership"]}</span>' if g.get('membership') else ''
+            _note = g.get('note', '')
+            nt = (f'<span class="nt" title="{_note}">{_note[:36]}{"..." if len(_note)>36 else ""}</span>'
+                  if _note else '&mdash;')
+            rows_html += f'''<tr class="cr" data-score="{sc:.1f}" data-lead="0" data-rate="0" onclick="toggleExpand(this, {_i}, {sc:.1f})">
           <td><span class="gn">{g['name']}</span>{mb}</td>
           <td>{st_badge(g['status'])}</td>
           <td>{g['arrival']}</td><td>{g['nights']}n</td>
-          <td>{bdg}</td><td class="ntd">{nt}</td><td>{act}</td>
+          <td>{_risk_badge(sc)}</td><td class="ntd">{nt}</td><td>{_act_btn(_i, sc)}</td>
         </tr>
-        <tr class="exp-tr" id="exp-{i}"><td class="exp-td" colspan="7"><div class="exp-inner" id="exp-inner-{i}"></div></td></tr>'''
+        <tr class="exp-tr" id="exp-{_i}"><td class="exp-td" colspan="7"><div class="exp-inner" id="exp-inner-{_i}"></div></td></tr>'''
+        else:
+            # Multiple stays — one collapsed row + dropdown table of all stays
+            _stays_sorted = sorted(_stays, key=lambda x: x[1]['arr_date'])
+            _max_sc  = max(sc for _, _, sc in _stays_sorted)
+            _first_g = _stays_sorted[0][1]
+            _first_i = _stays_sorted[0][0]
+            mb = f' <span class="mb">{_first_g["membership"]}</span>' if _first_g.get('membership') else ''
+            _sid = f'grp-{_row_idx}'
+            # Sub-rows inside the dropdown
+            _sub = ''
+            for _si, (_i2, _g2, _sc2) in enumerate(_stays_sorted):
+                _sub += f'''<tr>
+              <td style="padding:6px 10px;font-size:12px;">{st_badge(_g2['status'])}</td>
+              <td style="padding:6px 10px;font-size:12px;color:#374151;">{_g2['arrival']} → {_g2.get('departure','?')}</td>
+              <td style="padding:6px 10px;font-size:12px;color:#6b7280;">{_g2['nights']}n</td>
+              <td style="padding:6px 10px;">{_risk_badge(_sc2)}</td>
+              <td style="padding:6px 10px;">{_act_btn(_i2, _sc2)}</td>
+            </tr>'''
+            rows_html += f'''<tr class="cr grp-row" data-score="{_max_sc:.1f}" data-lead="0" data-rate="0" onclick="toggleStays('{_sid}',this)">
+          <td><span class="gn">{_first_g['name']}</span>{mb} <span class="stays-ct">{len(_stays_sorted)} stays</span></td>
+          <td><span class="stb stb-f">↓ expand</span></td>
+          <td>{_stays_sorted[0][1]['arrival']}</td><td>—</td>
+          <td>{_risk_badge(_max_sc)}</td><td class="ntd">&mdash;</td><td>{_act_btn(_first_i, _max_sc)}</td>
+        </tr>
+        <tr class="stays-exp" id="{_sid}">
+          <td colspan="7" style="padding:0;background:#f9fafb;border-bottom:1px solid #e5e7eb;">
+            <table style="width:100%;border-collapse:collapse;">
+              <thead><tr>
+                <th style="padding:6px 10px;font-size:10px;color:#9ca3af;font-weight:500;text-align:left;">Status</th>
+                <th style="padding:6px 10px;font-size:10px;color:#9ca3af;font-weight:500;text-align:left;">Dates</th>
+                <th style="padding:6px 10px;font-size:10px;color:#9ca3af;font-weight:500;text-align:left;">Nights</th>
+                <th style="padding:6px 10px;font-size:10px;color:#9ca3af;font-weight:500;text-align:left;">Risk</th>
+                <th style="padding:6px 10px;font-size:10px;color:#9ca3af;font-weight:500;text-align:left;">Action</th>
+              </tr></thead>
+              <tbody>{_sub}</tbody>
+            </table>
+          </td>
+        </tr>'''
+        _row_idx += 1
 
     # ── Action plan items ──────────────────────────────────────────────────
     arriving_items = ''.join(
@@ -2202,6 +2262,10 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
 .exp-tr{{display:none;}}
 .exp-tr.open{{display:table-row;}}
 .exp-td{{padding:0!important;background:#fff!important;border-bottom:1px solid #f3f4f6!important;}}
+.stays-exp{{display:none;}}
+.stays-exp.open{{display:table-row;}}
+.stays-ct{{display:inline-block;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:99px;font-size:10px;font-weight:600;padding:1px 7px;margin-left:6px;vertical-align:middle;}}
+.grp-row{{cursor:pointer;}}
 .exp-inner{{padding:20px 0 24px;display:grid;grid-template-columns:100px 1fr;gap:24px;align-items:start;}}
 .exp-score-wrap{{display:flex;flex-direction:column;align-items:center;gap:4px;padding-top:4px;}}
 .exp-score-big{{font-size:48px;font-weight:700;letter-spacing:-2px;line-height:1;}}
@@ -2980,6 +3044,15 @@ function conclusionText(score) {{
   if (score >= 70) return 'High cancellation probability. Request deposit or guarantee now — revenue at risk.';
   if (score >= 40) return 'Moderate risk. Send a reminder 48h before arrival to confirm the booking.';
   return 'Low risk. Booking profile is stable — monitor normally.';
+}}
+
+// Toggle grouped stays dropdown
+function toggleStays(sid, row) {{
+  var exp = document.getElementById(sid);
+  if (!exp) return;
+  var opening = !exp.classList.contains('open');
+  exp.classList.toggle('open', opening);
+  row.querySelector('.stb').textContent = opening ? '↑ collapse' : '↓ expand';
 }}
 
 // Inline expand row
@@ -4021,6 +4094,15 @@ function conclusionText(score) {{
   return 'Low risk. Booking profile is stable — monitor normally.';
 }}
 
+// Toggle grouped stays dropdown
+function toggleStays(sid, row) {{
+  var exp = document.getElementById(sid);
+  if (!exp) return;
+  var opening = !exp.classList.contains('open');
+  exp.classList.toggle('open', opening);
+  row.querySelector('.stb').textContent = opening ? '↑ collapse' : '↓ expand';
+}}
+
 // Inline expand row
 var _openRow = null;
 function toggleExpand(row, idx, score) {{
@@ -4489,6 +4571,10 @@ tr:last-child td{{border-bottom:none;}}
 .exp-tr{{display:none;}}
 .exp-tr.open{{display:table-row;}}
 .exp-td{{padding:0!important;background:#fff!important;border-bottom:1px solid #f3f4f6!important;}}
+.stays-exp{{display:none;}}
+.stays-exp.open{{display:table-row;}}
+.stays-ct{{display:inline-block;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:99px;font-size:10px;font-weight:600;padding:1px 7px;margin-left:6px;vertical-align:middle;}}
+.grp-row{{cursor:pointer;}}
 .exp-inner{{padding:20px 0 24px;display:grid;grid-template-columns:100px 1fr;gap:24px;align-items:start;}}
 .exp-score-wrap{{display:flex;flex-direction:column;align-items:center;gap:4px;padding-top:4px;}}
 .exp-score-big{{font-size:48px;font-weight:700;letter-spacing:-2px;line-height:1;}}
@@ -5222,6 +5308,15 @@ function conclusionText(score) {{
   if (score >= 70) return 'High cancellation probability. Request deposit or guarantee now — revenue at risk.';
   if (score >= 40) return 'Moderate risk. Send a reminder 48h before arrival to confirm the booking.';
   return 'Low risk. Booking profile is stable — monitor normally.';
+}}
+
+// Toggle grouped stays dropdown
+function toggleStays(sid, row) {{
+  var exp = document.getElementById(sid);
+  if (!exp) return;
+  var opening = !exp.classList.contains('open');
+  exp.classList.toggle('open', opening);
+  row.querySelector('.stb').textContent = opening ? '↑ collapse' : '↓ expand';
 }}
 
 // Inline expand row
