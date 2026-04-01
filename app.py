@@ -5748,8 +5748,9 @@ def dashboard():
             return build_vdv_bru_dashboard(hotel_name, lang=lang, first_login=first_login)
         except Exception as _e:
             import traceback
-            print(f"[BRU] Dashboard error: {_e}\n{traceback.format_exc()}")
-            raise
+            tb = traceback.format_exc()
+            print(f"[BRU] Dashboard error: {_e}\n{tb}")
+            return f"<pre style='color:red;padding:20px'><b>BRU Dashboard Error:</b>\n{tb}</pre>", 200
 
     uploaded_data = session.get("uploaded_csv")
     first_login = session.pop("first_login", False)
