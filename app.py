@@ -1975,15 +1975,15 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False, _data=None):
             _sub = ''
             for _si, (_i2, _g2, _sc2) in enumerate(_stays_sorted):
                 _sub += f'''<tr>
-              <td style="padding:6px 10px;font-size:12px;">{st_badge(_g2['status'])}</td>
+              <td style="padding:6px 10px;font-size:12px;white-space:nowrap;">{st_badge(_g2['status'])}</td>
               <td style="padding:6px 10px;font-size:12px;color:#374151;">{_g2['arrival']} → {_g2.get('departure','?')}</td>
               <td style="padding:6px 10px;font-size:12px;color:#6b7280;">{_g2['nights']}n</td>
               <td style="padding:6px 10px;">{_risk_badge(_sc2)}</td>
               <td style="padding:6px 10px;">{_act_btn(_i2, _sc2)}</td>
             </tr>'''
             rows_html += f'''<tr class="cr grp-row" data-score="{_max_sc:.1f}" data-lead="0" data-rate="0" onclick="toggleStays('{_sid}',this)">
-          <td><span class="gn">{_first_g['name']}</span>{mb} <span class="stays-ct">{len(_stays_sorted)} stays</span></td>
-          <td><span class="stb stb-f">↓ expand</span></td>
+          <td><span class="gn">{_first_g['name']}</span>{mb} <span class="stays-ct">{len(_stays_sorted)} stays</span> <span class="grp-chev" id="chev-{_sid}">▾</span></td>
+          <td>{st_badge(_first_g['status'])}</td>
           <td>{_stays_sorted[0][1]['arrival']}</td><td>—</td>
           <td>{_risk_badge(_max_sc)}</td><td class="ntd">&mdash;</td><td>{_act_btn(_first_i, _max_sc)}</td>
         </tr>
@@ -2115,7 +2115,7 @@ a{{text-decoration:none;color:inherit;}}
 .high{{background:#fef2f2;color:#ef4444;border-color:#fecaca;}}
 .med{{background:#fffbeb;color:#f59e0b;border-color:#fde68a;}}
 .low{{background:#f0fdf4;color:#00d165;border-color:#bbf7d0;}}
-.stb{{padding:2px 7px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:500;border:1px solid;}}
+.stb{{padding:2px 7px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:500;border:1px solid;white-space:nowrap;display:inline-block;}}
 .stb-a{{background:#fffbeb;color:#92400e;border-color:#fde68a;}}
 .stb-h{{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;}}
 .stb-o{{background:#f9fafb;color:#9ca3af;border-color:#e5e7eb;}}
@@ -2266,6 +2266,7 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
 .stays-exp.open{{display:table-row;}}
 .stays-ct{{display:inline-block;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:99px;font-size:10px;font-weight:600;padding:1px 7px;margin-left:6px;vertical-align:middle;}}
 .grp-row{{cursor:pointer;}}
+.grp-chev{{font-size:11px;color:#9ca3af;margin-left:5px;display:inline-block;vertical-align:middle;line-height:1;transition:transform .2s;}}
 .exp-inner{{padding:20px 0 24px;display:grid;grid-template-columns:100px 1fr;gap:24px;align-items:start;}}
 .exp-score-wrap{{display:flex;flex-direction:column;align-items:center;gap:4px;padding-top:4px;}}
 .exp-score-big{{font-size:48px;font-weight:700;letter-spacing:-2px;line-height:1;}}
@@ -2462,8 +2463,17 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
 {('<div class="sh"><span class="sh-title">Group Pipeline</span><span class="sh-line"></span><span class="sh-sub">Upcoming confirmed & tentative groups · GRP_017</span></div>' + _grp_pipe_html(grp_pipe, STATUS_COLORS)) if grp_pipe else ''}
 
 <!-- GUEST TABLE ──────────────────────────────────────────────────────── -->
-<div class="sh"><span class="sh-title">Repeat Guests This Week</span><span class="sh-line"></span><span class="sh-sub">Click row for AI analysis</span></div>
+<div class="sh"><span class="sh-title">Repeat Guests · Next 15 Days</span><span class="sh-line"></span><span class="sh-sub">Click row for AI analysis · grouped by guest</span></div>
 <table class="tbl">
+<colgroup>
+  <col style="min-width:160px">
+  <col style="width:120px;min-width:120px">
+  <col style="width:80px;min-width:80px">
+  <col style="width:55px">
+  <col style="width:80px">
+  <col>
+  <col style="width:110px;min-width:110px">
+</colgroup>
 <thead><tr>
   <th>Guest</th><th>Status</th><th>Arrival</th><th>Nights</th><th>Risk</th><th>Notes</th><th>Action</th>
 </tr></thead>
@@ -3052,7 +3062,9 @@ function toggleStays(sid, row) {{
   if (!exp) return;
   var opening = !exp.classList.contains('open');
   exp.classList.toggle('open', opening);
-  row.querySelector('.stb').textContent = opening ? '↑ collapse' : '↓ expand';
+  row.classList.toggle('is-open', opening);
+  var chev = document.getElementById('chev-' + sid);
+  if (chev) chev.textContent = opening ? '▴' : '▾';
 }}
 
 // Inline expand row
@@ -4100,7 +4112,9 @@ function toggleStays(sid, row) {{
   if (!exp) return;
   var opening = !exp.classList.contains('open');
   exp.classList.toggle('open', opening);
-  row.querySelector('.stb').textContent = opening ? '↑ collapse' : '↓ expand';
+  row.classList.toggle('is-open', opening);
+  var chev = document.getElementById('chev-' + sid);
+  if (chev) chev.textContent = opening ? '▴' : '▾';
 }}
 
 // Inline expand row
@@ -4575,6 +4589,7 @@ tr:last-child td{{border-bottom:none;}}
 .stays-exp.open{{display:table-row;}}
 .stays-ct{{display:inline-block;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:99px;font-size:10px;font-weight:600;padding:1px 7px;margin-left:6px;vertical-align:middle;}}
 .grp-row{{cursor:pointer;}}
+.grp-chev{{font-size:11px;color:#9ca3af;margin-left:5px;display:inline-block;vertical-align:middle;line-height:1;transition:transform .2s;}}
 .exp-inner{{padding:20px 0 24px;display:grid;grid-template-columns:100px 1fr;gap:24px;align-items:start;}}
 .exp-score-wrap{{display:flex;flex-direction:column;align-items:center;gap:4px;padding-top:4px;}}
 .exp-score-big{{font-size:48px;font-weight:700;letter-spacing:-2px;line-height:1;}}
@@ -5316,7 +5331,9 @@ function toggleStays(sid, row) {{
   if (!exp) return;
   var opening = !exp.classList.contains('open');
   exp.classList.toggle('open', opening);
-  row.querySelector('.stb').textContent = opening ? '↑ collapse' : '↓ expand';
+  row.classList.toggle('is-open', opening);
+  var chev = document.getElementById('chev-' + sid);
+  if (chev) chev.textContent = opening ? '▴' : '▾';
 }}
 
 // Inline expand row
