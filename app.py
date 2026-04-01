@@ -1971,36 +1971,25 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False, _data=None):
             _first_i = _stays_sorted[0][0]
             mb = f' <span class="mb">{_first_g["membership"]}</span>' if _first_g.get('membership') else ''
             _sid = f'grp-{_row_idx}'
-            # Sub-rows inside the dropdown
-            _sub = ''
+            # Sub-rows — one per stay, same structure as single-stay rows
+            _sub_rows = ''
             for _si, (_i2, _g2, _sc2) in enumerate(_stays_sorted):
-                _sub += f'''<tr>
-              <td style="padding:6px 10px;font-size:12px;white-space:nowrap;">{st_badge(_g2['status'])}</td>
-              <td style="padding:6px 10px;font-size:12px;color:#374151;">{_g2['arrival']} → {_g2.get('departure','?')}</td>
-              <td style="padding:6px 10px;font-size:12px;color:#6b7280;">{_g2['nights']}n</td>
-              <td style="padding:6px 10px;">{_risk_badge(_sc2)}</td>
-              <td style="padding:6px 10px;">{_act_btn(_i2, _sc2)}</td>
-            </tr>'''
-            rows_html += f'''<tr class="cr grp-row" data-score="{_max_sc:.1f}" data-lead="0" data-rate="0" onclick="toggleStays('{_sid}',this)">
+                _note2 = _g2.get('note', '')
+                _nt2 = (f'<span class="nt" title="{_note2}">{_note2[:36]}{"..." if len(_note2)>36 else ""}</span>'
+                        if _note2 else '&mdash;')
+                _sub_rows += f'''<tr class="stays-sub cr" data-grp="{_sid}" data-score="{_sc2:.1f}" style="display:none;background:#f8faff;">
+          <td style="padding-left:28px;"><span style="color:#cbd5e1;margin-right:5px;font-size:11px;">↳</span><span class="gn" style="color:#4b5563;">{_g2['name']}</span></td>
+          <td>{st_badge(_g2['status'])}</td>
+          <td>{_g2['arrival']}</td><td>{_g2['nights']}n</td>
+          <td>{_risk_badge(_sc2)}</td><td class="ntd">{_nt2}</td><td>{_act_btn(_i2, _sc2)}</td>
+        </tr>'''
+            rows_html += f'''<tr class="cr stays-hdr" data-score="{_max_sc:.1f}" data-lead="0" data-rate="0" onclick="toggleStays('{_sid}',this)">
           <td><span class="gn">{_first_g['name']}</span>{mb} <span class="stays-ct">{len(_stays_sorted)} stays</span> <span class="grp-chev" id="chev-{_sid}">▾</span></td>
           <td>{st_badge(_first_g['status'])}</td>
           <td>{_stays_sorted[0][1]['arrival']}</td><td>—</td>
           <td>{_risk_badge(_max_sc)}</td><td class="ntd">&mdash;</td><td>{_act_btn(_first_i, _max_sc)}</td>
         </tr>
-        <tr class="stays-exp" id="{_sid}">
-          <td colspan="7" style="padding:0;background:#f9fafb;border-bottom:1px solid #e5e7eb;">
-            <table style="width:100%;border-collapse:collapse;">
-              <thead><tr>
-                <th style="padding:6px 10px;font-size:10px;color:#9ca3af;font-weight:500;text-align:left;">Status</th>
-                <th style="padding:6px 10px;font-size:10px;color:#9ca3af;font-weight:500;text-align:left;">Dates</th>
-                <th style="padding:6px 10px;font-size:10px;color:#9ca3af;font-weight:500;text-align:left;">Nights</th>
-                <th style="padding:6px 10px;font-size:10px;color:#9ca3af;font-weight:500;text-align:left;">Risk</th>
-                <th style="padding:6px 10px;font-size:10px;color:#9ca3af;font-weight:500;text-align:left;">Action</th>
-              </tr></thead>
-              <tbody>{_sub}</tbody>
-            </table>
-          </td>
-        </tr>'''
+        {_sub_rows}'''
         _row_idx += 1
 
     # ── Action plan items ──────────────────────────────────────────────────
@@ -2262,11 +2251,10 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
 .exp-tr{{display:none;}}
 .exp-tr.open{{display:table-row;}}
 .exp-td{{padding:0!important;background:#fff!important;border-bottom:1px solid #f3f4f6!important;}}
-.stays-exp{{display:none;}}
-.stays-exp.open{{display:table-row;}}
 .stays-ct{{display:inline-block;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:99px;font-size:10px;font-weight:600;padding:1px 7px;margin-left:6px;vertical-align:middle;}}
-.grp-row{{cursor:pointer;}}
-.grp-chev{{font-size:11px;color:#9ca3af;margin-left:5px;display:inline-block;vertical-align:middle;line-height:1;transition:transform .2s;}}
+.stays-hdr{{cursor:pointer;}}
+.stays-hdr:hover td{{background:#fafafa;}}
+.grp-chev{{font-size:11px;color:#9ca3af;margin-left:5px;display:inline-block;vertical-align:middle;line-height:1;}}
 .exp-inner{{padding:20px 0 24px;display:grid;grid-template-columns:100px 1fr;gap:24px;align-items:start;}}
 .exp-score-wrap{{display:flex;flex-direction:column;align-items:center;gap:4px;padding-top:4px;}}
 .exp-score-big{{font-size:48px;font-weight:700;letter-spacing:-2px;line-height:1;}}
@@ -3058,11 +3046,11 @@ function conclusionText(score) {{
 
 // Toggle grouped stays dropdown
 function toggleStays(sid, row) {{
-  var exp = document.getElementById(sid);
-  if (!exp) return;
-  var opening = !exp.classList.contains('open');
-  exp.classList.toggle('open', opening);
+  var opening = !row.classList.contains('is-open');
   row.classList.toggle('is-open', opening);
+  document.querySelectorAll('tr.stays-sub[data-grp="' + sid + '"]').forEach(function(r) {{
+    r.style.display = opening ? '' : 'none';
+  }});
   var chev = document.getElementById('chev-' + sid);
   if (chev) chev.textContent = opening ? '▴' : '▾';
 }}
@@ -4108,11 +4096,11 @@ function conclusionText(score) {{
 
 // Toggle grouped stays dropdown
 function toggleStays(sid, row) {{
-  var exp = document.getElementById(sid);
-  if (!exp) return;
-  var opening = !exp.classList.contains('open');
-  exp.classList.toggle('open', opening);
+  var opening = !row.classList.contains('is-open');
   row.classList.toggle('is-open', opening);
+  document.querySelectorAll('tr.stays-sub[data-grp="' + sid + '"]').forEach(function(r) {{
+    r.style.display = opening ? '' : 'none';
+  }});
   var chev = document.getElementById('chev-' + sid);
   if (chev) chev.textContent = opening ? '▴' : '▾';
 }}
@@ -4585,11 +4573,10 @@ tr:last-child td{{border-bottom:none;}}
 .exp-tr{{display:none;}}
 .exp-tr.open{{display:table-row;}}
 .exp-td{{padding:0!important;background:#fff!important;border-bottom:1px solid #f3f4f6!important;}}
-.stays-exp{{display:none;}}
-.stays-exp.open{{display:table-row;}}
 .stays-ct{{display:inline-block;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:99px;font-size:10px;font-weight:600;padding:1px 7px;margin-left:6px;vertical-align:middle;}}
-.grp-row{{cursor:pointer;}}
-.grp-chev{{font-size:11px;color:#9ca3af;margin-left:5px;display:inline-block;vertical-align:middle;line-height:1;transition:transform .2s;}}
+.stays-hdr{{cursor:pointer;}}
+.stays-hdr:hover td{{background:#fafafa;}}
+.grp-chev{{font-size:11px;color:#9ca3af;margin-left:5px;display:inline-block;vertical-align:middle;line-height:1;}}
 .exp-inner{{padding:20px 0 24px;display:grid;grid-template-columns:100px 1fr;gap:24px;align-items:start;}}
 .exp-score-wrap{{display:flex;flex-direction:column;align-items:center;gap:4px;padding-top:4px;}}
 .exp-score-big{{font-size:48px;font-weight:700;letter-spacing:-2px;line-height:1;}}
@@ -5327,11 +5314,11 @@ function conclusionText(score) {{
 
 // Toggle grouped stays dropdown
 function toggleStays(sid, row) {{
-  var exp = document.getElementById(sid);
-  if (!exp) return;
-  var opening = !exp.classList.contains('open');
-  exp.classList.toggle('open', opening);
+  var opening = !row.classList.contains('is-open');
   row.classList.toggle('is-open', opening);
+  document.querySelectorAll('tr.stays-sub[data-grp="' + sid + '"]').forEach(function(r) {{
+    r.style.display = opening ? '' : 'none';
+  }});
   var chev = document.getElementById('chev-' + sid);
   if (chev) chev.textContent = opening ? '▴' : '▾';
 }}
