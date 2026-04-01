@@ -720,12 +720,11 @@ def _count_vdv_noshow():
 
 
 def _build_vdv_guest_history():
-    """Build per-guest history: total stays (RES_042) + cancellations (RES_036)."""
+    """Count all-time stays per guest from RES_042 (no date filter).
+    Cancellations are assumed 0; stay count alone gives meaningful loyalty signal."""
     import openpyxl, glob as _glob
     from collections import defaultdict
     history = defaultdict(lambda: {'stays': 0, 'cancels': 0})
-
-    # Count all-time stays from RES_042 (no date filter)
     seen_stays = set()
     for path in sorted(_glob.glob(os.path.join(_VDV_DIR, "RES_042_RepeatReservationsReport*.xlsx"))):
         try:
@@ -742,31 +741,6 @@ def _build_vdv_guest_history():
                         history[col0.lower()]['stays'] += 1
         except Exception:
             pass
-
-    # Count cancellations from RES_036 — main guest rows (col0 has comma)
-    seen_cx = set()
-    for path in sorted(_glob.glob(os.path.join(_VDV_DIR, "RES_036_CancelledReservations*.xlsx"))):
-        try:
-            wb = openpyxl.load_workbook(path, read_only=True)
-            rows = list(wb.active.iter_rows(values_only=True))
-            wb.close()
-            for i, row in enumerate(rows):
-                col0 = str(row[0]).strip() if row[0] else ''
-                if ',' not in col0:
-                    continue
-                # Dedup via MEC-CXL reference in the following detail row
-                cxl_ref = ''
-                if i + 1 < len(rows):
-                    nr = rows[i + 1]
-                    cxl_ref = str(nr[20]).strip() if len(nr) > 20 and nr[20] else ''
-                key = cxl_ref if cxl_ref.startswith('MEC-CXL') else \
-                      (col0.lower(), str(row[4])[:10] if len(row) > 4 and row[4] else col0.lower())
-                if key and key not in seen_cx:
-                    seen_cx.add(key)
-                    history[col0.lower()]['cancels'] += 1
-        except Exception:
-            pass
-
     return dict(history)
 
 
@@ -1695,12 +1669,11 @@ def _parse_bru_monthly_cx():
 
 
 def _build_bru_guest_history():
-    """Build per-guest history for BRU: total stays (RES_042) + cancellations (RES_036)."""
+    """Count all-time stays per guest from BRU RES_042 (no date filter).
+    Cancellations are assumed 0; stay count alone gives meaningful loyalty signal."""
     import openpyxl, glob as _glob
     from collections import defaultdict
     history = defaultdict(lambda: {'stays': 0, 'cancels': 0})
-
-    # Count all-time stays from RES_042 (no date filter)
     seen_stays = set()
     for path in sorted(_glob.glob(os.path.join(_VDV_BRU_DIR, "RES_042_RepeatReservationsReport*.xlsx"))):
         try:
@@ -1717,27 +1690,6 @@ def _build_bru_guest_history():
                         history[col0.lower()]['stays'] += 1
         except Exception:
             pass
-
-    # Count cancellations from RES_036 — main rows: col0=name, col1=room type, col16=CXL datetime
-    seen_cx = set()
-    for path in sorted(_glob.glob(os.path.join(_VDV_BRU_DIR, "RES_036_CancelledReservations*.xlsx"))):
-        try:
-            wb = openpyxl.load_workbook(path, read_only=True)
-            rows = list(wb.active.iter_rows(values_only=True))
-            wb.close()
-            for row in rows:
-                col0 = str(row[0]).strip() if row[0] else ''
-                col1 = row[1] if len(row) > 1 else None
-                col16 = row[16] if len(row) > 16 else None
-                if ',' not in col0 or col1 is None or col16 is None:
-                    continue
-                key = (col0.lower(), str(col16)[:19])
-                if key not in seen_cx:
-                    seen_cx.add(key)
-                    history[col0.lower()]['cancels'] += 1
-        except Exception:
-            pass
-
     return dict(history)
 
 
