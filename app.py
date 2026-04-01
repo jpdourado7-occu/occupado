@@ -540,7 +540,7 @@ HOTELS = {
     "scandic":                        {"password": "hotel456",    "name": "Scandic Stockholm",                     "rooms": 350, "city": "Stockholm"},
     "demo":                           {"password": "demo",        "name": "Demo Hotel",                            "rooms": 100, "city": "Porto"},
     "van der valk mechelen":          {"password": "Mechelen123", "name": "Van der Valk Hotel Mechelen",           "rooms": 150, "city": "Mechelen",  "vdv": True},
-    "van der valk brussels airport":  {"password": "Brussels123", "name": "Van der Valk Hotel Brussels Airport",   "rooms": 310, "city": "Brussels",  "vdv_bru": True},
+    "van der valk brussels airport":  {"password": "Brussels123", "name": "Van der Valk Brussels Airport",         "rooms": 310, "city": "Brussels",  "vdv_bru": True},
 }
 
 with open("occupado_model.pkl", "rb") as f:
