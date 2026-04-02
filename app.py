@@ -1,4 +1,4 @@
-from flask import Flask, send_file, request, redirect, url_for, session
+from flask import Flask, jsonify, send_file, request, redirect, url_for, session
 import pandas as pd
 import pickle
 import io
