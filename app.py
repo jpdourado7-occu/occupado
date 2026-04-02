@@ -5830,13 +5830,19 @@ def login():
                 session["language"] = "en"
                 session["first_login"] = True
                 return redirect(url_for("dashboard"))
-            # Check registered users in SQLite
-            conn = get_db()
-            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            cur.execute("SELECT * FROM registered_users WHERE username=%s", (username,))
-            user = cur.fetchone()
-            cur.close()
-            conn.close()
+            # Check registered users in database
+            try:
+                conn = get_db()
+                cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cur.execute("SELECT * FROM registered_users WHERE username=%s", (username,))
+                user = cur.fetchone()
+                cur.close()
+                conn.close()
+            except Exception as _db_err:
+                print(f"[LOGIN] DB connection failed: {_db_err}")
+                record_failed_attempt(ip)
+                error = "Invalid credentials"
+                user = None
             if user:
                 # Support both bcrypt hashed and legacy plain text passwords
                 pw_bytes = password.encode("utf-8")
