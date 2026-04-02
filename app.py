@@ -572,7 +572,7 @@ _CHANNEL_CANCEL_RATE_FALLBACK = {
 try:
     with open("occupado_model_vdv.pkl", "rb") as f:
         model_vdv = pickle.load(f)
-    print("[VdV] VdV-specific model loaded (14 features)")
+    print(f"[VdV] VdV-specific model loaded ({model_vdv.n_features_in_} features)")
 except Exception:
     model_vdv = None
     print("[VdV] VdV-specific model not found, falling back to generic")
