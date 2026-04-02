@@ -4,7 +4,7 @@ import pickle
 import io
 import json
 from functools import wraps
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import os
 import secrets
 import psycopg2
@@ -569,6 +569,77 @@ _CHANNEL_CANCEL_RATE_FALLBACK = {
     'Packages / Groups': 0.20,
     'Other':             0.35,
 }
+# No-show rates from RES_037 analysis (Oct 2025–Mar 2026, 359 unique records)
+# Booking.com and Corporate have clean denominators (channel codes match RES_004).
+# Direct/Web and Other use blended rate due to channel code mismatch in source data.
+_VDV_NO_SHOW_RATES = {
+    'Booking.com':       0.069,
+    'Corporate':         0.012,
+    'Package':           0.020,
+    'Packages / Groups': 0.020,
+    'Direct/Web':        0.115,
+    'Direct / Web':      0.115,
+    'Other':             0.115,
+    'default':           0.115,
+}
+
+# Seasonal no-show multipliers from RES_037 (monthly avg = 51.3 no-shows)
+# April excluded — only 1 record in dataset, unreliable
+_VDV_NO_SHOW_SEASONAL = {
+    10: 0.84,
+    11: 1.19,
+    12: 1.46,
+    1:  1.25,
+    2:  1.13,
+    3:  1.11,
+    # All other months default to 1.0
+}
+
+VDV_TOTAL_ROOMS = 150
+
+# ── Belgian demand events ────────────────────────────────────────────────────
+# Fixed public holidays (month, day) → (emoji, label)
+_BELGIAN_HOLIDAYS = {
+    (1,  1): ('🎆', 'New Year'),
+    (5,  1): ('⚒️',  'Labour Day'),
+    (7, 21): ('🇧🇪', 'Belgian National Day'),
+    (8, 15): ('🙏',  'Assumption'),
+    (11, 1): ('🕯️',  "All Saints' Day"),
+    (11,11): ('🎖️',  'Armistice Day'),
+    (12,25): ('🎄',  'Christmas'),
+}
+
+# Moveable holidays (Easter-based) — pre-computed date → (emoji, label)
+_EASTER_DATES = {
+    2025: date(2025, 4, 20),
+    2026: date(2026, 4,  5),
+    2027: date(2027, 3, 28),
+}
+_BELGIAN_MOVEABLE_HOLIDAYS = {}
+for _yr, _easter in _EASTER_DATES.items():
+    _BELGIAN_MOVEABLE_HOLIDAYS[_easter]                    = ('🐣', 'Easter Sunday')
+    _BELGIAN_MOVEABLE_HOLIDAYS[_easter + timedelta(days=1)]  = ('🐣', 'Easter Monday')
+    _BELGIAN_MOVEABLE_HOLIDAYS[_easter + timedelta(days=39)] = ('✝️',  'Ascension')
+    _BELGIAN_MOVEABLE_HOLIDAYS[_easter + timedelta(days=49)] = ('🕊️',  'Pentecost')
+    _BELGIAN_MOVEABLE_HOLIDAYS[_easter + timedelta(days=50)] = ('🕊️',  'Whit Monday')
+
+# Flemish school holiday periods — (start, end inclusive, emoji, label)
+_BELGIAN_SCHOOL_HOLIDAYS = [
+    # 2025
+    (date(2025, 10, 27), date(2025, 11,  2), '🍂', 'Autumn Break'),
+    (date(2025, 12, 22), date(2026,  1,  4), '🎄', 'Christmas Break'),
+    # 2026
+    (date(2026,  2, 16), date(2026,  2, 22), '🎭', 'Carnival Break'),
+    (date(2026,  4,  6), date(2026,  4, 19), '🌷', 'Spring Break'),
+    (date(2026,  7,  1), date(2026,  8, 31), '☀️',  'Summer Holidays'),
+    (date(2026, 10, 26), date(2026, 11,  1), '🍂', 'Autumn Break'),
+    (date(2026, 12, 21), date(2027,  1,  3), '🎄', 'Christmas Break'),
+    # 2027
+    (date(2027,  2, 15), date(2027,  2, 21), '🎭', 'Carnival Break'),
+    (date(2027,  3, 29), date(2027,  4, 11), '🌷', 'Spring Break'),
+    (date(2027,  7,  1), date(2027,  8, 31), '☀️',  'Summer Holidays'),
+]
+
 try:
     with open("occupado_model_vdv.pkl", "rb") as f:
         model_vdv = pickle.load(f)
@@ -2023,6 +2094,119 @@ except Exception as _bru_err:
     print(f"[BRU] Startup warning: {_bru_err}")
 
 
+def _get_demand_event(check_date):
+    """Returns (emoji, label) if check_date is a Belgian public holiday or
+    school break period, else None."""
+    key = (check_date.month, check_date.day)
+    if key in _BELGIAN_HOLIDAYS:
+        return _BELGIAN_HOLIDAYS[key]
+    if check_date in _BELGIAN_MOVEABLE_HOLIDAYS:
+        return _BELGIAN_MOVEABLE_HOLIDAYS[check_date]
+    for start, end, emoji, label in _BELGIAN_SCHOOL_HOLIDAYS:
+        if start <= check_date <= end:
+            return (emoji, label)
+    return None
+
+
+def _vdv_expected_cancellations(bookings, scores, arrival_date):
+    """Sum of decay-adjusted cancellation probabilities.
+    Bookings close to arrival have little remaining cancel window."""
+    from datetime import date as _date
+    today = _date.today()
+    days_out = (arrival_date - today).days if hasattr(arrival_date, 'year') else (arrival_date - today).days
+    if days_out <= 1:
+        decay = 0.05
+    elif days_out <= 3:
+        decay = 0.20
+    elif days_out <= 7:
+        decay = 0.60
+    else:
+        decay = 1.00
+    return sum(s / 100.0 * decay for s in scores)
+
+
+def _vdv_expected_no_shows(bookings, arrival_month):
+    """Expected no-show count with channel-specific rates, seasonal adjustment,
+    and deposit/guarantee reduction by channel."""
+    seasonal = _VDV_NO_SHOW_SEASONAL.get(arrival_month, 1.0)
+    # Deposit reduction factors by channel:
+    # Booking.com/OTA: full rate (virtual credit card, no advance payment)
+    # Direct/Web: 70% (some prepay, some not)
+    # Corporate/Package: 50% (almost always guaranteed or invoiced)
+    _DEPOSIT_FACTOR = {
+        'Booking.com':       1.00,
+        'Direct/Web':        0.70,
+        'Direct / Web':      0.70,
+        'Corporate':         0.50,
+        'Package':           0.50,
+        'Packages / Groups': 0.50,
+        'Other':             1.00,
+    }
+    total = 0.0
+    for b in bookings:
+        ch   = b.get('channel', '')
+        rate = _VDV_NO_SHOW_RATES.get(ch, _VDV_NO_SHOW_RATES['default'])
+        dep  = _DEPOSIT_FACTOR.get(ch, 1.00)
+        total += rate * seasonal * dep
+    return total
+
+
+def _vdv_overbooking_recommendation(bookings, scores, arrival_date):
+    """Returns overbooking recommendation dict for a single arrival date."""
+    if not bookings or not scores:
+        return None
+    n     = len(bookings)
+    month = arrival_date.month
+    exp_cx = _vdv_expected_cancellations(bookings, scores, arrival_date)
+    exp_ns = _vdv_expected_no_shows(bookings, month)
+    total_attrition = exp_cx + exp_ns
+    # Demand event (Belgian holidays / school breaks) → 1.15x attrition
+    event = _get_demand_event(arrival_date)
+    holiday_multiplier = 1.15 if event else 1.0
+    # Conservative 65% of expected attrition; never exceed 8% of total rooms
+    max_overbook   = VDV_TOTAL_ROOMS * 0.08
+    recommendation = min(round(total_attrition * holiday_multiplier * 0.65), max_overbook)
+    recommendation = max(0, int(recommendation))
+    confidence = 'HIGH' if n >= 20 else ('MEDIUM' if n >= 10 else 'LOW')
+    high_risk  = sum(1 for s in scores if s >= 70)
+    return {
+        'date':                    arrival_date,
+        'bookings_on_hand':        n,
+        'high_risk_count':         high_risk,
+        'expected_cancellations':  round(exp_cx, 1),
+        'expected_no_shows':       round(exp_ns, 1),
+        'total_expected_attrition':round(total_attrition, 1),
+        'recommended_overbooking': recommendation,
+        'confidence':              confidence,
+        'holiday_emoji':           event[0] if event else '',
+        'holiday_label':           event[1] if event else '',
+    }
+
+
+def _vdv_build_overbooking_planner(future_bookings, future_scores):
+    """Groups bookings by arrival date; returns 30-day overbooking plan sorted by date."""
+    from datetime import date as _date, timedelta as _td
+    from collections import defaultdict as _dd
+    today   = _date.today()
+    cutoff  = today + _td(days=30)
+    date_bookings = _dd(list)
+    date_scores   = _dd(list)
+    for b, s in zip(future_bookings, future_scores):
+        arr = b.get('arr_date')
+        if arr:
+            arr_d = arr.date() if hasattr(arr, 'date') else arr
+            if today <= arr_d <= cutoff:
+                date_bookings[arr_d].append(b)
+                date_scores[arr_d].append(s)
+    results = []
+    for arr_date in sorted(date_bookings.keys()):
+        rec = _vdv_overbooking_recommendation(
+            date_bookings[arr_date], date_scores[arr_date], arr_date)
+        if rec:
+            results.append(rec)
+    return results
+
+
 def _grp_pipe_html(groups, status_colors):
     if not groups: return ''
     rows = ''
@@ -2133,6 +2317,10 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False, _data=None):
     # ── Future bookings risk (from RES_004 + model scoring) ────────────────
     fut_bookings = _d.get('fut_bookings', VDV_FUTURE_BOOKINGS)
     fut_scores   = _d.get('fut_scores',   VDV_FUTURE_SCORES)
+
+    # ── Overbooking planner (next 30 days) ──────────────────────────────────
+    overbooking_plan = _vdv_build_overbooking_planner(fut_bookings, fut_scores)
+    print(f'[VDV] Overbooking planner: {len(overbooking_plan)} dates calculated for next 30 days')
     # Fallback pre-computed constants when files not loaded
     if not fut_bookings:
         fut_total     = 2768
@@ -2791,6 +2979,68 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
 </div>
 
 {('<div class="sh"><span class="sh-title">Group Pipeline</span><span class="sh-line"></span><span class="sh-sub">Upcoming confirmed & tentative groups · GRP_017</span></div>' + _grp_pipe_html(grp_pipe, STATUS_COLORS)) if grp_pipe else ''}
+
+<!-- OVERBOOKING PLANNER ─────────────────────────────────────────────── -->
+<div class="sh"><span class="sh-title">Overbooking Planner — Next 30 Days</span><span class="sh-line"></span><span class="sh-sub">Probabilistic recommendations. Always apply judgment before acting.</span></div>
+{(lambda plan: f"""
+<div style="overflow-x:auto;margin-bottom:8px;">
+<table style="width:100%;border-collapse:collapse;font-size:13px;">
+<thead>
+<tr style="background:#f9fafb;border-bottom:2px solid #e5e7eb;">
+  <th style="padding:10px 12px;text-align:left;font-weight:600;color:#374151;white-space:nowrap;">Date</th>
+  <th style="padding:10px 12px;text-align:left;font-weight:600;color:#374151;white-space:nowrap;">Day</th>
+  <th style="padding:10px 12px;text-align:right;font-weight:600;color:#374151;white-space:nowrap;">On Hand</th>
+  <th style="padding:10px 12px;text-align:right;font-weight:600;color:#374151;white-space:nowrap;">High Risk</th>
+  <th style="padding:10px 12px;text-align:right;font-weight:600;color:#374151;white-space:nowrap;">Exp. Cancels</th>
+  <th style="padding:10px 12px;text-align:right;font-weight:600;color:#374151;white-space:nowrap;">Exp. No-Shows</th>
+  <th style="padding:10px 12px;text-align:right;font-weight:600;color:#374151;white-space:nowrap;">Total Attrition</th>
+  <th style="padding:10px 12px;text-align:right;font-weight:600;color:#374151;white-space:nowrap;">Recommended</th>
+  <th style="padding:10px 12px;text-align:left;font-weight:600;color:#374151;white-space:nowrap;">Confidence</th>
+</tr>
+</thead>
+<tbody>
+{''.join(
+  (lambda r, bg, rec_color: f"""<tr style="border-bottom:1px solid #f3f4f6;{bg}">
+  <td style="padding:9px 12px;font-weight:500;color:#111827;white-space:nowrap;">{r['date'].strftime('%d %b %Y')}{(' <span title="' + r['holiday_label'] + '" style="font-size:14px;">' + r['holiday_emoji'] + '</span>') if r.get('holiday_emoji') else ''}</td>
+  <td style="padding:9px 12px;color:#6b7280;white-space:nowrap;">{r['date'].strftime('%A')}{(' <span style="font-size:10px;color:#92400e;background:#fef3c7;padding:1px 5px;border-radius:3px;margin-left:4px;">' + r['holiday_label'] + '</span>') if r.get('holiday_label') else ''}</td>
+  <td style="padding:9px 12px;text-align:right;color:#111827;">{r['bookings_on_hand']}</td>
+  <td style="padding:9px 12px;text-align:right;color:{'#dc2626' if r['high_risk_count'] > 0 else '#6b7280'};">{r['high_risk_count']}</td>
+  <td style="padding:9px 12px;text-align:right;color:#6b7280;">{r['expected_cancellations']}</td>
+  <td style="padding:9px 12px;text-align:right;color:#6b7280;">{r['expected_no_shows']}</td>
+  <td style="padding:9px 12px;text-align:right;font-weight:500;color:#374151;">{r['total_expected_attrition']}</td>
+  <td style="padding:9px 12px;text-align:right;font-weight:700;{rec_color}">{"+" + str(r['recommended_overbooking']) if r['recommended_overbooking'] > 0 else "—"}{" <span style='font-size:10px;color:#9ca3af;font-weight:400;'>(low data)</span>" if r['confidence'] == 'LOW' else ""}</td>
+  <td style="padding:9px 12px;"><span style="font-size:11px;font-weight:500;padding:2px 7px;border-radius:4px;{'background:#dcfce7;color:#166534;' if r['confidence']=='HIGH' else ('background:#fef9c3;color:#854d0e;' if r['confidence']=='MEDIUM' else 'background:#f3f4f6;color:#6b7280;')}">{r['confidence']}</span></td>
+</tr>""")(
+    r,
+    'background:#fef2f2;' if r['recommended_overbooking'] >= 5 else (
+      'background:#fffbeb;' if r['recommended_overbooking'] >= 3 else (
+        'background:#f0fdf4;' if r['recommended_overbooking'] >= 1 else (
+          'background:rgba(255,200,0,0.08);' if r.get('holiday_emoji') else ''
+        )
+      )
+    ),
+    'color:#dc2626;' if r['recommended_overbooking'] >= 5 else (
+      'color:#92400e;' if r['recommended_overbooking'] >= 3 else (
+        'color:#166534;' if r['recommended_overbooking'] >= 1 else 'color:#9ca3af;'
+      )
+    )
+  )
+  for r in plan
+)}
+</tbody>
+</table>
+</div>
+<div style="display:flex;gap:24px;margin-bottom:8px;flex-wrap:wrap;">
+  <div style="font-size:11px;color:#6b7280;display:flex;align-items:center;gap:6px;"><span style="display:inline-block;width:12px;height:12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:2px;"></span> +1–2 rooms</div>
+  <div style="font-size:11px;color:#6b7280;display:flex;align-items:center;gap:6px;"><span style="display:inline-block;width:12px;height:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:2px;"></span> +3–4 rooms</div>
+  <div style="font-size:11px;color:#6b7280;display:flex;align-items:center;gap:6px;"><span style="display:inline-block;width:12px;height:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:2px;"></span> +5 or more</div>
+  <div style="font-size:11px;color:#6b7280;display:flex;align-items:center;gap:6px;"><span style="display:inline-block;width:12px;height:12px;background:rgba(255,200,0,0.15);border:1px solid #fde68a;border-radius:2px;"></span> 🇧🇪 Holiday / School break (+15% attrition)</div>
+  <div style="font-size:11px;color:#6b7280;margin-left:auto;">HIGH = 20+ bookings · MEDIUM = 10–19 · LOW = under 10 (treat with caution)</div>
+</div>
+<div style="font-size:11px;color:#9ca3af;margin-bottom:32px;line-height:1.6;">
+  Recommendations are based on historical cancellation patterns and no-show rates. Occupado does not guarantee accuracy. Review daily and adjust based on on-the-ground knowledge.
+</div>
+""" if plan else '<div style="color:#9ca3af;font-size:13px;padding:16px 0 32px;">No booking data available for the next 30 days.</div>')(overbooking_plan)}
 
 <!-- GUEST TABLE ──────────────────────────────────────────────────────── -->
 <div class="sh"><span class="sh-title">Repeat Guests · Next 15 Days</span><span class="sh-line"></span><span class="sh-sub">Click row for AI analysis · grouped by guest</span></div>
