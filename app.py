@@ -546,20 +546,33 @@ HOTELS = {
 with open("occupado_model.pkl", "rb") as f:
     model = pickle.load(f)
 
-# VdV-specific model trained on Shiji data (8 features)
+# VdV-specific model trained on Shiji data (11 features)
 # channel_encoded: 0=OTA/Web, 1=Direct, 2=Corporate, 3=Group/Package, NaN=Unknown
+# Guest features (guest_cancel_rate, guest_profile_known, is_chronic_canceller) are
+# applied as post-scoring overrides — not model inputs — to avoid sparse training data.
 _VDV_MODEL_FEATURES = [
     'lead_time', 'arrival_date_week_number', 'arrival_month', 'arrival_day_of_week',
     'stays_in_weekend_nights', 'stays_in_week_nights', 'is_repeated_guest',
-    'channel_encoded'
+    'channel_encoded',
+    'channel_cancel_rate', 'seasonal_cancel_rate', 'avg_days_to_cancel_for_channel',
 ]
 _CHANNEL_MAP = {
     'Booking.com': 0.0, 'Direct/Web': 1.0, 'Corporate': 2.0, 'Package': 3.0,
 }
+# Fallback channel cancel rates (CHANNEL_RANGE midpoints / 100) for Railway (no Excel files)
+_CHANNEL_CANCEL_RATE_FALLBACK = {
+    'Booking.com':       0.49,
+    'Direct/Web':        0.41,
+    'Direct / Web':      0.41,
+    'Corporate':         0.24,
+    'Package':           0.20,
+    'Packages / Groups': 0.20,
+    'Other':             0.35,
+}
 try:
     with open("occupado_model_vdv.pkl", "rb") as f:
         model_vdv = pickle.load(f)
-    print("[VdV] VdV-specific model loaded (8 features, AUC 0.852)")
+    print("[VdV] VdV-specific model loaded (14 features)")
 except Exception:
     model_vdv = None
     print("[VdV] VdV-specific model not found, falling back to generic")
@@ -653,12 +666,38 @@ def _parse_vdv_guests():
 def _parse_vdv_channel_stats():
     """Parse all RES_036 cancelled reservations files for channel breakdown with cross-file dedup."""
     import openpyxl, glob as _glob
+    from collections import defaultdict
+    from datetime import datetime as _dt
     files = sorted(_glob.glob(os.path.join(_VDV_DIR, "RES_036_CancelledReservations*.xlsx")))
     if not files:
-        return {}
+        # Railway fallback: no Excel files available — return structured empty stats
+        # so VDV_CHANNEL_STATS always has the expected keys.
+        # _score_vdv_future() will use _CHANNEL_CANCEL_RATE_FALLBACK for actual rates.
+        return {
+            'Booking.com': 0, 'Direct / Web': 0, 'Corporate': 0,
+            'Packages / Groups': 0, 'Other': 0, '_total_cx': 0,
+            '_channel_cx_counts':  {'Booking.com': 0, 'Direct/Web': 0, 'Corporate': 0, 'Package': 0, 'Other': 0},
+            '_seasonal_cx_counts': {},
+            'avg_days_to_cancel':  {'Booking.com': 30.0, 'Direct/Web': 30.0, 'Corporate': 20.0, 'Package': 15.0, 'Other': 30.0},
+            'cxl_reason_breakdown': {},
+        }
+    # Segment code → normalised channel name (matching VDV_FUTURE_BOOKINGS channel values)
+    _SEG_TO_CH = {
+        'BARWEB': 'Booking.com', 'BAROTAGROSS': 'Booking.com',
+        'DEALSOTA': 'Booking.com', 'DISCOTAGROSS': 'Booking.com',
+        'DISCWEB': 'Direct/Web', 'BARDIR': 'Direct/Web', 'DISCDIR': 'Direct/Web',
+        'CORPFIX': 'Corporate', 'CORPDYN': 'Corporate',
+        'PACK': 'Package', 'MTGBNS': 'Package', 'BNSGRP': 'Package',
+        'DEALS': 'Other', 'OTHER': 'Other', 'COMP': 'Other',
+    }
     seen_keys = set()
     raw = {}
     total = 0
+    channel_cx_counts = defaultdict(int)       # normalised channel → cx count
+    seasonal_cx_counts = defaultdict(int)      # "channel|month" → cx count
+    dtc_sums = defaultdict(float)              # channel → sum of days-to-cancel
+    dtc_counts = defaultdict(int)             # channel → number of valid dtc measurements
+    cxl_reason_breakdown = defaultdict(lambda: defaultdict(int))
     for fp in files:
         try:
             wb = openpyxl.load_workbook(fp, read_only=True)
@@ -681,15 +720,52 @@ def _parse_vdv_channel_stats():
                     if seg and not seg.startswith('Subtotal') and not re.match(r'\d{2}/\d{2}/\d{4}', seg) and seg not in ('Market Segment', 'Company/Travel Agent'):
                         raw[seg] = raw.get(seg, 0) + 1
                         total += 1
+                        ch = _SEG_TO_CH.get(seg, 'Other')
+                        channel_cx_counts[ch] += 1
+                        # Arrival month (col8 = Arr. Date)
+                        arr_str = str(row[8])[:10] if len(row) > 8 and row[8] else ''
+                        if arr_str and re.match(r'\d{2}/\d{2}/\d{4}', arr_str):
+                            try:
+                                arr_month = _dt.strptime(arr_str, '%d/%m/%Y').month
+                                seasonal_cx_counts[f'{ch}|{arr_month}'] += 1
+                            except Exception:
+                                pass
+                        # Days to cancel: Created On=col16, CXL Date/Time=col18
+                        created_str = str(row[16])[:10] if len(row) > 16 and row[16] else ''
+                        cxl_str     = str(row[18])[:10] if len(row) > 18 and row[18] else ''
+                        if created_str and cxl_str:
+                            try:
+                                created_dt = _dt.strptime(created_str, '%d/%m/%Y')
+                                cxl_dt     = _dt.strptime(cxl_str,     '%d/%m/%Y')
+                                dtc = max(0.0, float((cxl_dt - created_dt).days))
+                                dtc_sums[ch]   += dtc
+                                dtc_counts[ch] += 1
+                            except Exception:
+                                pass
+                        # CXL Reason (col24)
+                        reason = str(row[24]).strip() if len(row) > 24 and row[24] else ''
+                        if reason in ('', 'None', 'nan'):
+                            reason = 'Unknown'
+                        cxl_reason_breakdown[ch][reason] += 1
         except Exception as e:
             print(f"[VDV] Channel stats error ({fp}): {e}")
+    avg_days_to_cancel = {
+        ch: round(dtc_sums[ch] / dtc_counts[ch], 1)
+        for ch in dtc_counts if dtc_counts[ch] > 0
+    }
+    n_seasonal = len(seasonal_cx_counts)
+    print(f"[VDV] Channel stats: {total} cancellations parsed, {n_seasonal} channel/month combinations found")
     return {
         'Booking.com':       sum(raw.get(k, 0) for k in ('BARWEB', 'BAROTAGROSS', 'DEALSOTA')),
         'Direct / Web':      sum(raw.get(k, 0) for k in ('DISCWEB', 'BARDIR', 'DISCDIR', 'DISCOTAGROSS')),
         'Corporate':         sum(raw.get(k, 0) for k in ('CORPFIX', 'CORPDYN')),
         'Packages / Groups': sum(raw.get(k, 0) for k in ('PACK', 'MTGBNS', 'BNSGRP')),
         'Other':             sum(raw.get(k, 0) for k in ('DEALS', 'OTHER', 'COMP')),
-        '_total_cx':         total,
+        '_total_cx':             total,
+        '_channel_cx_counts':    dict(channel_cx_counts),
+        '_seasonal_cx_counts':   dict(seasonal_cx_counts),
+        'avg_days_to_cancel':    avg_days_to_cancel,
+        'cxl_reason_breakdown':  {ch: dict(reasons) for ch, reasons in cxl_reason_breakdown.items()},
     }
 
 
@@ -933,8 +1009,25 @@ def _parse_vdv_future_bookings():
     return bookings
 
 
+def _apply_guest_overrides(scores, bookings):
+    """Post-scoring guest override layer.
+    Applied after normalise_within_channel() so channel ranges are preserved for
+    normal guests; only chronic cancellers and known high-rate guests get floored up.
+    """
+    result = list(scores)
+    for i, b in enumerate(bookings):
+        feats = _get_guest_features(b['name'], b['channel'])
+        # Chronic canceller — floor at 75
+        if feats['is_chronic_canceller']:
+            result[i] = max(result[i], 75.0)
+        # Known guest with cancel_rate > 50% — floor at 60
+        elif feats['guest_profile_known'] and feats['guest_cancel_rate'] > 0.5:
+            result[i] = max(result[i], 60.0)
+    return result
+
+
 def _score_vdv_future(bookings):
-    """Score VdV future bookings using the VdV-specific model (8 features)."""
+    """Score VdV future bookings using the VdV-specific model (11 features)."""
     if not bookings:
         return []
 
@@ -986,14 +1079,49 @@ def _score_vdv_future(bookings):
         return result
 
     if model_vdv is not None:
-        rows_feat = [[b['lead'], b['week_num'], b['arr_date'].month, b['arr_date'].weekday(),
-                      b['wkend'], b['wkday'],
-                      is_repeat(b),
-                      _CHANNEL_MAP.get(b['channel'], float('nan'))]
-                     for b in bookings]
+        # ── Precompute channel/seasonal cancel rates from historical + future counts ──
+        from collections import Counter as _Counter
+        ch_future_counts  = _Counter(b['channel'] for b in bookings)
+        sea_future_counts = _Counter((b['channel'], b['arr_date'].month) for b in bookings)
+        ch_cx_counts  = VDV_CHANNEL_STATS.get('_channel_cx_counts', {})
+        sea_cx_counts = VDV_CHANNEL_STATS.get('_seasonal_cx_counts', {})
+        avg_dtc       = VDV_CHANNEL_STATS.get('avg_days_to_cancel', {})
+
+        def _ch_rate(ch):
+            cx    = ch_cx_counts.get(ch, 0)
+            fut   = ch_future_counts.get(ch, 0)
+            denom = cx + fut
+            if denom > 0:
+                return round(cx / denom, 4)
+            return _CHANNEL_CANCEL_RATE_FALLBACK.get(ch, 0.35)
+
+        def _sea_rate(ch, month):
+            key   = f'{ch}|{month}'
+            cx    = sea_cx_counts.get(key, 0)
+            fut   = sea_future_counts.get((ch, month), 0)
+            denom = cx + fut
+            if denom > 0:
+                return round(cx / denom, 4)
+            return _ch_rate(ch)
+
+        rows_feat = []
+        for b in bookings:
+            rows_feat.append([
+                b['lead'], b['week_num'], b['arr_date'].month, b['arr_date'].weekday(),
+                b['wkend'], b['wkday'],
+                is_repeat(b),
+                _CHANNEL_MAP.get(b['channel'], float('nan')),
+                _ch_rate(b['channel']),
+                _sea_rate(b['channel'], b['arr_date'].month),
+                avg_dtc.get(b['channel'], 30.0),
+            ])
         df = pd.DataFrame(rows_feat, columns=_VDV_MODEL_FEATURES)
+        assert df.shape[1] == len(_VDV_MODEL_FEATURES), \
+            f"Feature mismatch: {df.shape[1]} vs {len(_VDV_MODEL_FEATURES)}"
         raw_scores = list(model_vdv.predict_proba(df)[:, 1] * 100)
-        return [float(round(s, 1)) for s in normalise_within_channel(raw_scores, bookings)]
+        normalised = normalise_within_channel(raw_scores, bookings)
+        final_scores = _apply_guest_overrides(normalised, bookings)
+        return [float(round(s, 1)) for s in final_scores]
 
     # Fallback to generic model
     feat_cols = ['lead_time','arrival_date_week_number','stays_in_weekend_nights',
@@ -1006,7 +1134,9 @@ def _score_vdv_future(bookings):
                           b['adults'], is_repeat(b), 0, 0, 0, 0, b['adr'], 0])
     df = pd.DataFrame(rows_feat, columns=feat_cols)
     raw_scores = list(model.predict_proba(df)[:, 1] * 100)
-    return [float(round(s, 1)) for s in normalise_within_channel(raw_scores, bookings)]
+    normalised = normalise_within_channel(raw_scores, bookings)
+    final_scores = _apply_guest_overrides(normalised, bookings)
+    return [float(round(s, 1)) for s in final_scores]
 
 
 def _parse_mice_data():
@@ -1202,7 +1332,75 @@ def _parse_group_pipeline():
         return []
 
 
+def _load_vdv_guest_profiles():
+    import json
+    path = os.path.join(_VDV_DIR, 'guest_profiles.json')
+    if not os.path.exists(path):
+        print('[VDV] guest_profiles.json not found — guest features will use defaults')
+        return {}
+    with open(path, 'r', encoding='utf-8') as f:
+        profiles = json.load(f)
+    print(f'[VDV] Guest profiles loaded: {len(profiles)} profiles')
+    return profiles
+
+_ACCENT_MAP_GUEST = [
+    ('ü','ue'),('ä','ae'),('ö','oe'),
+    ('é','e'),('è','e'),('ê','e'),('ë','e'),
+    ('à','a'),('â','a'),('á','a'),
+    ('î','i'),('ï','i'),('í','i'),
+    ('û','u'),('ú','u'),
+    ('ç','c'),('ñ','n'),('ß','ss'),
+]
+
+def _normalise_guest_name(name: str) -> str:
+    if not name:
+        return ''
+    s = str(name).strip()
+    s = re.sub(r'^\d+\s+', '', s)
+    s = s.lower()
+    for src, dst in _ACCENT_MAP_GUEST:
+        s = s.replace(src, dst)
+    s = re.sub(r'[^\w\s]', ' ', s)
+    parts = [p for p in s.split() if p]
+    parts.sort()
+    return ' '.join(parts)
+
+def _get_guest_features(name: str, channel: str) -> dict:
+    fallback_rate = _CHANNEL_CANCEL_RATE_FALLBACK.get(channel, 0.25)
+    if not VDV_GUEST_PROFILES:
+        return {'guest_cancel_rate': fallback_rate,
+                'guest_profile_known': 0,
+                'is_chronic_canceller': 0}
+    key     = _normalise_guest_name(name)
+    profile = VDV_GUEST_PROFILES.get(key)
+    if profile is None:
+        try:
+            from rapidfuzz import process as _rfp, fuzz as _fuzz
+            _all_keys = list(VDV_GUEST_PROFILES.keys())
+            _result   = _rfp.extractOne(key, _all_keys,
+                                        scorer=_fuzz.WRatio, score_cutoff=90)
+            if _result:
+                profile = VDV_GUEST_PROFILES[_result[0]]
+        except Exception:
+            pass
+    if profile is None:
+        return {'guest_cancel_rate': fallback_rate,
+                'guest_profile_known': 0,
+                'is_chronic_canceller': 0}
+    cancel_rate = profile.get('cancel_rate')
+    if cancel_rate is None:
+        cancel_rate = fallback_rate
+        known = 0
+    else:
+        known = 1
+    return {
+        'guest_cancel_rate':    cancel_rate,
+        'guest_profile_known':  known,
+        'is_chronic_canceller': profile.get('is_chronic_canceller', 0),
+    }
+
 # Load VdV data once at startup
+VDV_GUEST_PROFILES  = _load_vdv_guest_profiles()
 VDV_GUESTS_RAW      = []
 VDV_GUEST_HISTORY   = {}
 VDV_CHANNEL_STATS   = {}

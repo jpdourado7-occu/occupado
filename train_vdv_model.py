@@ -33,6 +33,9 @@ FEATURES = [
     'stays_in_weekend_nights', 'stays_in_week_nights',
     'is_repeated_guest',
     'channel_encoded',
+    'channel_cancel_rate',
+    'seasonal_cancel_rate',
+    'avg_days_to_cancel_for_channel',
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -271,8 +274,7 @@ def parse_res004_stays(cxl_keys):
     seen_keys = set()  # (arr_str, nights, created_str) for dedup across files
 
     files = sorted([f for f in os.listdir(VDV_DIR)
-                    if f.startswith('RES_004') and f.endswith('.xlsx')
-                    and any(f'({n})' in f for n in ('5','6','7','8'))])
+                    if f.startswith('RES_004') and f.endswith('.xlsx')])
     print(f'RES_004 historical files: {files}')
 
     for fn in files:
@@ -420,6 +422,32 @@ print(f'  Cancellations: {df["is_canceled"].sum():,} ({df["is_canceled"].mean():
 print(f'  Completed stays: {(df["is_canceled"]==0).sum():,}')
 print(f'  Channel coverage: {ch_coverage:.1%}')
 print(f'  Lead time: median {df["lead_time"].median():.0f}d, mean {df["lead_time"].mean():.0f}d, max {df["lead_time"].max():.0f}d')
+
+# ── Compute channel-level features from training data ────────────────────────
+# channel_cancel_rate: historical cancel rate per channel in training data
+_ch_rate = df.groupby('channel_encoded')['is_canceled'].mean()
+overall_rate = float(df['is_canceled'].mean())
+df['channel_cancel_rate'] = df['channel_encoded'].map(_ch_rate).fillna(overall_rate)
+
+# seasonal_cancel_rate: cancel rate per (channel_encoded, arrival_month)
+_sea_rate = df.groupby(['channel_encoded', 'arrival_month'])['is_canceled'].mean()
+_sea_rate_dict = _sea_rate.to_dict()
+df['seasonal_cancel_rate'] = df.apply(
+    lambda r: _sea_rate_dict.get((r['channel_encoded'], r['arrival_month']),
+                                  r['channel_cancel_rate']), axis=1
+)
+
+# avg_days_to_cancel_for_channel: mean lead_time of cancelled records per channel
+# (lead_time used as proxy; actual CXL date not separately extracted in training data)
+_avg_dtc = df[df['is_canceled'] == 1].groupby('channel_encoded')['lead_time'].mean()
+df['avg_days_to_cancel_for_channel'] = df['channel_encoded'].map(_avg_dtc).fillna(30.0)
+
+print(f'  Channel cancel rates: { {int(k): round(v,2) for k,v in _ch_rate.items()} }')
+
+print("[TRAIN] Feature null check:")
+print(df[FEATURES].isnull().sum())
+print("[TRAIN] Feature sample:")
+print(df[FEATURES].head(3))
 
 # Keep channel_encoded as float with NaN — XGBoost handles natively
 X = df[FEATURES].apply(pd.to_numeric, errors='coerce').astype(float)
