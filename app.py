@@ -597,6 +597,51 @@ _VDV_NO_SHOW_SEASONAL = {
 
 VDV_TOTAL_ROOMS = 150
 
+# Empirical cancellation decay curves
+# Source: 1,590 VdV cancellations from RES_036 files
+# Key: days_before_arrival threshold → remaining cancel probability at that point
+# (what fraction of total cancel risk is still ahead when you are X days out)
+_VDV_DECAY_CURVES = {
+    'IBE': {
+        # Booking.com / OTA — median cancel 13 days out
+        0: 0.07, 3: 0.23, 7: 0.37,
+        14: 0.50, 30: 0.65,
+        60: 0.80, 999: 0.86,
+    },
+    'DIRECT': {
+        # Direct / Walk-in — cancels closer in, median 8 days
+        0: 0.12, 3: 0.30, 7: 0.52,
+        14: 0.65, 30: 0.78,
+        60: 0.88, 999: 0.92,
+    },
+    'default': {
+        # Blended curve from Step 5 survival analysis
+        0: 0.08, 3: 0.26, 7: 0.41,
+        14: 0.54, 30: 0.69,
+        60: 0.82, 999: 0.86,
+    },
+}
+
+# Map channel display names (from Shiji) to decay curve keys
+_VDV_CHANNEL_TO_CURVE = {
+    'Booking.com':       'IBE',
+    'Direct/Web':        'DIRECT',
+    'Direct / Web':      'DIRECT',
+    'Corporate':         'default',
+    'Package':           'default',
+    'Packages / Groups': 'default',
+    'Other':             'default',
+}
+
+def _get_decay_factor(days_out, channel):
+    """Return the empirical remaining-cancel fraction for a booking X days from arrival."""
+    curve_key = _VDV_CHANNEL_TO_CURVE.get(channel, 'default')
+    curve     = _VDV_DECAY_CURVES[curve_key]
+    for threshold in sorted(curve.keys()):
+        if days_out <= threshold:
+            return curve[threshold]
+    return curve[999]
+
 # ── Belgian demand events ────────────────────────────────────────────────────
 # Fixed public holidays (month, day) → (emoji, label)
 _BELGIAN_HOLIDAYS = {
@@ -2110,19 +2155,17 @@ def _get_demand_event(check_date):
 
 def _vdv_expected_cancellations(bookings, scores, arrival_date):
     """Sum of decay-adjusted cancellation probabilities.
-    Bookings close to arrival have little remaining cancel window."""
-    from datetime import date as _date
-    today = _date.today()
-    days_out = (arrival_date - today).days if hasattr(arrival_date, 'year') else (arrival_date - today).days
-    if days_out <= 1:
-        decay = 0.05
-    elif days_out <= 3:
-        decay = 0.20
-    elif days_out <= 7:
-        decay = 0.60
-    else:
-        decay = 1.00
-    return sum(s / 100.0 * decay for s in scores)
+    Uses empirical channel-specific decay curves derived from 1,590 VdV cancellations.
+    Each booking's score is weighted by the remaining-cancel fraction for its channel
+    at the current days-out horizon."""
+    today    = date.today()
+    days_out = (arrival_date - today).days
+    total    = 0.0
+    for b, s in zip(bookings, scores):
+        channel = b.get('channel', '')
+        decay   = _get_decay_factor(days_out, channel)
+        total  += (s / 100.0) * decay
+    return total
 
 
 def _vdv_expected_no_shows(bookings, arrival_month):
@@ -3001,8 +3044,8 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
 <tbody>
 {''.join(
   (lambda r, bg, rec_color: f"""<tr style="border-bottom:1px solid #f3f4f6;{bg}">
-  <td style="padding:9px 12px;font-weight:500;color:#111827;white-space:nowrap;">{r['date'].strftime('%d %b %Y')}{(' <span title="' + r['holiday_label'] + '" style="font-size:14px;">' + r['holiday_emoji'] + '</span>') if r.get('holiday_emoji') else ''}</td>
-  <td style="padding:9px 12px;color:#6b7280;white-space:nowrap;">{r['date'].strftime('%A')}{(' <span style="font-size:10px;color:#92400e;background:#fef3c7;padding:1px 5px;border-radius:3px;margin-left:4px;">' + r['holiday_label'] + '</span>') if r.get('holiday_label') else ''}</td>
+  {'<td style="padding:9px 12px;font-weight:500;color:#111827;white-space:nowrap;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#C4A882;margin-right:6px;vertical-align:middle;cursor:default;" title="' + r["holiday_label"] + '"></span>' + r["date"].strftime("%d %b %Y") + "</td>" if r.get("holiday_label") else '<td style="padding:9px 12px;font-weight:500;color:#111827;white-space:nowrap;padding-left:13px;">' + r["date"].strftime("%d %b %Y") + "</td>"}
+  <td style="padding:9px 12px;color:#6b7280;white-space:nowrap;">{r['date'].strftime('%A')}</td>
   <td style="padding:9px 12px;text-align:right;color:#111827;">{r['bookings_on_hand']}</td>
   <td style="padding:9px 12px;text-align:right;color:{'#dc2626' if r['high_risk_count'] > 0 else '#6b7280'};">{r['high_risk_count']}</td>
   <td style="padding:9px 12px;text-align:right;color:#6b7280;">{r['expected_cancellations']}</td>
@@ -3014,9 +3057,7 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
     r,
     'background:#fef2f2;' if r['recommended_overbooking'] >= 5 else (
       'background:#fffbeb;' if r['recommended_overbooking'] >= 3 else (
-        'background:#f0fdf4;' if r['recommended_overbooking'] >= 1 else (
-          'background:rgba(255,200,0,0.08);' if r.get('holiday_emoji') else ''
-        )
+        'background:#f0fdf4;' if r['recommended_overbooking'] >= 1 else ''
       )
     ),
     'color:#dc2626;' if r['recommended_overbooking'] >= 5 else (
