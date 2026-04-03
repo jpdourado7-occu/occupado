@@ -555,6 +555,7 @@ _VDV_MODEL_FEATURES = [
     'stays_in_weekend_nights', 'stays_in_week_nights', 'is_repeated_guest',
     'channel_encoded',
     'channel_cancel_rate', 'seasonal_cancel_rate', 'avg_days_to_cancel_for_channel',
+    'is_last_minute', 'is_early_bird', 'is_business_pattern',
 ]
 _CHANNEL_MAP = {
     'Booking.com': 0.0, 'Direct/Web': 1.0, 'Corporate': 2.0, 'Package': 3.0,
@@ -641,6 +642,22 @@ def _get_decay_factor(days_out, channel):
         if days_out <= threshold:
             return curve[threshold]
     return curve[999]
+
+# Micro-segmentation thresholds
+# Based on VdV booking pattern analysis
+_LAST_MINUTE_DAYS    = 3   # booked <= 3 days before arrival
+_EARLY_BIRD_DAYS     = 60  # booked >= 60 days before arrival
+_BUSINESS_WEEK_MIN   = 3   # >= 3 weeknights
+_BUSINESS_WEEKEND_MAX = 0  # 0 weekend nights
+
+def _vdv_micro_segment_features(booking):
+    lead  = booking.get('lead', 0)
+    wkday = booking.get('wkday', 0)
+    wkend = booking.get('wkend', 0)
+    is_last_minute = 1 if lead <= _LAST_MINUTE_DAYS else 0
+    is_early_bird  = 1 if lead >= _EARLY_BIRD_DAYS  else 0
+    is_business    = 1 if wkday >= _BUSINESS_WEEK_MIN and wkend <= _BUSINESS_WEEKEND_MAX else 0
+    return is_last_minute, is_early_bird, is_business
 
 # ── Belgian demand events ────────────────────────────────────────────────────
 # Fixed public holidays (month, day) → (emoji, label)
@@ -1228,6 +1245,7 @@ def _score_vdv_future(bookings):
 
         rows_feat = []
         for b in bookings:
+            lm, eb, biz = _vdv_micro_segment_features(b)
             rows_feat.append([
                 b['lead'], b['week_num'], b['arr_date'].month, b['arr_date'].weekday(),
                 b['wkend'], b['wkday'],
@@ -1236,6 +1254,7 @@ def _score_vdv_future(bookings):
                 _ch_rate(b['channel']),
                 _sea_rate(b['channel'], b['arr_date'].month),
                 avg_dtc.get(b['channel'], 30.0),
+                lm, eb, biz,
             ])
         df = pd.DataFrame(rows_feat, columns=_VDV_MODEL_FEATURES)
         assert df.shape[1] == len(_VDV_MODEL_FEATURES), \

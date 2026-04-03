@@ -36,6 +36,9 @@ FEATURES = [
     'channel_cancel_rate',
     'seasonal_cancel_rate',
     'avg_days_to_cancel_for_channel',
+    'is_last_minute',
+    'is_early_bird',
+    'is_business_pattern',
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -443,6 +446,18 @@ _avg_dtc = df[df['is_canceled'] == 1].groupby('channel_encoded')['lead_time'].me
 df['avg_days_to_cancel_for_channel'] = df['channel_encoded'].map(_avg_dtc).fillna(30.0)
 
 print(f'  Channel cancel rates: { {int(k): round(v,2) for k,v in _ch_rate.items()} }')
+
+df['is_last_minute'] = (df['lead_time'] <= 3).astype(int)
+df['is_early_bird']  = (df['lead_time'] >= 60).astype(int)
+df['is_business_pattern'] = (
+    (df['stays_in_week_nights'] >= 3) &
+    (df['stays_in_weekend_nights'] == 0)
+).astype(int)
+
+print("[TRAIN] Micro-segment distribution:")
+print(f"  Last minute: {df['is_last_minute'].sum()}")
+print(f"  Early bird:  {df['is_early_bird'].sum()}")
+print(f"  Business:    {df['is_business_pattern'].sum()}")
 
 print("[TRAIN] Feature null check:")
 print(df[FEATURES].isnull().sum())
