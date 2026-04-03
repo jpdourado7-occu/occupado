@@ -7990,6 +7990,7 @@ def internal_mark_recoveries():
 
 @app.route('/internal/daily-rescore', methods=['POST'])
 def daily_rescore():
+    global VDV_FUTURE_BOOKINGS, VDV_FUTURE_SCORES
     # Security: Railway CRON only
     auth = request.headers.get('Authorization', '')
     if auth != f"Bearer {os.environ.get('CRON_SECRET', 'occupado-cron')}":
