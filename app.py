@@ -1013,12 +1013,16 @@ def _score_vdv_guests(guests):
         week_num = int(arr.isocalendar()[1])
         is_repeat = 1  # all guests in this table are repeat guests by definition
         lead = max(0, (arr - datetime.now()).days)  # days until arrival as proxy
+        lm  = 1 if lead <= _LAST_MINUTE_DAYS else 0
+        eb  = 1 if lead >= _EARLY_BIRD_DAYS  else 0
+        biz = 1 if wkday >= _BUSINESS_WEEK_MIN and wkend <= _BUSINESS_WEEKEND_MAX else 0
         feat_rows.append([
             lead, week_num, arr.month, arr.weekday(), wkend, wkday, is_repeat,
             float('nan'),   # channel_encoded (unknown for repeat guests)
             0.35,           # channel_cancel_rate (overall fallback)
             0.35,           # seasonal_cancel_rate (overall fallback)
             30.0,           # avg_days_to_cancel_for_channel
+            lm, eb, biz,
         ])
     df_feat = pd.DataFrame(feat_rows, columns=_VDV_MODEL_FEATURES)
     m = model_vdv if model_vdv is not None else model
