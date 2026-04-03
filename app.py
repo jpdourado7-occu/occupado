@@ -8041,7 +8041,6 @@ def daily_rescore():
         n = _upsert_vdv_scores(future, scores)
 
         # Update globals
-        global VDV_FUTURE_BOOKINGS, VDV_FUTURE_SCORES
         VDV_FUTURE_BOOKINGS = future
         VDV_FUTURE_SCORES   = scores
 
