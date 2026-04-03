@@ -67,6 +67,91 @@ def get_db():
     conn = psycopg2.connect(DATABASE_URL)
     return conn
 
+def _upsert_vdv_scores(bookings, scores, conn=None):
+    if not bookings or not scores:
+        return 0
+
+    close_after = conn is None
+    if conn is None:
+        try:
+            conn = get_db()
+        except Exception:
+            return 0
+
+    upserted = 0
+    try:
+        cur = conn.cursor()
+        for b, score in zip(bookings, scores):
+            arr = b.get('arr_date')
+            if arr is None:
+                continue
+            if hasattr(arr, 'isoformat'):
+                arr_str = arr.isoformat()
+            else:
+                arr_str = str(arr)
+
+            # Deterministic reservation_id from name + arrival + lead
+            res_id = (
+                f"{b.get('name','').strip()}"
+                f"_{arr_str}"
+                f"_{b.get('lead',0)}"
+            ).lower().replace(' ', '_')[:100]
+
+            tier = (
+                'high'   if score >= 70 else
+                'medium' if score >= 40 else
+                'low'
+            )
+
+            cur.execute("""
+                INSERT INTO vdv_bookings_cache
+                    (hotel_id, reservation_id,
+                     guest_name, arrival_date,
+                     channel, channel_raw,
+                     lead_time, risk_score,
+                     risk_tier, scored_at,
+                     score_version)
+                VALUES
+                    (%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s)
+                ON CONFLICT (hotel_id, reservation_id)
+                DO UPDATE SET
+                    risk_score    = EXCLUDED.risk_score,
+                    risk_tier     = EXCLUDED.risk_tier,
+                    scored_at     = NOW(),
+                    score_version = EXCLUDED.score_version,
+                    channel       = EXCLUDED.channel,
+                    lead_time     = EXCLUDED.lead_time
+            """, (
+                'vdv',
+                res_id,
+                b.get('name', ''),
+                arr_str,
+                b.get('channel', ''),
+                b.get('channel_raw', ''),
+                b.get('lead', 0),
+                float(score),
+                tier,
+                '14f',
+            ))
+            upserted += 1
+
+        conn.commit()
+        cur.close()
+    except Exception as e:
+        print(f"[VDV] Score upsert error: {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+    finally:
+        if close_after and conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    return upserted
+
 def init_db():
     conn = get_db()
     cur = conn.cursor()
@@ -113,14 +198,6 @@ def init_db():
             booking_ref TEXT DEFAULT ''
         )
     """)
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS vdv_bookings_cache (
-            id SERIAL PRIMARY KEY,
-            cached_at TIMESTAMP DEFAULT NOW(),
-            bookings_json TEXT NOT NULL,
-            scores_json TEXT NOT NULL
-        )
-    """)
     conn.commit()
     cur.close()
     conn.close()
@@ -144,6 +221,47 @@ def init_db():
         conn3.close()
     except:
         pass
+    # Migrate: rename old blob-style vdv_bookings_cache → vdv_bookings_cache_legacy
+    try:
+        conn4 = get_db()
+        cur4 = conn4.cursor()
+        cur4.execute("ALTER TABLE vdv_bookings_cache RENAME TO vdv_bookings_cache_legacy")
+        conn4.commit()
+        cur4.close()
+        conn4.close()
+        print("[VDV] Migrated vdv_bookings_cache → vdv_bookings_cache_legacy")
+    except:
+        pass
+    # Create new per-row vdv_bookings_cache schema
+    try:
+        conn5 = get_db()
+        cur5 = conn5.cursor()
+        cur5.execute("""
+            CREATE TABLE IF NOT EXISTS vdv_bookings_cache (
+                id              SERIAL PRIMARY KEY,
+                hotel_id        TEXT NOT NULL DEFAULT 'vdv',
+                reservation_id  TEXT NOT NULL,
+                guest_name      TEXT,
+                arrival_date    DATE,
+                channel         TEXT,
+                channel_raw     TEXT,
+                lead_time       INTEGER,
+                risk_score      FLOAT,
+                risk_tier       TEXT,
+                scored_at       TIMESTAMP DEFAULT NOW(),
+                score_version   TEXT DEFAULT '14f',
+                is_high_risk    BOOLEAN GENERATED ALWAYS AS (risk_score >= 70) STORED,
+                UNIQUE(hotel_id, reservation_id)
+            )
+        """)
+        cur5.execute("CREATE INDEX IF NOT EXISTS idx_vdv_cache_arrival ON vdv_bookings_cache(arrival_date)")
+        cur5.execute("CREATE INDEX IF NOT EXISTS idx_vdv_cache_risk ON vdv_bookings_cache(risk_score DESC)")
+        conn5.commit()
+        cur5.close()
+        conn5.close()
+        print("[VDV] vdv_bookings_cache per-row schema ready")
+    except Exception as _ve:
+        print(f"[VDV] Cache schema migration error: {_ve}")
 
 try:
     init_db()
@@ -1570,21 +1688,27 @@ try:
     VDV_GROUP_PIPELINE  = _parse_group_pipeline()
     if VDV_FUTURE_BOOKINGS:
         VDV_FUTURE_SCORES = _score_vdv_future(VDV_FUTURE_BOOKINGS)
-        # Persist to DB so Railway can serve the export even without local files
+        # Upsert per-row scores to new vdv_bookings_cache
+        try:
+            _n = _upsert_vdv_scores(VDV_FUTURE_BOOKINGS, VDV_FUTURE_SCORES)
+            print(f"[VDV] Upserted {_n} scores to DB")
+        except Exception as _ue:
+            print(f"[VDV] Score upsert failed: {_ue}")
+        # Legacy blob cache — full-restore fallback
         try:
             _cache_conn = get_db()
             _cache_cur  = _cache_conn.cursor()
             # Store arr_date as string since datetime isn't JSON serialisable
             _b_serialisable = [{**b, 'arr_date': b['arr_date'].isoformat()} for b in VDV_FUTURE_BOOKINGS]
-            _cache_cur.execute("DELETE FROM vdv_bookings_cache")
+            _cache_cur.execute("DELETE FROM vdv_bookings_cache_legacy")
             _cache_cur.execute(
-                "INSERT INTO vdv_bookings_cache (bookings_json, scores_json) VALUES (%s, %s)",
+                "INSERT INTO vdv_bookings_cache_legacy (bookings_json, scores_json) VALUES (%s, %s)",
                 (json.dumps(_b_serialisable), json.dumps(VDV_FUTURE_SCORES))
             )
             _cache_conn.commit()
             _cache_cur.close()
             _cache_conn.close()
-            print(f"[VDV] Cached {len(VDV_FUTURE_BOOKINGS)} bookings to DB")
+            print(f"[VDV] Cached {len(VDV_FUTURE_BOOKINGS)} bookings to legacy blob")
         except Exception as _ce:
             print(f"[VDV] Cache warning: {_ce}")
     # Update landing stats from freshly parsed data
@@ -7599,10 +7723,10 @@ def vdv_export_highrisk():
     bookings = VDV_FUTURE_BOOKINGS
     scores   = VDV_FUTURE_SCORES
     if not bookings or not scores:
-        # Load from DB cache (populated when local app runs with VDV-MEC files)
+        # Fallback 1: legacy blob cache
         try:
             _c = get_db(); _cu = _c.cursor()
-            _cu.execute("SELECT bookings_json, scores_json FROM vdv_bookings_cache ORDER BY cached_at DESC LIMIT 1")
+            _cu.execute("SELECT bookings_json, scores_json FROM vdv_bookings_cache_legacy ORDER BY cached_at DESC LIMIT 1")
             row = _cu.fetchone()
             _cu.close(); _c.close()
             if row:
@@ -7614,6 +7738,30 @@ def vdv_export_highrisk():
                 scores   = json.loads(row[1])
         except Exception as _ce:
             pass
+    if not bookings or not scores:
+        # Fallback 2: per-row vdv_bookings_cache (populated by upsert / daily-rescore)
+        try:
+            _c2 = get_db(); _cu2 = _c2.cursor()
+            _cu2.execute("""
+                SELECT guest_name, arrival_date, channel, channel_raw,
+                       lead_time, risk_score, risk_tier, scored_at
+                FROM vdv_bookings_cache
+                WHERE hotel_id = 'vdv'
+                  AND arrival_date >= CURRENT_DATE
+                ORDER BY arrival_date, risk_score DESC
+            """)
+            _rows2 = _cu2.fetchall()
+            _cu2.close(); _c2.close()
+            if _rows2:
+                bookings = [
+                    {'name': r[0], 'arr_date': r[1], 'channel': r[2],
+                     'channel_raw': r[3], 'lead': r[4]}
+                    for r in _rows2
+                ]
+                scores = [r[5] for r in _rows2]
+                print(f"[VDV] Dashboard: loaded {len(_rows2)} scores from per-row DB cache")
+        except Exception as _ce2:
+            print(f"[VDV] DB score read error: {_ce2}")
     if not bookings or not scores:
         return "No booking data available. Run the app locally with VDV-MEC files to populate the cache.", 404
     # Build repeat guest name set for export flagging
@@ -7838,6 +7986,71 @@ def internal_mark_recoveries():
         return {"status": "ok", "marked": updated}
     except Exception as e:
         return {"status": "error", "message": str(e)}, 500
+
+
+@app.route('/internal/daily-rescore', methods=['POST'])
+def daily_rescore():
+    # Security: Railway CRON only
+    auth = request.headers.get('Authorization', '')
+    if auth != f"Bearer {os.environ.get('CRON_SECRET', 'occupado-cron')}":
+        return jsonify({'error': 'unauthorized'}), 401
+
+    try:
+        from datetime import date
+        today = date.today()
+
+        # Use in-memory globals if available
+        bookings = VDV_FUTURE_BOOKINGS
+
+        if not bookings:
+            # Fallback: reconstruct from legacy blob cache
+            try:
+                conn = get_db()
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT bookings_json
+                    FROM vdv_bookings_cache_legacy
+                    ORDER BY cached_at DESC
+                    LIMIT 1
+                """)
+                row = cur.fetchone()
+                cur.close()
+                conn.close()
+                if row:
+                    import json as _json
+                    raw = _json.loads(row[0])
+                    for b in raw:
+                        if 'arr_date' in b:
+                            from datetime import date as _d
+                            b['arr_date'] = _d.fromisoformat(b['arr_date'])
+                    bookings = raw
+            except Exception as _fe:
+                print(f"[VDV] Daily rescore fallback error: {_fe}")
+
+        if not bookings:
+            return jsonify({'status': 'no_data', 'message': 'No bookings to rescore'})
+
+        # Filter to future bookings only
+        future = [b for b in bookings if b.get('arr_date') and b['arr_date'] >= today]
+
+        # Rescore with updated days_out
+        scores = _score_vdv_future(future)
+
+        # Upsert to DB
+        n = _upsert_vdv_scores(future, scores)
+
+        # Update globals
+        global VDV_FUTURE_BOOKINGS, VDV_FUTURE_SCORES
+        VDV_FUTURE_BOOKINGS = future
+        VDV_FUTURE_SCORES   = scores
+
+        print(f"[VDV] Daily rescore: {n} bookings rescored at {today}")
+
+        return jsonify({'status': 'ok', 'rescored': n, 'date': today.isoformat()})
+
+    except Exception as e:
+        print(f"[VDV] Daily rescore error: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
 if __name__ == "__main__":
