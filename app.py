@@ -152,6 +152,121 @@ def _upsert_vdv_scores(bookings, scores, conn=None):
 
     return upserted
 
+def _detect_vdv_outcomes(new_bookings, new_scores):
+    from datetime import date
+    today = date.today()
+
+    if not new_bookings:
+        return 0
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+
+        # Get all previously scored bookings from vdv_bookings_cache
+        cur.execute("""
+            SELECT reservation_id,
+                   guest_name,
+                   arrival_date,
+                   channel,
+                   risk_score,
+                   risk_tier
+            FROM vdv_bookings_cache
+            WHERE hotel_id = 'vdv'
+        """)
+        previous = {
+            row[0]: {
+                'guest_name':   row[1],
+                'arrival_date': row[2],
+                'channel':      row[3],
+                'risk_score':   row[4],
+                'risk_tier':    row[5],
+            }
+            for row in cur.fetchall()
+        }
+
+        # Build set of current reservation IDs using same deterministic ID as upsert
+        current_ids = set()
+        for b in new_bookings:
+            arr = b.get('arr_date')
+            if arr is None:
+                continue
+            arr_str = (arr.isoformat()
+                       if hasattr(arr, 'isoformat')
+                       else str(arr))
+            res_id = (
+                f"{b.get('name','').strip()}"
+                f"_{arr_str}"
+                f"_{b.get('lead',0)}"
+            ).lower().replace(' ', '_')[:100]
+            current_ids.add(res_id)
+
+        # Disappeared bookings = in previous but not in current
+        disappeared = {
+            rid: data
+            for rid, data in previous.items()
+            if rid not in current_ids
+        }
+
+        outcomes_logged = 0
+        for res_id, data in disappeared.items():
+            arr = data['arrival_date']
+            if arr is None:
+                continue
+
+            # Determine outcome
+            if arr >= today:
+                outcome = 'cancelled'
+            else:
+                outcome = 'completed'
+
+            days_before = (arr - today).days
+
+            # Insert into outcome log; skip if already recorded
+            cur.execute("""
+                INSERT INTO vdv_outcome_log
+                    (hotel_id, reservation_id,
+                     guest_name, arrival_date,
+                     channel, predicted_score,
+                     predicted_tier, outcome,
+                     outcome_date,
+                     days_before_arrival,
+                     detected_by)
+                VALUES
+                    (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (hotel_id, reservation_id)
+                DO NOTHING
+            """, (
+                'vdv',
+                res_id,
+                data['guest_name'],
+                arr,
+                data['channel'],
+                data['risk_score'],
+                data['risk_tier'],
+                outcome,
+                today,
+                days_before,
+                'auto',
+            ))
+            outcomes_logged += 1
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        if outcomes_logged > 0:
+            n_cancelled  = sum(1 for d in disappeared.values() if d['arrival_date'] and d['arrival_date'] >= today)
+            n_completed  = sum(1 for d in disappeared.values() if d['arrival_date'] and d['arrival_date'] < today)
+            print(f"[VDV] Outcomes detected: {outcomes_logged} bookings "
+                  f"({n_cancelled} cancelled, {n_completed} completed)")
+
+        return outcomes_logged
+
+    except Exception as e:
+        print(f"[VDV] Outcome detection error: {e}")
+        return 0
+
 def init_db():
     conn = get_db()
     cur = conn.cursor()
@@ -262,6 +377,36 @@ def init_db():
         print("[VDV] vdv_bookings_cache per-row schema ready")
     except Exception as _ve:
         print(f"[VDV] Cache schema migration error: {_ve}")
+    # Create outcome log table
+    try:
+        conn6 = get_db()
+        cur6 = conn6.cursor()
+        cur6.execute("""
+            CREATE TABLE IF NOT EXISTS vdv_outcome_log (
+                id                 SERIAL PRIMARY KEY,
+                hotel_id           TEXT NOT NULL DEFAULT 'vdv',
+                reservation_id     TEXT NOT NULL,
+                guest_name         TEXT,
+                arrival_date       DATE,
+                channel            TEXT,
+                predicted_score    FLOAT,
+                predicted_tier     TEXT,
+                outcome            TEXT,
+                outcome_date       DATE,
+                days_before_arrival INTEGER,
+                detected_by        TEXT DEFAULT 'auto',
+                logged_at          TIMESTAMP DEFAULT NOW(),
+                UNIQUE(hotel_id, reservation_id)
+            )
+        """)
+        cur6.execute("CREATE INDEX IF NOT EXISTS idx_outcome_arrival ON vdv_outcome_log(arrival_date)")
+        cur6.execute("CREATE INDEX IF NOT EXISTS idx_outcome_outcome ON vdv_outcome_log(outcome)")
+        conn6.commit()
+        cur6.close()
+        conn6.close()
+        print("[VDV] vdv_outcome_log schema ready")
+    except Exception as _oe:
+        print(f"[VDV] Outcome log schema error: {_oe}")
 
 try:
     init_db()
@@ -1688,6 +1833,13 @@ try:
     VDV_GROUP_PIPELINE  = _parse_group_pipeline()
     if VDV_FUTURE_BOOKINGS:
         VDV_FUTURE_SCORES = _score_vdv_future(VDV_FUTURE_BOOKINGS)
+        # Detect outcomes from previous data before overwriting with new scores
+        try:
+            n_outcomes = _detect_vdv_outcomes(
+                VDV_FUTURE_BOOKINGS,
+                VDV_FUTURE_SCORES)
+        except Exception as e:
+            print(f"[VDV] Outcome detection failed: {e}")
         # Upsert per-row scores to new vdv_bookings_cache
         try:
             _n = _upsert_vdv_scores(VDV_FUTURE_BOOKINGS, VDV_FUTURE_SCORES)
@@ -2508,6 +2660,36 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False, _data=None):
     fut_bookings = _d.get('fut_bookings', VDV_FUTURE_BOOKINGS)
     fut_scores   = _d.get('fut_scores',   VDV_FUTURE_SCORES)
 
+    # ── Model accuracy (outcome log, last 30 days) ───────────────────────────
+    _outcome_stats = {'cancelled': 0, 'completed': 0,
+                      'cx_high': 0, 'cx_med': 0, 'cx_low': 0}
+    try:
+        _oc = get_db()
+        _ocur = _oc.cursor()
+        _ocur.execute("""
+            SELECT
+                outcome,
+                COUNT(*) AS count,
+                SUM(CASE WHEN predicted_tier = 'high'   THEN 1 ELSE 0 END) AS n_high,
+                SUM(CASE WHEN predicted_tier = 'medium' THEN 1 ELSE 0 END) AS n_med,
+                SUM(CASE WHEN predicted_tier = 'low'    THEN 1 ELSE 0 END) AS n_low
+            FROM vdv_outcome_log
+            WHERE hotel_id = 'vdv'
+              AND logged_at >= NOW() - INTERVAL '30 days'
+            GROUP BY outcome
+        """)
+        for _row in _ocur.fetchall():
+            _out, _cnt, _nh, _nm, _nl = _row
+            _outcome_stats[_out] = int(_cnt)
+            if _out == 'cancelled':
+                _outcome_stats['cx_high'] = int(_nh or 0)
+                _outcome_stats['cx_med']  = int(_nm or 0)
+                _outcome_stats['cx_low']  = int(_nl or 0)
+        _ocur.close()
+        _oc.close()
+    except Exception as _oce:
+        print(f"[VDV] Outcome stats query error: {_oce}")
+
     # ── Overbooking planner (next 30 days) ──────────────────────────────────
     overbooking_plan = _vdv_build_overbooking_planner(fut_bookings, fut_scores)
     print(f'[VDV] Overbooking planner: {len(overbooking_plan)} dates calculated for next 30 days')
@@ -3169,6 +3351,26 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
 </div>
 
 {('<div class="sh"><span class="sh-title">Group Pipeline</span><span class="sh-line"></span><span class="sh-sub">Upcoming confirmed & tentative groups · GRP_017</span></div>' + _grp_pipe_html(grp_pipe, STATUS_COLORS)) if grp_pipe else ''}
+
+<!-- MODEL ACCURACY ──────────────────────────────────────────────────── -->
+<div class="sh"><span class="sh-title">Model Accuracy — Last 30 Days</span><span class="sh-line"></span><span class="sh-sub">Ground truth from detected outcomes · vdv_outcome_log</span></div>
+<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:28px;">
+  <div style="flex:1;min-width:200px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:18px 20px;">
+    <div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#6b7280;margin-bottom:10px;">Cancelled bookings tracked</div>
+    <div style="font-size:28px;font-weight:700;color:#111827;margin-bottom:10px;">{_outcome_stats['cancelled']}</div>
+    <div style="font-size:12px;color:#374151;line-height:1.8;">
+      Were <strong>high risk (≥70%)</strong>:&nbsp;&nbsp;{_outcome_stats['cx_high']}{f" <span style='color:#6b7280;'>({round(_outcome_stats['cx_high']/_outcome_stats['cancelled']*100)}%)</span>" if _outcome_stats['cancelled'] else ""}<br>
+      Were <strong>medium risk</strong>:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{_outcome_stats['cx_med']}{f" <span style='color:#6b7280;'>({round(_outcome_stats['cx_med']/_outcome_stats['cancelled']*100)}%)</span>" if _outcome_stats['cancelled'] else ""}<br>
+      Were <strong>low risk</strong>:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{_outcome_stats['cx_low']}{f" <span style='color:#6b7280;'>({round(_outcome_stats['cx_low']/_outcome_stats['cancelled']*100)}%)</span>" if _outcome_stats['cancelled'] else ""}
+    </div>
+  </div>
+  <div style="flex:1;min-width:200px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:18px 20px;">
+    <div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#6b7280;margin-bottom:10px;">Completed stays tracked</div>
+    <div style="font-size:28px;font-weight:700;color:#00d165;margin-bottom:10px;">{_outcome_stats['completed']}</div>
+    <div style="font-size:12px;color:#6b7280;line-height:1.8;">Bookings that arrived as expected.<br>Used as negative examples for model evaluation.</div>
+  </div>
+  {'<div style="flex:1;min-width:200px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:18px 20px;display:flex;align-items:center;justify-content:center;"><div style="text-align:center;"><div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#166534;margin-bottom:8px;">High-risk catch rate</div><div style="font-size:36px;font-weight:700;color:#166534;">' + str(round(_outcome_stats["cx_high"]/_outcome_stats["cancelled"]*100)) + '%</div><div style="font-size:12px;color:#15803d;margin-top:4px;">of cancelled bookings<br>were flagged ≥70%</div></div></div>' if _outcome_stats['cancelled'] > 0 else '<div style="flex:1;min-width:200px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:18px 20px;display:flex;align-items:center;justify-content:center;"><div style="text-align:center;color:#9ca3af;font-size:13px;">No outcomes logged yet.<br>Data accumulates after<br>the next file upload.</div></div>'}
+</div>
 
 <!-- OVERBOOKING PLANNER ─────────────────────────────────────────────── -->
 <div class="sh"><span class="sh-title">Overbooking Planner — Next 30 Days</span><span class="sh-line"></span><span class="sh-sub">Probabilistic recommendations. Always apply judgment before acting.</span></div>
@@ -8036,6 +8238,13 @@ def daily_rescore():
 
         # Rescore with updated days_out
         scores = _score_vdv_future(future)
+
+        # Detect outcomes before overwriting DB with new scores
+        try:
+            n_out = _detect_vdv_outcomes(future, scores)
+            print(f"[VDV] Rescore outcomes: {n_out}")
+        except Exception as e:
+            print(f"[VDV] Rescore outcome detection error: {e}")
 
         # Upsert to DB
         n = _upsert_vdv_scores(future, scores)
