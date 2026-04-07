@@ -6487,55 +6487,59 @@ def login():
                 session.permanent = True
                 session["is_admin"] = True
                 return redirect(url_for("admin_panel"))
-            # Check demo/hotel accounts
-            if username in HOTELS and HOTELS[username]["password"] == password:
-                reset_attempts(ip)
-                session.permanent = True
-                session["hotel"] = username
-                session["hotel_name"] = HOTELS[username]["name"]
-                session["alert_email"] = ""
-                session["language"] = "en"
-                session["first_login"] = True
-                return redirect(url_for("dashboard"))
-            # Check registered users in database
-            try:
-                conn = get_db()
-                cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-                cur.execute("SELECT * FROM registered_users WHERE username=%s", (username,))
-                user = cur.fetchone()
-                cur.close()
-                conn.close()
-            except Exception as _db_err:
-                print(f"[LOGIN] DB connection failed: {_db_err}")
-                record_failed_attempt(ip)
-                error = "Invalid credentials"
-                user = None
-            if user:
-                # Support both bcrypt hashed and legacy plain text passwords
-                pw_bytes = password.encode("utf-8")
-                stored   = user["password"]
-                try:
-                    match = bcrypt.checkpw(pw_bytes, stored.encode("utf-8"))
-                except Exception:
-                    match = (stored == password)
-                if match:
-                    if not user["verified"]:
-                        error = "Please verify your email before logging in. Check your inbox."
-                    else:
-                        reset_attempts(ip)
-                        session.permanent = True
-                        session["hotel"] = username
-                        session["hotel_name"] = user["name"]
-                        session["alert_email"] = user["email"]
-                        session["language"] = "en"
-                        session["first_login"] = True
-                        return redirect(url_for("dashboard"))
+            # Check demo/hotel accounts — hardcoded, never touches DB
+            if username in HOTELS:
+                if HOTELS[username]["password"] == password:
+                    reset_attempts(ip)
+                    session.permanent = True
+                    session["hotel"] = username
+                    session["hotel_name"] = HOTELS[username]["name"]
+                    session["alert_email"] = ""
+                    session["language"] = "en"
+                    session["first_login"] = True
+                    return redirect(url_for("dashboard"))
                 else:
                     record_failed_attempt(ip)
                     error = "Invalid credentials"
             else:
-                record_failed_attempt(ip)
-                error = "Invalid credentials"
+                # Registered users only — DB never reached for hardcoded hotels
+                user = None
+                try:
+                    conn = get_db()
+                    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                    cur.execute("SELECT * FROM registered_users WHERE username=%s", (username,))
+                    user = cur.fetchone()
+                    cur.close()
+                    conn.close()
+                except Exception as _db_err:
+                    print(f"[LOGIN] DB connection failed: {_db_err}")
+                    error = "Service temporarily unavailable. Please try again."
+                if user:
+                    # Support both bcrypt hashed and legacy plain text passwords
+                    pw_bytes = password.encode("utf-8")
+                    stored   = user["password"]
+                    try:
+                        match = bcrypt.checkpw(pw_bytes, stored.encode("utf-8"))
+                    except Exception:
+                        match = (stored == password)
+                    if match:
+                        if not user["verified"]:
+                            error = "Please verify your email before logging in. Check your inbox."
+                        else:
+                            reset_attempts(ip)
+                            session.permanent = True
+                            session["hotel"] = username
+                            session["hotel_name"] = user["name"]
+                            session["alert_email"] = user["email"]
+                            session["language"] = "en"
+                            session["first_login"] = True
+                            return redirect(url_for("dashboard"))
+                    else:
+                        record_failed_attempt(ip)
+                        error = "Invalid credentials"
+                elif not error:
+                    record_failed_attempt(ip)
+                    error = "Invalid credentials"
 
     error_html   = f'<div class="err">{error}</div>' if error else ''
     success_html = f'<div class="ok">{success}</div>' if success else ''
