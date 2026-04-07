@@ -39,7 +39,25 @@ FEATURES = [
     'is_last_minute',
     'is_early_bird',
     'is_business_pattern',
+    'deposit_risk',
 ]
+
+# GTD codes → deposit risk score (mirrors app.py _VDV_GTD_RISK)
+_VDV_GTD_RISK = {
+    'PRE':    0.05,
+    'ADV':    0.10,
+    'CREDIT': 0.20,
+    'CRP':    0.20,
+    'CRPCL':  0.25,
+    'VCC':    0.35,
+    'HOLD18': 0.75,
+    'NONE':   0.90,
+    'None':   0.90,
+    '':       0.90,
+}
+
+def gtd_to_deposit_risk(gtd_code):
+    return _VDV_GTD_RISK.get(str(gtd_code).strip(), 0.90)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # HELPERS
@@ -171,6 +189,7 @@ def parse_cancellations():
                     'adr': adr,
                     'is_repeated_guest': 0,
                     'channel_encoded': channel,
+                    'deposit_risk': 0.90,  # GTD not available in RES_037 — default no guarantee
                     'is_canceled': 1,
                     'source': fn
                 })
@@ -231,6 +250,7 @@ def parse_cancellations():
                     'adr': adr,
                     'is_repeated_guest': 0,
                     'channel_encoded': channel,
+                    'deposit_risk': 0.90,  # GTD not available in RES_036 — default no guarantee
                     'is_canceled': 1,
                     'source': fn
                 })
@@ -289,8 +309,17 @@ def parse_res004_stays(cxl_keys):
         except Exception as e:
             print(f'  Skip {fn}: {e}'); continue
 
+        # Build an index of sub-rows for fast GTD lookup: row_index → gtd_code
+        subrow_gtd = {}
+        for idx, row in enumerate(rows):
+            if (row and len(row) > 12
+                    and len(row) > 9
+                    and str(row[9]).strip() == 'RS'
+                    and row[12] is not None):
+                subrow_gtd[idx] = str(row[12]).strip()
+
         file_records = 0
-        for r in rows:
+        for i, r in enumerate(rows):
             if not r or len(r) < 29: continue
             c0 = str(r[0]).strip() if r[0] else ''
             c3 = str(r[3]).strip() if len(r) > 3 and r[3] else ''
@@ -348,6 +377,13 @@ def parse_res004_stays(cxl_keys):
             arr_dt = datetime.combine(arr, datetime.min.time())
             wknd, wkday = weekend_split(arr_dt, nights)
 
+            # GTD from sub-row (col9 == 'RS', col12 == GTD code)
+            gtd_code = 'NONE'
+            for j in range(i + 1, min(i + 8, len(rows))):
+                if j in subrow_gtd:
+                    gtd_code = subrow_gtd[j]
+                    break
+
             records.append({
                 'arrival': arr_dt, 'nights': nights, 'adults': adults,
                 'lead_time': lead,
@@ -359,6 +395,7 @@ def parse_res004_stays(cxl_keys):
                 'adr': adr,
                 'is_repeated_guest': 0,
                 'channel_encoded': channel,
+                'deposit_risk': gtd_to_deposit_risk(gtd_code),
                 'is_canceled': 0,
                 'source': fn
             })
@@ -458,6 +495,9 @@ print("[TRAIN] Micro-segment distribution:")
 print(f"  Last minute: {df['is_last_minute'].sum()}")
 print(f"  Early bird:  {df['is_early_bird'].sum()}")
 print(f"  Business:    {df['is_business_pattern'].sum()}")
+
+print("[TRAIN] GTD distribution (deposit_risk):")
+print(df['deposit_risk'].value_counts().sort_index())
 
 print("[TRAIN] Feature null check:")
 print(df[FEATURES].isnull().sum())

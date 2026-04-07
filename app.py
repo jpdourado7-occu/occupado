@@ -819,6 +819,7 @@ _VDV_MODEL_FEATURES = [
     'channel_encoded',
     'channel_cancel_rate', 'seasonal_cancel_rate', 'avg_days_to_cancel_for_channel',
     'is_last_minute', 'is_early_bird', 'is_business_pattern',
+    'deposit_risk',
 ]
 _CHANNEL_MAP = {
     'Booking.com': 0.0, 'Direct/Web': 1.0, 'Corporate': 2.0, 'Package': 3.0,
@@ -885,6 +886,25 @@ _VDV_DECAY_CURVES = {
         60: 0.82, 999: 0.86,
     },
 }
+
+# GTD codes → deposit risk score
+# 0.0 = fully guaranteed, lowest cancel risk
+# 1.0 = no commitment, highest cancel risk
+_VDV_GTD_RISK = {
+    'PRE':    0.05,  # prepaid — almost never cancels
+    'ADV':    0.10,  # advance deposit paid
+    'CREDIT': 0.20,  # credit card guaranteed
+    'CRP':    0.20,  # corporate guarantee
+    'CRPCL':  0.25,  # corporate credit limit
+    'VCC':    0.35,  # Booking.com VCC — card exists but free cancel often applies
+    'HOLD18': 0.75,  # 6pm hold — drops easily
+    'NONE':   0.90,  # no guarantee — highest risk
+    'None':   0.90,  # handle string None
+    '':       0.90,  # missing = assume no guarantee
+}
+
+def _get_deposit_risk(gtd_code):
+    return _VDV_GTD_RISK.get(str(gtd_code).strip(), 0.90)
 
 # Map channel display names (from Shiji) to decay curve keys
 _VDV_CHANNEL_TO_CURVE = {
@@ -1286,6 +1306,7 @@ def _score_vdv_guests(guests):
             0.35,           # seasonal_cancel_rate (overall fallback)
             30.0,           # avg_days_to_cancel_for_channel
             lm, eb, biz,
+            0.35,           # deposit_risk (repeat guests assumed moderate commitment — VCC-equivalent)
         ])
     df_feat = pd.DataFrame(feat_rows, columns=_VDV_MODEL_FEATURES)
     m = model_vdv if model_vdv is not None else model
@@ -1327,7 +1348,9 @@ def _parse_vdv_future_bookings():
     # Files known to contain future bookings; dedup by confirmation number
     res004_candidates = ['RES_004_EnteredOnAndBy (1).xlsx',
                          'RES_004_EnteredOnAndBy (2).xlsx',
-                         'RES_004_EnteredOnAndBy (12).xlsx']
+                         'RES_004_EnteredOnAndBy (12).xlsx',
+                         'RES_004_EnteredOnAndBy (16).xlsx',
+                         'RES_004_EnteredOnAndBy (17).xlsx']
     today = datetime.now().date()
     bookings = []
     seen_confs = set()
@@ -1388,9 +1411,12 @@ def _parse_vdv_future_bookings():
                         except Exception:
                             pass
                     gtd = 'NONE'
-                    for j in range(i + 1, min(i + 5, len(rows))):
+                    for j in range(i + 1, min(i + 8, len(rows))):
                         rj = rows[j]
-                        if len(rj) > 12 and rj[12]:
+                        if (len(rj) > 12
+                                and len(rj) > 9
+                                and str(rj[9]).strip() == 'RS'
+                                and rj[12] is not None):
                             gtd = str(rj[12]).strip()
                             break
                     wkend = wkday = 0
@@ -1522,6 +1548,7 @@ def _score_vdv_future(bookings):
                 _sea_rate(b['channel'], b['arr_date'].month),
                 avg_dtc.get(b['channel'], 30.0),
                 lm, eb, biz,
+                _get_deposit_risk(b.get('gtd', 'NONE')),
             ])
         df = pd.DataFrame(rows_feat, columns=_VDV_MODEL_FEATURES)
         assert df.shape[1] == len(_VDV_MODEL_FEATURES), \
