@@ -1564,23 +1564,10 @@ def _score_vdv_future(bookings):
         assert df.shape[1] == len(_VDV_MODEL_FEATURES), \
             f"Feature mismatch: {df.shape[1]} vs {len(_VDV_MODEL_FEATURES)}"
         raw_scores = list(model_vdv.predict_proba(df)[:, 1] * 100)
-        # Compute SHAP values alongside scores
-        shap_values_list = None
-        if shap_explainer_vdv is not None:
-            try:
-                import numpy as _np
-                sv     = shap_explainer_vdv.shap_values(df)
-                sv_arr = _np.array(sv)
-                if sv_arr.ndim == 3:   # binary XGB returns (2, n, features)
-                    sv_arr = sv_arr[1]
-                shap_values_list = [
-                    {feat: float(val) for feat, val in zip(_VDV_MODEL_FEATURES, row)}
-                    for row in sv_arr
-                ]
-            except Exception as _se:
-                print(f'[VDV] SHAP scoring error: {_se}')
-        global VDV_FUTURE_SHAP
-        VDV_FUTURE_SHAP = shap_values_list or []
+        # Store df/bookings for background SHAP computation
+        global _vdv_last_df, _vdv_last_bookings
+        _vdv_last_df = df.copy()
+        _vdv_last_bookings = bookings
         normalised = normalise_within_channel(raw_scores, bookings)
         final_scores = _apply_guest_overrides(normalised, bookings)
         return [float(round(s, 1)) for s in final_scores]
@@ -1861,6 +1848,29 @@ def _get_guest_features(name: str, channel: str) -> dict:
         'is_chronic_canceller': profile.get('is_chronic_canceller', 0),
     }
 
+# SHAP background computation state
+_vdv_last_df       = None
+_vdv_last_bookings = []
+
+def _compute_shap_background():
+    global VDV_FUTURE_SHAP
+    try:
+        if shap_explainer_vdv is None or _vdv_last_df is None:
+            return
+        import numpy as _np
+        sv     = shap_explainer_vdv.shap_values(_vdv_last_df)
+        sv_arr = _np.array(sv)
+        if sv_arr.ndim == 3:
+            sv_arr = sv_arr[1]
+        result = [
+            {feat: float(val) for feat, val in zip(_VDV_MODEL_FEATURES, row)}
+            for row in sv_arr
+        ]
+        VDV_FUTURE_SHAP = result
+        print(f'[VDV] SHAP computed: {len(result)} bookings')
+    except Exception as _e:
+        print(f'[VDV] SHAP background error: {_e}')
+
 # Load VdV data once at startup
 VDV_GUEST_PROFILES  = _load_vdv_guest_profiles()
 VDV_GUESTS_RAW      = []
@@ -1888,6 +1898,10 @@ try:
     VDV_GROUP_PIPELINE  = _parse_group_pipeline()
     if VDV_FUTURE_BOOKINGS:
         VDV_FUTURE_SCORES = _score_vdv_future(VDV_FUTURE_BOOKINGS)
+        # Launch SHAP in background — must not block startup
+        import threading as _threading
+        _threading.Thread(target=_compute_shap_background, daemon=True).start()
+        print('[VDV] SHAP computation started in background')
         # Detect outcomes from previous data before overwriting with new scores
         try:
             n_outcomes = _detect_vdv_outcomes(
@@ -4177,6 +4191,23 @@ function toggleExpand(row, idx, score) {{
 function openRiskDetail(idx) {{
   var b = vdvFutureDetails[idx];
   if (!b) return;
+
+  // SHAP not yet ready — show loading message
+  if (!b.shap || Object.keys(b.shap).length === 0) {{
+    document.getElementById('mo-name').textContent = b.name || 'Guest';
+    document.getElementById('mo-sub').textContent = 'AI Cancellation Risk';
+    document.getElementById('mo-score').textContent = (b.score || 0).toFixed(1) + '%';
+    document.getElementById('mo-bar').style.width = (b.score || 0) + '%';
+    document.getElementById('mo-details').innerHTML =
+      '<div style="color:#888;text-align:center;padding:20px;">' +
+      'Analysis loading\u2026<br><small>Try again in a moment</small></div>';
+    var mr = document.getElementById('mo-reasons');
+    if (mr) mr.style.display = 'none';
+    var cb = document.querySelector('#detailMo button[onclick*="contactFromMo"]');
+    if (cb) cb.style.display = 'none';
+    document.getElementById('detailMo').classList.add('show');
+    return;
+  }}
 
   var shap = b.shap || {{}};
 
