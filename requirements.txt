@@ -10,3 +10,4 @@ reportlab
 psycopg2-binary
 openpyxl
 rapidfuzz
+shap

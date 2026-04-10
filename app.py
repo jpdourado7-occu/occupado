@@ -993,6 +993,16 @@ except Exception:
     model_vdv = None
     print("[VdV] VdV-specific model not found, falling back to generic")
 
+# SHAP explainer for VdV model
+shap_explainer_vdv = None
+if model_vdv is not None:
+    try:
+        import shap as _shap
+        shap_explainer_vdv = _shap.TreeExplainer(model_vdv)
+        print('[VDV] SHAP explainer ready')
+    except Exception as e:
+        print(f'[VDV] SHAP explainer failed: {e}')
+
 df = pd.read_csv("hotel_bookings.csv")
 
 # ── VAN DER VALK MECHELEN — Pre-loaded data & enhanced dashboard ──────────────
@@ -1554,6 +1564,23 @@ def _score_vdv_future(bookings):
         assert df.shape[1] == len(_VDV_MODEL_FEATURES), \
             f"Feature mismatch: {df.shape[1]} vs {len(_VDV_MODEL_FEATURES)}"
         raw_scores = list(model_vdv.predict_proba(df)[:, 1] * 100)
+        # Compute SHAP values alongside scores
+        shap_values_list = None
+        if shap_explainer_vdv is not None:
+            try:
+                import numpy as _np
+                sv     = shap_explainer_vdv.shap_values(df)
+                sv_arr = _np.array(sv)
+                if sv_arr.ndim == 3:   # binary XGB returns (2, n, features)
+                    sv_arr = sv_arr[1]
+                shap_values_list = [
+                    {feat: float(val) for feat, val in zip(_VDV_MODEL_FEATURES, row)}
+                    for row in sv_arr
+                ]
+            except Exception as _se:
+                print(f'[VDV] SHAP scoring error: {_se}')
+        global VDV_FUTURE_SHAP
+        VDV_FUTURE_SHAP = shap_values_list or []
         normalised = normalise_within_channel(raw_scores, bookings)
         final_scores = _apply_guest_overrides(normalised, bookings)
         return [float(round(s, 1)) for s in final_scores]
@@ -1841,6 +1868,7 @@ VDV_GUEST_HISTORY   = {}
 VDV_CHANNEL_STATS   = {}
 VDV_FUTURE_BOOKINGS = []
 VDV_FUTURE_SCORES   = []
+VDV_FUTURE_SHAP     = []
 VDV_MICE_DATA       = {}
 VDV_FORECAST_DATA   = {'history': [], 'forecast': []}
 VDV_GROUP_PIPELINE  = []
@@ -2686,6 +2714,7 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False, _data=None):
     # ── Future bookings risk (from RES_004 + model scoring) ────────────────
     fut_bookings = _d.get('fut_bookings', VDV_FUTURE_BOOKINGS)
     fut_scores   = _d.get('fut_scores',   VDV_FUTURE_SCORES)
+    fut_shap     = _d.get('fut_shap',     VDV_FUTURE_SHAP)
 
     # ── Model accuracy (outcome log, last 30 days) ───────────────────────────
     _outcome_stats = {'cancelled': 0, 'completed': 0,
@@ -2769,6 +2798,10 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False, _data=None):
                 'wkday': _fb.get('wkday', 0),
                 'score': round(_fs, 1),
                 'is_repeat': 1 if _name_counts.get(_fb['name'].strip().lower(), 0) > 1 else 0,
+                'shap': fut_shap[_fdi] if _fdi < len(fut_shap) else {},
+                'holiday_label': (lambda _d: _get_demand_event(_d)[1] if _get_demand_event(_d) else '')(
+                    _fb['arr_date'].date() if hasattr(_fb.get('arr_date'), 'date') else _fb.get('arr_date')
+                ) if _fb.get('arr_date') else '',
             })
         vdv_fut_details_js = json.dumps(vdv_fut_details_list)
         fut_table_html = ''
@@ -4145,68 +4178,87 @@ function openRiskDetail(idx) {{
   var b = vdvFutureDetails[idx];
   if (!b) return;
 
-  var factors = [];
+  var shap = b.shap || {{}};
 
-  // Lead time
-  if (b.lead <= 3) {{
-    factors.push({{ icon: '⚡', label: 'Last-minute booking', detail: b.lead + ' days before arrival — cancellation window nearly closed', impact: 'neutral' }});
-  }} else if (b.lead >= 60) {{
-    factors.push({{ icon: '📅', label: 'Far advance booking', detail: b.lead + ' days out — higher cancellation probability', impact: 'negative' }});
+  var featureLabels = {{
+    'deposit_risk':                   'Deposit / Guarantee',
+    'channel_cancel_rate':            'Channel cancel rate',
+    'seasonal_cancel_rate':           'Seasonal pattern',
+    'channel_encoded':                'Booking channel',
+    'lead_time':                      'Lead time',
+    'arrival_month':                  'Arrival month',
+    'arrival_day_of_week':            'Day of week',
+    'stays_in_weekend_nights':        'Weekend nights',
+    'stays_in_week_nights':           'Week nights',
+    'is_repeated_guest':              'Repeat guest',
+    'avg_days_to_cancel_for_channel': 'Channel cancel timing',
+    'is_last_minute':                 'Last minute booking',
+    'is_early_bird':                  'Early bird booking',
+    'is_business_pattern':            'Business travel pattern',
+    'arrival_date_week_number':       'Week of year',
+  }};
+
+  // Make week-number label context-aware
+  if (b.holiday_label && b.holiday_label !== '') {{
+    featureLabels['arrival_date_week_number'] = b.holiday_label + ' period';
   }} else {{
-    factors.push({{ icon: '📅', label: 'Lead time: ' + b.lead + ' days', detail: 'Moderate booking window', impact: 'neutral' }});
+    featureLabels['arrival_date_week_number'] = 'Arrival week pattern';
   }}
 
-  // Channel
-  var chImpact = 'neutral', chDetail = '';
-  if (b.channel === 'Booking.com') {{ chImpact = 'negative'; chDetail = 'OTA bookings cancel at higher rates'; }}
-  else if (b.channel === 'Corporate') {{ chImpact = 'positive'; chDetail = 'Corporate bookings rarely cancel'; }}
-  else if (b.channel === 'Direct / Web' || b.channel === 'Direct/Web') {{ chImpact = 'neutral'; chDetail = 'Direct bookings have moderate cancel rates'; }}
-  else {{ chDetail = 'Channel: ' + b.channel; }}
-  factors.push({{ icon: '🔗', label: 'Channel: ' + b.channel, detail: chDetail, impact: chImpact }});
+  var shapEntries = Object.entries(shap)
+    .map(function(e) {{ return {{ feature: e[0], value: e[1], abs: Math.abs(e[1]) }}; }})
+    .sort(function(a, b) {{ return b.abs - a.abs; }})
+    .slice(0, 5);
 
-  // Deposit / GTD
-  var gtdLabel = '', gtdImpact = 'neutral';
-  if (b.gtd === 'NONE' || b.gtd === '' || b.gtd === 'None') {{ gtdLabel = 'No guarantee on file'; gtdImpact = 'negative'; }}
-  else if (b.gtd === 'HOLD18') {{ gtdLabel = '6pm hold — no deposit'; gtdImpact = 'negative'; }}
-  else if (b.gtd === 'VCC') {{ gtdLabel = 'Virtual credit card (Booking.com)'; gtdImpact = 'neutral'; }}
-  else if (b.gtd === 'ADV' || b.gtd === 'PRE') {{ gtdLabel = 'Prepaid — very low risk'; gtdImpact = 'positive'; }}
-  else if (b.gtd === 'CRP' || b.gtd === 'CREDIT' || b.gtd === 'CRPCL') {{ gtdLabel = 'Guaranteed — low risk'; gtdImpact = 'positive'; }}
-  else {{ gtdLabel = 'Guarantee: ' + b.gtd; }}
-  factors.push({{ icon: '💳', label: gtdLabel,
-    detail: gtdImpact === 'negative' ? 'No financial commitment increases cancel risk'
-          : gtdImpact === 'positive' ? 'Financial commitment reduces cancel risk'
-          : 'Moderate deposit risk',
-    impact: gtdImpact }});
+  var totalAbs = shapEntries.reduce(function(sum, e) {{ return sum + e.abs; }}, 0);
 
-  // Stay pattern
-  if (b.wkday >= 3 && b.wkend === 0) {{
-    factors.push({{ icon: '💼', label: 'Business pattern stay', detail: b.wkday + ' weeknights, 0 weekend nights', impact: 'positive' }});
-  }} else if (b.wkend > 0 && b.wkday === 0) {{
-    factors.push({{ icon: '🏖️', label: 'Weekend leisure stay', detail: b.wkend + ' weekend nights', impact: 'neutral' }});
-  }}
-
-  // Repeat guest
-  if (b.is_repeat) {{
-    factors.push({{ icon: '⭐', label: 'Repeat guest', detail: 'Known guest — lower cancel probability', impact: 'positive' }});
-  }}
-
-  // ADR
-  if (b.adr > 300) {{
-    factors.push({{ icon: '💰', label: 'High value booking — €' + b.adr, detail: 'Premium rate booking', impact: 'neutral' }});
-  }}
-
-  var factorHTML = factors.map(function(f) {{
-    var color = f.impact === 'negative' ? '#ef4444' : f.impact === 'positive' ? '#00d165' : '#6b7280';
-    var dotColor = f.impact === 'negative' ? '#FF6B6B' : f.impact === 'positive' ? '#51CF66' : '#868E96';
-    return '<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">'
-      + '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + dotColor + ';min-width:8px;margin-top:4px;"></span>'
+  var factorHTML = shapEntries.map(function(f) {{
+    var pct   = totalAbs > 0 ? ((f.abs / totalAbs) * 100).toFixed(1) : '0.0';
+    var isPos = f.value > 0;
+    var color = isPos ? '#FF6B6B' : '#51CF66';
+    var arrow = isPos ? '↑' : '↓';
+    var label = featureLabels[f.feature] || f.feature;
+    var hint  = '';
+    if (f.feature === 'deposit_risk') {{
+      hint = b.gtd === 'NONE' ? 'No guarantee on file' : 'Guarantee: ' + b.gtd;
+    }} else if (f.feature === 'lead_time') {{
+      hint = b.lead + ' days before arrival';
+    }} else if (f.feature === 'channel_cancel_rate' || f.feature === 'channel_encoded') {{
+      hint = b.channel;
+    }} else if (f.feature === 'seasonal_cancel_rate') {{
+      hint = 'Arrival: ' + b.arrival;
+    }} else if (f.feature === 'is_early_bird' && b.lead >= 60) {{
+      hint = b.lead + ' days — far advance';
+    }} else if (f.feature === 'is_last_minute' && b.lead <= 3) {{
+      hint = b.lead + ' days — last minute';
+    }}
+    return '<div style="display:flex;justify-content:space-between;align-items:flex-start;'
+      + 'padding:10px 0;border-bottom:1px solid #f0f0f0;">'
       + '<div>'
-      + '<div style="font-weight:600;color:' + color + ';font-size:13px;">' + f.label + '</div>'
-      + '<div style="color:#9ca3af;font-size:12px;margin-top:2px;">' + f.detail + '</div>'
-      + '</div></div>';
-  }}).join('');
+      + '<div style="font-weight:600;font-size:13px;color:#1a1a1a;">' + label + '</div>'
+      + (hint ? '<div style="color:#888;font-size:12px;margin-top:2px;">' + hint + '</div>' : '')
+      + '</div>'
+      + '<div style="font-weight:700;font-size:13px;color:' + color
+      + ';white-space:nowrap;margin-left:12px;">' + arrow + ' ' + pct + '% of score</div>'
+      + '</div>';
+  }}).join('')
+    + '<div style="font-size:11px;color:#aaa;margin-top:12px;font-style:italic;">'
+    + 'Percentages show each factor\'s relative weight in this prediction'
+    + '</div>';
 
-  var scoreColor = b.score >= 70 ? '#ef4444' : b.score >= 40 ? '#f59e0b' : '#00d165';
+  if (!shapEntries.length) {{
+    factorHTML = '<div style="color:#9ca3af;font-size:12px;padding:10px 0;">'
+      + 'Factor breakdown not available for this booking.</div>';
+  }}
+
+  var allScores   = vdvFutureDetails.map(function(x) {{ return x.score; }});
+  var higherCount = allScores.filter(function(s) {{ return s > b.score; }}).length;
+  var percentile  = Math.round((higherCount / allScores.length) * 100);
+  var rankText    = percentile <= 10 ? 'Top ' + percentile + '% highest risk bookings'
+                 : percentile <= 25  ? 'Top quarter of risk bookings'
+                 : 'Within normal risk range';
+
+  var scoreColor = b.score >= 70 ? '#FF6B6B' : b.score >= 40 ? '#FFB347' : '#51CF66';
   var verdict    = b.score >= 70 ? 'HIGH RISK' : b.score >= 40 ? 'MEDIUM RISK' : 'LOW RISK';
 
   document.getElementById('mo-name').textContent  = b.name || 'Guest';
@@ -4216,11 +4268,14 @@ function openRiskDetail(idx) {{
   document.getElementById('mo-bar').style.width   = b.score + '%';
   document.getElementById('mo-bar').style.background = scoreColor;
   var vtag = document.getElementById('mo-verd');
-  vtag.textContent       = verdict;
-  vtag.style.background  = b.score >= 70 ? '#fef2f2' : b.score >= 40 ? '#fffbeb' : '#f0fdf4';
-  vtag.style.color       = scoreColor;
+  vtag.textContent      = verdict;
+  vtag.style.background = b.score >= 70 ? '#fef2f2' : b.score >= 40 ? '#fffbeb' : '#f0fdf4';
+  vtag.style.color      = scoreColor;
   document.getElementById('mo-details').innerHTML =
-    '<div style="font-weight:600;margin-bottom:12px;color:#111827;font-size:12px;">Why this score:</div>'
+    '<div style="font-size:11px;color:#888;font-weight:600;letter-spacing:0.06em;'
+    + 'text-transform:uppercase;margin-bottom:14px;">' + rankText + '</div>'
+    + '<div style="font-size:11px;color:#aaa;font-weight:600;letter-spacing:0.06em;'
+    + 'text-transform:uppercase;margin-bottom:8px;">Top risk factors</div>'
     + factorHTML;
 
   var mr = document.getElementById('mo-reasons');
@@ -8346,7 +8401,7 @@ def internal_mark_recoveries():
 
 @app.route('/internal/daily-rescore', methods=['POST'])
 def daily_rescore():
-    global VDV_FUTURE_BOOKINGS, VDV_FUTURE_SCORES
+    global VDV_FUTURE_BOOKINGS, VDV_FUTURE_SCORES, VDV_FUTURE_SHAP
     # Security: Railway CRON only
     auth = request.headers.get('Authorization', '')
     if auth != f"Bearer {os.environ.get('CRON_SECRET', 'occupado-cron')}":
