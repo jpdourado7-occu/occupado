@@ -4197,8 +4197,9 @@ function openRiskDetail(idx) {{
 
   var factorHTML = factors.map(function(f) {{
     var color = f.impact === 'negative' ? '#ef4444' : f.impact === 'positive' ? '#00d165' : '#6b7280';
+    var dotColor = f.impact === 'negative' ? '#FF6B6B' : f.impact === 'positive' ? '#51CF66' : '#868E96';
     return '<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">'
-      + '<span style="font-size:16px;min-width:24px;">' + f.icon + '</span>'
+      + '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + dotColor + ';min-width:8px;margin-top:4px;"></span>'
       + '<div>'
       + '<div style="font-weight:600;color:' + color + ';font-size:13px;">' + f.label + '</div>'
       + '<div style="color:#9ca3af;font-size:12px;margin-top:2px;">' + f.detail + '</div>'
