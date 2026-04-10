@@ -2728,6 +2728,7 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False, _data=None):
         fut_low       = 1888
         fut_no_gtd    = 1220
         fut_table_html = ''
+        vdv_fut_details_js = '[]'
         fut_by_channel = {'Booking.com': 1056, 'Direct/Web': 436, 'Corporate': 539,
                           'Package': 470, 'Other': 267}
         fut_month_labels = ['Apr 2026','May 2026','Jun 2026','Jul 2026',
@@ -2749,6 +2750,27 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False, _data=None):
         _ch_order = sorted(_ch_buckets.keys(),
                            key=lambda c: max(s for _, s in _ch_buckets[c]),
                            reverse=True)
+        # Build booking details for Why? popup
+        _name_counts = {}
+        for _b in fut_bookings:
+            _k = _b['name'].strip().lower()
+            _name_counts[_k] = _name_counts.get(_k, 0) + 1
+        vdv_fut_details_list = []
+        for _fdi, (_fb, _fs) in enumerate(zip(fut_bookings, fut_scores)):
+            vdv_fut_details_list.append({
+                'idx': _fdi,
+                'name': _fb.get('name', 'Guest'),
+                'arrival': _fb.get('arrival', ''),
+                'channel': _fb.get('channel', ''),
+                'lead': _fb.get('lead', 0),
+                'adr': round(_fb.get('adr', 0), 0),
+                'gtd': _fb.get('gtd', 'NONE'),
+                'wkend': _fb.get('wkend', 0),
+                'wkday': _fb.get('wkday', 0),
+                'score': round(_fs, 1),
+                'is_repeat': 1 if _name_counts.get(_fb['name'].strip().lower(), 0) > 1 else 0,
+            })
+        vdv_fut_details_js = json.dumps(vdv_fut_details_list)
         fut_table_html = ''
         for _ch in _ch_order:
             _top10 = sorted(_ch_buckets[_ch], key=lambda x: -x[1])[:10]
@@ -2762,13 +2784,13 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False, _data=None):
                 gtd = b['gtd']
                 if sc >= 70:
                     bdg = f'<span class="badge high">{sc:.0f}%</span>'
-                    act = '<span class="abtn dep">Deposit</span>'
+                    act = f'<span class="abtn dep">Deposit</span><button class="btn-why" onclick="event.stopPropagation();openRiskDetail({_idx})" title="See risk explanation">Why?</button>'
                 elif sc >= 40:
                     bdg = f'<span class="badge med">{sc:.0f}%</span>'
-                    act = '<span class="abtn rem">Reminder</span>'
+                    act = f'<span class="abtn rem">Reminder</span><button class="btn-why" onclick="event.stopPropagation();openRiskDetail({_idx})" title="See risk explanation">Why?</button>'
                 else:
                     bdg = f'<span class="badge low">{sc:.0f}%</span>'
-                    act = '<span class="abtn mon">Monitor</span>'
+                    act = f'<span class="abtn mon">Monitor</span><button class="btn-why" onclick="event.stopPropagation();openRiskDetail({_idx})" title="See risk explanation">Why?</button>'
                 gtd_badge = ('<span class="gtd-none">No GTD</span>' if gtd == 'NONE'
                              else f'<span class="gtd-ok">{gtd}</span>')
                 fut_table_html += (
@@ -3041,6 +3063,8 @@ a{{text-decoration:none;color:inherit;}}
 .ntd{{max-width:160px;}}
 .nt{{font-size:11px;color:#9ca3af;font-style:italic;}}
 .abtn{{padding:4px 10px;border-radius:5px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid;background:transparent;font-family:'Plus Jakarta Sans',sans-serif;transition:background .1s;white-space:nowrap;}}
+.btn-why{{background:transparent;border:1px solid #d1d5db;color:#6b7280;border-radius:5px;padding:4px 10px;font-size:11px;font-weight:600;letter-spacing:0.04em;cursor:pointer;margin-left:6px;transition:all 0.2s;white-space:nowrap;font-family:'Plus Jakarta Sans',sans-serif;}}
+.btn-why:hover{{background:#f1f5f9;color:#111827;border-color:#9ca3af;}}
 .dep{{color:#ef4444;border-color:#fecaca;}}.dep:hover{{background:#fef2f2;}}
 .rem{{color:#f59e0b;border-color:#fde68a;}}.rem:hover{{background:#fffbeb;}}
 .mon{{color:#00d165;border-color:#bbf7d0;}}.mon:hover{{background:#f0fdf4;}}
@@ -3616,6 +3640,7 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
 <script>
 const guests = {guests_js};
 const scores = {scores_js};
+var vdvFutureDetails = {vdv_fut_details_js};
 let activeGuest = -1;
 
 // ── CHARTS ────────────────────────────────────────────────────────────────────
@@ -3802,7 +3827,15 @@ function openDetail(idx, score) {{
     `<div class="ri ${{r.p?'pos':'neg'}}">${{r.p?'✓':'⚠'}} ${{r.t}}</div>`).join('');
   document.getElementById('detailMo').classList.add('show');
 }}
-function closeMo() {{ document.getElementById('detailMo').classList.remove('show'); activeGuest=-1; }}
+function closeMo() {{
+  document.getElementById('detailMo').classList.remove('show');
+  activeGuest = -1;
+  document.getElementById('mo-sub').textContent = 'AI Cancellation Risk';
+  var mr = document.getElementById('mo-reasons');
+  if (mr) mr.style.display = '';
+  var cb = document.querySelector('#detailMo button[onclick*="contactFromMo"]');
+  if (cb) cb.style.display = '';
+}}
 function contactFromMo() {{ closeMo(); if(activeGuest>=0) setTimeout(()=>openEmail(activeGuest,'contact'),80); }}
 
 // ── EMAIL ─────────────────────────────────────────────────────────────────────
@@ -4106,6 +4139,95 @@ function toggleExpand(row, idx, score) {{
     row.classList.add('is-open');
     _openRow = expTr;
   }}
+}}
+
+function openRiskDetail(idx) {{
+  var b = vdvFutureDetails[idx];
+  if (!b) return;
+
+  var factors = [];
+
+  // Lead time
+  if (b.lead <= 3) {{
+    factors.push({{ icon: '⚡', label: 'Last-minute booking', detail: b.lead + ' days before arrival — cancellation window nearly closed', impact: 'neutral' }});
+  }} else if (b.lead >= 60) {{
+    factors.push({{ icon: '📅', label: 'Far advance booking', detail: b.lead + ' days out — higher cancellation probability', impact: 'negative' }});
+  }} else {{
+    factors.push({{ icon: '📅', label: 'Lead time: ' + b.lead + ' days', detail: 'Moderate booking window', impact: 'neutral' }});
+  }}
+
+  // Channel
+  var chImpact = 'neutral', chDetail = '';
+  if (b.channel === 'Booking.com') {{ chImpact = 'negative'; chDetail = 'OTA bookings cancel at higher rates'; }}
+  else if (b.channel === 'Corporate') {{ chImpact = 'positive'; chDetail = 'Corporate bookings rarely cancel'; }}
+  else if (b.channel === 'Direct / Web' || b.channel === 'Direct/Web') {{ chImpact = 'neutral'; chDetail = 'Direct bookings have moderate cancel rates'; }}
+  else {{ chDetail = 'Channel: ' + b.channel; }}
+  factors.push({{ icon: '🔗', label: 'Channel: ' + b.channel, detail: chDetail, impact: chImpact }});
+
+  // Deposit / GTD
+  var gtdLabel = '', gtdImpact = 'neutral';
+  if (b.gtd === 'NONE' || b.gtd === '' || b.gtd === 'None') {{ gtdLabel = 'No guarantee on file'; gtdImpact = 'negative'; }}
+  else if (b.gtd === 'HOLD18') {{ gtdLabel = '6pm hold — no deposit'; gtdImpact = 'negative'; }}
+  else if (b.gtd === 'VCC') {{ gtdLabel = 'Virtual credit card (Booking.com)'; gtdImpact = 'neutral'; }}
+  else if (b.gtd === 'ADV' || b.gtd === 'PRE') {{ gtdLabel = 'Prepaid — very low risk'; gtdImpact = 'positive'; }}
+  else if (b.gtd === 'CRP' || b.gtd === 'CREDIT' || b.gtd === 'CRPCL') {{ gtdLabel = 'Guaranteed — low risk'; gtdImpact = 'positive'; }}
+  else {{ gtdLabel = 'Guarantee: ' + b.gtd; }}
+  factors.push({{ icon: '💳', label: gtdLabel,
+    detail: gtdImpact === 'negative' ? 'No financial commitment increases cancel risk'
+          : gtdImpact === 'positive' ? 'Financial commitment reduces cancel risk'
+          : 'Moderate deposit risk',
+    impact: gtdImpact }});
+
+  // Stay pattern
+  if (b.wkday >= 3 && b.wkend === 0) {{
+    factors.push({{ icon: '💼', label: 'Business pattern stay', detail: b.wkday + ' weeknights, 0 weekend nights', impact: 'positive' }});
+  }} else if (b.wkend > 0 && b.wkday === 0) {{
+    factors.push({{ icon: '🏖️', label: 'Weekend leisure stay', detail: b.wkend + ' weekend nights', impact: 'neutral' }});
+  }}
+
+  // Repeat guest
+  if (b.is_repeat) {{
+    factors.push({{ icon: '⭐', label: 'Repeat guest', detail: 'Known guest — lower cancel probability', impact: 'positive' }});
+  }}
+
+  // ADR
+  if (b.adr > 300) {{
+    factors.push({{ icon: '💰', label: 'High value booking — €' + b.adr, detail: 'Premium rate booking', impact: 'neutral' }});
+  }}
+
+  var factorHTML = factors.map(function(f) {{
+    var color = f.impact === 'negative' ? '#ef4444' : f.impact === 'positive' ? '#00d165' : '#6b7280';
+    return '<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">'
+      + '<span style="font-size:16px;min-width:24px;">' + f.icon + '</span>'
+      + '<div>'
+      + '<div style="font-weight:600;color:' + color + ';font-size:13px;">' + f.label + '</div>'
+      + '<div style="color:#9ca3af;font-size:12px;margin-top:2px;">' + f.detail + '</div>'
+      + '</div></div>';
+  }}).join('');
+
+  var scoreColor = b.score >= 70 ? '#ef4444' : b.score >= 40 ? '#f59e0b' : '#00d165';
+  var verdict    = b.score >= 70 ? 'HIGH RISK' : b.score >= 40 ? 'MEDIUM RISK' : 'LOW RISK';
+
+  document.getElementById('mo-name').textContent  = b.name || 'Guest';
+  document.getElementById('mo-sub').textContent   = 'Risk Score Explanation · ' + b.arrival;
+  document.getElementById('mo-score').textContent = b.score + '%';
+  document.getElementById('mo-score').style.color = scoreColor;
+  document.getElementById('mo-bar').style.width   = b.score + '%';
+  document.getElementById('mo-bar').style.background = scoreColor;
+  var vtag = document.getElementById('mo-verd');
+  vtag.textContent       = verdict;
+  vtag.style.background  = b.score >= 70 ? '#fef2f2' : b.score >= 40 ? '#fffbeb' : '#f0fdf4';
+  vtag.style.color       = scoreColor;
+  document.getElementById('mo-details').innerHTML =
+    '<div style="font-weight:600;margin-bottom:12px;color:#111827;font-size:12px;">Why this score:</div>'
+    + factorHTML;
+
+  var mr = document.getElementById('mo-reasons');
+  if (mr) mr.style.display = 'none';
+  var cb = document.querySelector('#detailMo button[onclick*="contactFromMo"]');
+  if (cb) cb.style.display = 'none';
+
+  document.getElementById('detailMo').classList.add('show');
 }}
 
 </script>
