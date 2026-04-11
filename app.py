@@ -4285,9 +4285,20 @@ function openRiskDetail(idx) {{
   var allScores   = vdvFutureDetails.map(function(x) {{ return x.score; }});
   var higherCount = allScores.filter(function(s) {{ return s > b.score; }}).length;
   var percentile  = Math.round((higherCount / allScores.length) * 100);
-  var rankText    = percentile <= 10 ? 'Top ' + percentile + '% highest risk bookings'
-                 : percentile <= 25  ? 'Top quarter of risk bookings'
-                 : 'Within normal risk range';
+  var rankText;
+  if (percentile === 0) {{
+    rankText = 'Highest risk booking in current period';
+  }} else if (percentile <= 5) {{
+    rankText = 'Top 5% highest risk bookings';
+  }} else if (percentile <= 10) {{
+    rankText = 'Top 10% highest risk bookings';
+  }} else if (percentile <= 25) {{
+    rankText = 'Top 25% highest risk bookings';
+  }} else if (percentile <= 50) {{
+    rankText = 'Above average risk';
+  }} else {{
+    rankText = 'Within normal risk range';
+  }}
 
   var scoreColor = b.score >= 70 ? '#FF6B6B' : b.score >= 40 ? '#FFB347' : '#51CF66';
   var verdict    = b.score >= 70 ? 'HIGH RISK' : b.score >= 40 ? 'MEDIUM RISK' : 'LOW RISK';
@@ -4302,12 +4313,34 @@ function openRiskDetail(idx) {{
   vtag.textContent      = verdict;
   vtag.style.background = b.score >= 70 ? '#fef2f2' : b.score >= 40 ? '#fffbeb' : '#f0fdf4';
   vtag.style.color      = scoreColor;
+  var depositSummary = '';
+  if (b.gtd) {{
+    var gtdMap = {{
+      'NONE':   '\u26a0 No guarantee on file \u2014 highest cancel risk',
+      'HOLD18': '\u26a0 6pm hold only \u2014 no deposit',
+      'VCC':    'Virtual credit card (Booking.com)',
+      'CREDIT': '\u2713 Credit card guaranteed',
+      'CRP':    '\u2713 Corporate guaranteed',
+      'CRPCL':  '\u2713 Corporate credit limit',
+      'ADV':    '\u2713 Advance deposit paid',
+      'PRE':    '\u2713 Prepaid \u2014 lowest cancel risk',
+    }};
+    var gtdText  = gtdMap[b.gtd] || 'Guarantee: ' + b.gtd;
+    var gtdColor = (b.gtd === 'NONE' || b.gtd === 'HOLD18') ? '#FF6B6B' : '#51CF66';
+    depositSummary =
+      '<div style="margin-top:14px;padding:10px 12px;background:#f8f8f8;'
+      + 'border-radius:8px;border-left:3px solid ' + gtdColor + ';">'
+      + '<div style="font-size:12px;font-weight:600;color:' + gtdColor + ';">'
+      + gtdText + '</div>'
+      + '</div>';
+  }}
+
   document.getElementById('mo-details').innerHTML =
     '<div style="font-size:11px;color:#888;font-weight:600;letter-spacing:0.06em;'
     + 'text-transform:uppercase;margin-bottom:14px;">' + rankText + '</div>'
     + '<div style="font-size:11px;color:#aaa;font-weight:600;letter-spacing:0.06em;'
     + 'text-transform:uppercase;margin-bottom:8px;">Top risk factors</div>'
-    + factorHTML;
+    + factorHTML + depositSummary;
 
   var mr = document.getElementById('mo-reasons');
   if (mr) mr.style.display = 'none';
