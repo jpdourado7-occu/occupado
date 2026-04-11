@@ -4026,7 +4026,7 @@ document.getElementById('ecMo').onclick     = e=>{{ if(e.target===document.getEl
 // Counter animation
 function countUp(el, target, duration, pre, suf) {{
   if (!el) return;
-  pre = pre||''; suf = suf||''; duration = duration||1400;
+  pre = pre||''; suf = suf||''; duration = duration||500;
   const start = performance.now();
   function tick(now) {{
     const p = Math.min((now - start)/duration, 1);
@@ -4038,7 +4038,7 @@ function countUp(el, target, duration, pre, suf) {{
   requestAnimationFrame(tick);
 }}
 document.querySelectorAll('.count-up').forEach(function(el) {{
-  countUp(el, parseFloat(el.dataset.val)||0, 1400, el.dataset.pre||'', el.dataset.suf||'');
+  countUp(el, parseFloat(el.dataset.val)||0, 500, el.dataset.pre||'', el.dataset.suf||'');
 }});
 
 // Filter tabs
