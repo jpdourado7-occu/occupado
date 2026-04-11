@@ -4274,7 +4274,7 @@ function openRiskDetail(idx) {{
       + '</div>';
   }}).join('')
     + '<div style="font-size:11px;color:#aaa;margin-top:12px;font-style:italic;">'
-    + 'Percentages show each factor\'s relative weight in this prediction'
+    + "Percentages show each factor's relative weight in this prediction"
     + '</div>';
 
   if (!shapEntries.length) {{
