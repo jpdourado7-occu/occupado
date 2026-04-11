@@ -949,7 +949,7 @@ _BELGIAN_HOLIDAYS = {
     (5,  1): ('⚒️',  'Labour Day'),
     (7, 21): ('🇧🇪', 'Belgian National Day'),
     (8, 15): ('🙏',  'Assumption'),
-    (11, 1): ('🕯️',  "All Saints' Day"),
+    (11, 1): ('🕯️',  "All Saints Day"),
     (11,11): ('🎖️',  'Armistice Day'),
     (12,25): ('🎄',  'Christmas'),
 }
@@ -2817,7 +2817,7 @@ def build_vdv_dashboard(hotel_name, lang="en", first_login=False, _data=None):
                     _fb['arr_date'].date() if hasattr(_fb.get('arr_date'), 'date') else _fb.get('arr_date')
                 ) if _fb.get('arr_date') else '',
             })
-        vdv_fut_details_js = json.dumps(vdv_fut_details_list)
+        vdv_fut_details_js = json.dumps(vdv_fut_details_list, ensure_ascii=False, default=str)
         fut_table_html = ''
         for _ch in _ch_order:
             _top10 = sorted(_ch_buckets[_ch], key=lambda x: -x[1])[:10]
