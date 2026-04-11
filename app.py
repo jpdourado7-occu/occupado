@@ -3687,7 +3687,10 @@ input[type=range]{{width:100%;accent-color:#00d165;cursor:pointer;}}
 <script>
 const guests = {guests_js};
 const scores = {scores_js};
-var vdvFutureDetails = {vdv_fut_details_js};
+var vdvFutureDetails = [];
+fetch('/vdv/api/booking-details')
+  .then(function(r) {{ return r.json(); }})
+  .then(function(data) {{ vdvFutureDetails = data; }});
 let activeGuest = -1;
 
 // ── CHARTS ────────────────────────────────────────────────────────────────────
@@ -4189,6 +4192,22 @@ function toggleExpand(row, idx, score) {{
 }}
 
 function openRiskDetail(idx) {{
+  // Booking details not yet fetched — show loading modal
+  if (!vdvFutureDetails || vdvFutureDetails.length === 0) {{
+    document.getElementById('mo-name').textContent = 'Loading\u2026';
+    document.getElementById('mo-sub').textContent = 'AI Cancellation Risk';
+    document.getElementById('mo-score').textContent = '';
+    document.getElementById('mo-details').innerHTML =
+      '<div style="color:#888;text-align:center;padding:20px;">Loading analysis\u2026<br>'
+      + '<small>Try again in a moment</small></div>';
+    var _mr = document.getElementById('mo-reasons');
+    if (_mr) _mr.style.display = 'none';
+    var _cb = document.querySelector('#detailMo button[onclick*="contactFromMo"]');
+    if (_cb) _cb.style.display = 'none';
+    document.getElementById('detailMo').classList.add('show');
+    return;
+  }}
+
   var b = vdvFutureDetails[idx];
   if (!b) return;
 
@@ -8335,6 +8354,47 @@ def vdv_export_highrisk():
         as_attachment=True,
         download_name=f"occupado_highrisk_{datetime.now().strftime('%Y%m%d')}.xlsx",
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+
+@app.route("/vdv/api/booking-details")
+@login_required
+def vdv_booking_details_api():
+    """Async endpoint — serves vdvFutureDetails JSON without blocking page load."""
+    if session.get("hotel") != VDV_HOTEL_KEY:
+        return jsonify({"error": "unauthorized"}), 403
+    fut_bookings = VDV_FUTURE_BOOKINGS
+    fut_scores   = VDV_FUTURE_SCORES
+    fut_shap     = VDV_FUTURE_SHAP
+    if not fut_bookings:
+        return app.response_class("[]", mimetype="application/json")
+    _name_counts = {}
+    for _b in fut_bookings:
+        _k = _b["name"].strip().lower()
+        _name_counts[_k] = _name_counts.get(_k, 0) + 1
+    result = []
+    for i, (_b, _s) in enumerate(zip(fut_bookings, fut_scores)):
+        _arr = _b.get("arr_date")
+        _arr_d = _arr.date() if _arr and hasattr(_arr, "date") else _arr
+        _evt = _get_demand_event(_arr_d) if _arr_d else None
+        result.append({
+            "idx":           i,
+            "name":          _b.get("name", "Guest"),
+            "arrival":       _b.get("arrival", ""),
+            "channel":       _b.get("channel", ""),
+            "lead":          _b.get("lead", 0),
+            "adr":           round(_b.get("adr", 0), 0),
+            "gtd":           _b.get("gtd", "NONE"),
+            "wkend":         _b.get("wkend", 0),
+            "wkday":         _b.get("wkday", 0),
+            "score":         round(_s, 1),
+            "is_repeat":     1 if _name_counts.get(_b["name"].strip().lower(), 0) > 1 else 0,
+            "shap":          fut_shap[i] if i < len(fut_shap) else {},
+            "holiday_label": _evt[1] if _evt else "",
+        })
+    return app.response_class(
+        json.dumps(result, ensure_ascii=False, default=str),
+        mimetype="application/json"
     )
 
 
