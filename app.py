@@ -1354,13 +1354,12 @@ def _score_vdv_guests(guests):
 
 def _parse_vdv_future_bookings():
     """Parse all RES_004 files for future bookings with lead times, channels & breakfast flag."""
-    import openpyxl
-    # Files known to contain future bookings; dedup by confirmation number
-    res004_candidates = ['RES_004_EnteredOnAndBy (1).xlsx',
-                         'RES_004_EnteredOnAndBy (2).xlsx',
-                         'RES_004_EnteredOnAndBy (12).xlsx',
-                         'RES_004_EnteredOnAndBy (16).xlsx',
-                         'RES_004_EnteredOnAndBy (17).xlsx']
+    import openpyxl, glob as _glob
+    res004_candidates = sorted([
+        os.path.basename(f)
+        for f in _glob.glob(os.path.join(_VDV_DIR, 'RES_004_EnteredOnAndBy*.xlsx'))
+    ])
+    print(f'[VDV] RES_004 files found: {len(res004_candidates)}')
     today = datetime.now().date()
     bookings = []
     seen_confs = set()
