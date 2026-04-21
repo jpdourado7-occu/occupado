@@ -154,6 +154,7 @@ def _upsert_vdv_scores(bookings, scores, conn=None):
 
 def _detect_vdv_outcomes(new_bookings, new_scores):
     from datetime import date
+    import glob as _glob
     today = date.today()
 
     if not new_bookings:
@@ -250,6 +251,74 @@ def _detect_vdv_outcomes(new_bookings, new_scores):
                 'auto',
             ))
             outcomes_logged += 1
+
+        # RES_036 cross-reference: detect cancellations that are still present in
+        # RES_004 (so they don't disappear from the booking list above).
+        # RES_004 is "Entered On and By" — it includes cancelled reservations.
+        # RES_036 is the authoritative cancellation file; match by name + arrival date.
+        try:
+            import openpyxl as _opx
+            res036_cancelled = set()  # (normalised_name, arrival_date)
+            for fp in sorted(_glob.glob(os.path.join(_VDV_DIR, 'RES_036_CancelledReservations*.xlsx'))):
+                wb = _opx.load_workbook(fp, read_only=True)
+                rows = list(wb.active.iter_rows(values_only=True))
+                wb.close()
+                for row in rows:
+                    if not row or row[0] is None:
+                        continue
+                    c0 = str(row[0]).strip()
+                    if ',' in c0 and c0[0].isalpha():
+                        arr_str = str(row[8])[:10] if len(row) > 8 and row[8] else ''
+                        if re.match(r'\d{2}/\d{2}/\d{4}', arr_str):
+                            try:
+                                arr_d = datetime.strptime(arr_str, '%d/%m/%Y').date()
+                                res036_cancelled.add((c0.lower(), arr_d))
+                            except Exception:
+                                pass
+
+            cx_from_036 = 0
+            for res_id, data in previous.items():
+                arr = data['arrival_date']
+                if arr is None or arr < today:
+                    continue
+                name_key = (data['guest_name'] or '').lower()
+                if (name_key, arr) not in res036_cancelled:
+                    continue
+                # This cached future booking appears in RES_036 — it cancelled
+                cur.execute("""
+                    INSERT INTO vdv_outcome_log
+                        (hotel_id, reservation_id,
+                         guest_name, arrival_date,
+                         channel, predicted_score,
+                         predicted_tier, outcome,
+                         outcome_date,
+                         days_before_arrival,
+                         detected_by)
+                    VALUES
+                        (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (hotel_id, reservation_id)
+                    DO NOTHING
+                """, (
+                    'vdv',
+                    res_id,
+                    data['guest_name'],
+                    arr,
+                    data['channel'],
+                    data['risk_score'],
+                    data['risk_tier'],
+                    'cancelled',
+                    today,
+                    (arr - today).days,
+                    'res036',
+                ))
+                if cur.rowcount:
+                    cx_from_036 += 1
+                    outcomes_logged += 1
+
+            if cx_from_036:
+                print(f"[VDV] RES_036 cross-reference: {cx_from_036} additional cancellations detected")
+        except Exception as _cx_err:
+            print(f"[VDV] RES_036 cross-reference error: {_cx_err}")
 
         conn.commit()
         cur.close()
